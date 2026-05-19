@@ -77,6 +77,6 @@ Pluggable interface for AI-assisted SQL generation and explanation.
 - Real-time collaboration.
 - Advanced query analysis.
 
-## Coordination with the desktop client
+## Relationship with the desktop client
 
-The desktop client `dbboard` and `dbboard-web` are developed in parallel. They share domain concepts (connection definitions, query results, schema metadata) and should converge on the same vocabulary. See [decisions.md](./decisions.md) for the cross-repo coordination policy.
+The desktop client `dbboard` is an **independent native Rust application** with its own local Rust API. It does not share code, processes, or runtime calls with `dbboard-web`. The only alignment is at the **API-contract** level (connection shape, query envelope, error codes, AI shapes) and on **user-data interop** (export and import JSON formats). Implementation duplication between the two stacks is permanent and acceptable. See [decisions.md](./decisions.md) for the full policy.

@@ -48,16 +48,20 @@ Append-only log of significant technical decisions. Each entry: date, decision, 
 
 ---
 
-## 2026-05-19 — Coordination with `dbboard` desktop client
+## 2026-05-19 — Relationship with `dbboard` desktop client
 
-**Context.** `dbboard-web` and the desktop client `dbboard` (https://github.com/meta-taro/dbboard) are developed by the same maintainer in parallel. As of 2026-05-19 both repositories are at Phase 0 with only `LICENSE` committed, so there is no legacy on either side to preserve.
+**Context.** `dbboard-web` and the desktop client `dbboard` (https://github.com/meta-taro/dbboard) are developed by the same maintainer. The desktop client is a **native Rust GUI** application with its own **local Rust API layer**. The two clients do **not** communicate with each other at runtime — they are independent applications that happen to expose the same conceptual API surface to their own UI layer.
 
 **Decision.**
 
-- The two repositories evolve **independently** — neither is a monorepo subproject of the other, and neither blocks the other's releases.
-- Domain vocabulary (connection definition shape, query result envelope, error categories, schema metadata) is kept **aligned by convention**. Divergences are documented in this file when they occur.
-- **Pace policy.** Because the maintainer's attention is split between the two repos, phases on each side are sized to be completable in a single focused session. Avoid in-flight cross-repo work that would leave either side broken if the maintainer switches contexts.
-- **Sequencing recommendation.** Prefer to land Phase 2 (connection management API) and Phase 3 (SQL execution) on `dbboard-web` first. The NestJS backend can later be reused by `dbboard` (e.g., via Tauri shelling out, or by sharing the domain TypeScript types), which reduces total work compared to building two independent backends.
-- **Duplication is acceptable** in early phases. If the shared surface grows large enough to justify it, a separate `dbboard-shared` package will be extracted later.
+- The two repositories are **fully independent applications**, not two faces of one product:
+  - `dbboard-web`: Nuxt UI + NestJS API + databases (this repo).
+  - `dbboard`: native Rust GUI + local Rust API + databases.
+- **No runtime coupling.** Neither client calls the other's API; neither shares process, build, or release pipelines. A user can install either or both without dependencies between them.
+- **What is shared:** the **API contract** only — connection definition shape, query request and response envelopes, error category codes, schema metadata shape, and AI provider request and response shapes. The contract is described in human-readable form so each repository can translate it into idiomatic types for its language (TypeScript DTOs here, `serde` structs there).
+- **What is NOT shared:** controllers, services, DB drivers, UI components, build tooling, dependency lockfiles, or any source code.
+- **User-data interop.** Export and import formats for connections and query history use the same JSON shape on both sides, so a user can move state between desktop and web. This is the only artifact the two clients exchange.
+- **Pace policy.** Maintainer attention is split between the two repos. Phases on each side are sized to be completable in a single focused session, and changes never leave either repo in a broken state. Either side may move ahead on any phase without waiting for the other.
+- **Contract evolution.** When the shared API surface changes, the side that needs the change updates the contract first (in human-readable docs), then both sides adopt it on their own schedule. Implementation duplication is permanent and acceptable — the two stacks are too different to share code.
 
-**Rationale.** A premature shared package would slow both projects down while the design is still in flux. Convention-based alignment is cheaper at this stage and keeps each repo independently buildable and shippable. Both projects starting from zero on the same day means there is no migration cost to coordinating the domain shape from the outset.
+**Rationale.** A native Rust GUI cannot meaningfully reuse a NestJS server or TypeScript UI components, so attempting to share implementation would be pure cost. Keeping the contract aligned by convention captures the only real coupling (consistent vocabulary and exportable user data) without forcing either codebase to compromise on language idioms or tooling.

@@ -4,19 +4,20 @@
 
 ## Current phase
 
-**Phase 0 — Bootstrap & rules**
+**Phase 0 — Bootstrap & rules: complete.**
 
-Setting up project rules, documentation, and AI-agent working files before any application code is written.
+**Next phase: blocked on `dbboard` Phase 1.** Per the [initial sequencing decision](./decisions.md), the desktop Turso vertical slice runs first so the HTTP API contract is shaped against a real working slice before this repo commits NestJS scaffolding to it.
 
 ## Completed
 
 - Repository initialized (`develop` branch, `LICENSE` in place).
 - Project rules captured in `CLAUDE.md`, `AI_AGENT_RULES.md`, `DESIGN.md`.
 - `.claude/` working directory created with roadmap, decisions, and an initial bootstrap issue.
+- Cross-repo audit with `dbboard` desktop (2026-05-19): coordination policy revised, sequencing decided, Phase 0 DoD checks complete.
 
 ## In progress
 
-- Awaiting decision to start **Phase 1 — Monorepo scaffold** (pnpm workspace, `frontend/` Nuxt app, `backend/` NestJS app, shared tsconfig, lint / format / typecheck scripts, husky + lint-staged hooks).
+- Nothing. Phase 1 (Monorepo scaffold) starts after `dbboard` Phase 1 produces a usable draft API contract.
 
 ## Open questions
 

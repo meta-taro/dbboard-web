@@ -12,7 +12,7 @@ Establish the working agreement, documentation skeleton, and AI-agent working fi
 - [x] Write `DESIGN.md` (placeholder, refined when UI work begins).
 - [x] Initialize `.claude/` with `project-status.md`, `roadmap.md`, `decisions.md`, and this issue.
 - [x] Add a `.gitignore` covering Node.js, Nuxt, NestJS, IDEs, OS metadata, and secrets.
-- [ ] Maintainer review and merge.
+- [x] Maintainer review and merge (2026-05-19, cross-repo audit with `dbboard`).
 
 ## Definition of Done
 
@@ -33,3 +33,4 @@ git diff --stat HEAD
 ## Work log
 
 - 2026-05-19 — Issue created and bootstrap files drafted.
+- 2026-05-19 — Cross-repo audit with `dbboard` desktop: coordination policy revised to "shared HTTP API contract, separate implementations" (desktop ADR-0004 revised, ADR-0006 added). Initial sequencing decision recorded: `dbboard` Phase 1 runs first. Phase 0 maintainer review complete.

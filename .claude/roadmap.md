@@ -10,11 +10,13 @@ Establish the working agreement and AI-agent context before any code lands.
 - [x] `CLAUDE.md`, `AI_AGENT_RULES.md`, `DESIGN.md`, `README.md` present.
 - [x] `.claude/{project-status,roadmap,decisions}.md` present.
 - [x] `.gitignore` in place.
-- [ ] Maintainer review complete.
+- [x] Maintainer review complete (2026-05-19, cross-repo audit with `dbboard`).
 
 ## Phase 1 — Monorepo scaffold
 
 Initialize the pnpm workspace and empty Nuxt + NestJS apps.
+
+> **Scheduled after `dbboard` Phase 1.** See [decisions.md — Initial sequencing](./decisions.md). Wait until the desktop Turso vertical slice is working and a draft API contract exists, then start this phase against that contract.
 
 **DoD**
 - `pnpm install` succeeds from a clean clone.

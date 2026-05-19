@@ -1,0 +1,56 @@
+# Node.js / pnpm 関連
+node_modules/
+.pnpm-store/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# npm / yarn は使用禁止だが、誤って生成された場合の防御
+package-lock.json
+yarn.lock
+
+# ビルド成果物
+dist/
+build/
+out/
+.output/
+.nitro/
+.nuxt/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# 環境変数（.env.example のみコミット）
+.env
+.env.*
+!.env.example
+
+# ローカル DB / シークレット類
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+*.key
+
+# IDE / エディタ設定
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+
+# OS メタデータ
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# テスト・E2E アーティファクト
+playwright-report/
+test-results/
+storybook-static/
+
+# Claude Code / AI エージェントの一時ファイル
+.claude/cache/
+.claude/tmp/

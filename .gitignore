@@ -54,3 +54,6 @@ storybook-static/
 # Claude Code / AI エージェントの一時ファイル
 .claude/cache/
 .claude/tmp/
+
+# Claude Code のローカル許可設定（個人ごとに異なるためコミット対象外）
+.claude/settings.local.json

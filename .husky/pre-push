@@ -1,0 +1,7 @@
+set -e
+
+# Full verification chain before any code leaves the developer machine.
+pnpm -r typecheck
+pnpm -r lint
+pnpm -r test
+pnpm -r build

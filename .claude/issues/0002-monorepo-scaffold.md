@@ -1,8 +1,10 @@
 # 0002 — Monorepo scaffold (Phase 1)
 
-- **Status:** in-progress
+- **Status:** done (2026-05-25)
 - **Phase:** 1
 - **Opened:** 2026-05-25
+- **Closed:** 2026-05-25
+- **Branch:** `feature/phase-1-bootstrap`
 - **Depends on:** [0001](./0001-web-contract-mirror.md)
 
 ## Goal
@@ -13,28 +15,28 @@ The scaffold is the precondition for everything that follows. It locks in the pa
 
 ## Tasks
 
-- [ ] Root `package.json` with `packageManager` pinned, common scripts (`-r` recursive), and pnpm safety knobs (`onlyBuiltDependencies: []`, `minimumReleaseAge: 1440`).
-- [ ] `pnpm-workspace.yaml` declaring `apps/*`.
-- [ ] `.npmrc` matching the safety knobs (strict-peer-deps, etc.).
-- [ ] `tsconfig.base.json` shared by both apps.
-- [ ] `apps/api/` — minimal NestJS 11 app with Vitest, ESLint, layered directory skeleton.
-- [ ] `apps/web/` — minimal Nuxt 4 app with Vitest and ESLint.
-- [ ] Root ESLint + Prettier config shared via workspace.
-- [ ] Husky `pre-commit` (lint-staged: lint + typecheck + tests on staged files) and `pre-push` (full `pnpm -r build && pnpm -r typecheck && pnpm -r lint && pnpm -r test`) hooks.
-- [ ] `.env.example` placeholder for the variables the API will need.
-- [ ] `.gitignore` audit: ensure `node_modules`, `.nuxt`, `dist`, `coverage`, `.env*` (except `.example`) are covered.
-- [ ] Update [`.claude/project-status.md`](../project-status.md) and [`.claude/roadmap.md`](../roadmap.md) to mark Phase 1 done.
+- [x] Root `package.json` with `packageManager` pinned, common scripts (`-r` recursive), and pnpm safety knobs (`onlyBuiltDependencies: []`, `minimumReleaseAge: 1440`).
+- [x] `pnpm-workspace.yaml` declaring `apps/*` + `allowBuilds` ACL (esbuild/parcel-watcher/unrs-resolver `true`, `@nestjs/core` `false`).
+- [x] `.npmrc` matching the safety knobs (strict-peer-deps, no auto-install-peers, no fund).
+- [x] `tsconfig.base.json` shared by both apps (ES2023, strict, noUncheckedIndexedAccess, Bundler resolution).
+- [x] `apps/api/` — minimal NestJS 11 app with Vitest, ESLint, layered directory skeleton + a smoke `GET /health` controller.
+- [x] `apps/web/` — minimal Nuxt 4 app with Vitest (happy-dom + nuxt environment) and ESLint.
+- [x] Root ESLint flat config v9 + Prettier shared via workspace; `.gitattributes` + `.editorconfig` enforce LF.
+- [x] Husky 9 `pre-commit` (lint-staged) and `pre-push` (`typecheck` + `lint` + `test` + `build`) hooks.
+- [x] `.env.example` placeholder for the variables the API will need.
+- [x] `.gitignore` audit: `node_modules`, `.nuxt`, `.output`, `dist`, `coverage`, `.env*` (except `.example`) covered.
+- [x] Update [`.claude/project-status.md`](../project-status.md) and [`.claude/roadmap.md`](../roadmap.md) to mark Phase 1 done.
 
 ## Definition of Done
 
 Per [`.claude/roadmap.md` Phase 1](../roadmap.md):
 
-- [ ] `pnpm install` succeeds from a clean clone (lockfile committed).
-- [ ] `pnpm -r build` succeeds (Nuxt + NestJS).
-- [ ] `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test` succeed (empty test suites allowed).
-- [ ] Husky pre-commit and pre-push hooks installed and runnable on this machine.
-- [ ] `corepack` pins the pnpm version via the `packageManager` field.
-- [ ] No `package-lock.json` or `yarn.lock` anywhere in the tree.
+- [x] `pnpm install` succeeds from a clean clone (lockfile committed).
+- [x] `pnpm -r build` succeeds (Nuxt + NestJS).
+- [x] `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test` succeed (smoke tests in place).
+- [x] Husky pre-commit and pre-push hooks installed and runnable on this machine.
+- [x] `corepack` pins the pnpm version via the `packageManager` field.
+- [x] No `package-lock.json` or `yarn.lock` anywhere in the tree.
 
 ## Verification
 
@@ -53,7 +55,14 @@ ls -la .husky/
 
 ## Work log
 
-- **2026-05-25** — Issue opened. Branch policy ADR + distribution-model ADR landed in the parent feature branch (`feature/phase-1-bootstrap`) ahead of the scaffold so the README and ADR log explain *why* the scaffold looks the way it does.
+- **2026-05-25** — Issue opened. Branch policy ADR + distribution-model ADR landed in the parent feature branch (`feature/phase-1-bootstrap`) ahead of the scaffold so the README and ADR log explain _why_ the scaffold looks the way it does.
+- **2026-05-25** — Scaffold complete on `feature/phase-1-bootstrap`. Notable fixes during bring-up:
+  - `pnpm-workspace.yaml allowBuilds` ACL added so install scripts only run for the runtime-required toolchain (esbuild, parcel-watcher, unrs-resolver). `@nestjs/core`'s install-time banner is denied.
+  - Root `eslint.config.mjs` imports must be declared at the root (pnpm doesn't hoist into the workspace root) — `@eslint/js` and `typescript-eslint` live in the root `devDependencies`.
+  - `apps/api` lint script targets `src/**/*.ts` only (no `test/` directory; tests are colocated).
+  - `apps/api/tsconfig.json` sets `incremental: false` — `nest-cli`'s `deleteOutDir: true` together with `tsc --incremental` produced a stale buildinfo claiming "already emitted" with no `dist/` on disk.
+  - `docs/api-contract.md` is listed in `.prettierignore` to preserve its byte-identical mirror of the desktop contract.
+- **2026-05-25** — Verification chain green: `pnpm install`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build`, `pnpm format:check`.
 
 ## Notes
 

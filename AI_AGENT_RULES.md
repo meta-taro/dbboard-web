@@ -24,13 +24,13 @@ If a change does not warrant a test, justify it in the commit message.
 
 Keep business logic out of controllers and API routes. Organize each app along these layers:
 
-| Layer | Responsibility |
-|---|---|
-| `domain` | Business rules, entities, value objects |
-| `usecase` | Application orchestration (workflows, transaction scripts) |
-| `infrastructure` | DB, external APIs, file I/O, mail |
-| `presentation` | Controllers, API routes, view rendering |
-| `tests` | Unit and integration tests |
+| Layer            | Responsibility                                             |
+| ---------------- | ---------------------------------------------------------- |
+| `domain`         | Business rules, entities, value objects                    |
+| `usecase`        | Application orchestration (workflows, transaction scripts) |
+| `infrastructure` | DB, external APIs, file I/O, mail                          |
+| `presentation`   | Controllers, API routes, view rendering                    |
+| `tests`          | Unit and integration tests                                 |
 
 - Controllers and API routes are **thin** — they translate transport concerns into use case calls.
 - Domain code must not import from `infrastructure` or `presentation`.

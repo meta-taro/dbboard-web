@@ -55,14 +55,14 @@ Three supported install paths, in order of how much you want to touch:
 
 ### Choosing between dbboard and dbboard-web
 
-| | `dbboard` (desktop) | `dbboard-web` |
-|---|---|---|
-| Install | Native binary | Docker Compose / from source |
-| Runs on | Your laptop | Laptop / VPS / homelab |
-| Access from | The host machine | Any browser on your network |
-| Users | Single | Single now, team in a later phase |
-| Best for | Fastest local-only path | Multi-device access, self-hosted infra |
-| Auth | None (local-only) | None by default, optional OIDC later |
+|             | `dbboard` (desktop)     | `dbboard-web`                          |
+| ----------- | ----------------------- | -------------------------------------- |
+| Install     | Native binary           | Docker Compose / from source           |
+| Runs on     | Your laptop             | Laptop / VPS / homelab                 |
+| Access from | The host machine        | Any browser on your network            |
+| Users       | Single                  | Single now, team in a later phase      |
+| Best for    | Fastest local-only path | Multi-device access, self-hosted infra |
+| Auth        | None (local-only)       | None by default, optional OIDC later   |
 
 The two are siblings, not a tiered product. Pick whichever fits how you work.
 

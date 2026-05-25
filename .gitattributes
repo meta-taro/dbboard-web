@@ -1,0 +1,6 @@
+# Normalize line endings to LF in the repo on all platforms.
+# Prevents the "LF will be replaced by CRLF" warnings on Windows checkouts.
+* text=auto eol=lf
+
+# Lockfiles are managed by tooling — let the tool decide.
+pnpm-lock.yaml -text

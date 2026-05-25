@@ -1,0 +1,12 @@
+node_modules
+dist
+.output
+.nuxt
+.nitro
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Mirror of the desktop contract — must remain content-identical.
+# See ADR "Adopt `dbboard` HTTP API contract as Phase 1 input".
+docs/api-contract.md

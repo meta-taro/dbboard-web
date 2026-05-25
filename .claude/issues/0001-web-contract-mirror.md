@@ -18,7 +18,7 @@ The desktop side closed Phase 1 at workspace `0.1.0` with a stable contract. Per
 - [x] Cross-link the mirror from `.claude/decisions.md` so contract evolution flows through the ADR log on both sides.
 - [x] Update `.claude/project-status.md` to mark contract mirror in progress and Phase 1 scaffold as unblocked.
 - [x] Update `.claude/roadmap.md` to reference the mirrored contract as Phase 1 input.
-- [ ] *(Out of scope for this issue — graduates to follow-up issues):* NestJS service implementation, Postgres adapter, contract-conformance tests, body-parser limit, 10,000-row cap. See "Follow-up issues" below.
+- [ ] _(Out of scope for this issue — graduates to follow-up issues):_ NestJS service implementation, Postgres adapter, contract-conformance tests, body-parser limit, 10,000-row cap. See "Follow-up issues" below.
 
 ## Definition of Done
 

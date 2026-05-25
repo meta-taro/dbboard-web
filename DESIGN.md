@@ -15,17 +15,17 @@ Visual and interaction specification for **dbboard-web**.
 
 Tentative tokens. Finalize during the first UI phase.
 
-| Token | Light | Dark | Usage |
-|---|---|---|---|
-| `bg` | `#ffffff` | `#0b0d10` | Page background |
-| `surface` | `#f5f6f8` | `#14181d` | Panels, sidebars |
-| `border` | `#e3e6ea` | `#1f242a` | Dividers |
-| `text` | `#0f1115` | `#e6e9ee` | Body text |
-| `text-muted` | `#5a6573` | `#8a96a3` | Secondary text |
-| `accent` | `#2563eb` | `#3b82f6` | Primary action |
-| `success` | `#16a34a` | `#22c55e` | Successful query, healthy connection |
-| `warning` | `#d97706` | `#f59e0b` | Truncated result, soft limit |
-| `danger` | `#dc2626` | `#ef4444` | Destructive action, errors |
+| Token        | Light     | Dark      | Usage                                |
+| ------------ | --------- | --------- | ------------------------------------ |
+| `bg`         | `#ffffff` | `#0b0d10` | Page background                      |
+| `surface`    | `#f5f6f8` | `#14181d` | Panels, sidebars                     |
+| `border`     | `#e3e6ea` | `#1f242a` | Dividers                             |
+| `text`       | `#0f1115` | `#e6e9ee` | Body text                            |
+| `text-muted` | `#5a6573` | `#8a96a3` | Secondary text                       |
+| `accent`     | `#2563eb` | `#3b82f6` | Primary action                       |
+| `success`    | `#16a34a` | `#22c55e` | Successful query, healthy connection |
+| `warning`    | `#d97706` | `#f59e0b` | Truncated result, soft limit         |
+| `danger`     | `#dc2626` | `#ef4444` | Destructive action, errors           |
 
 ## Layout
 

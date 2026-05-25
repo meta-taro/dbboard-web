@@ -1,0 +1,37 @@
+{
+  "name": "@dbboard-web/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nuxt 4 frontend for dbboard-web.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "nuxt": "^4.0.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.0.0",
+    "@nuxt/test-utils": "^3.15.0",
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^3.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "eslint": "^9.18.0",
+    "happy-dom": "^16.6.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

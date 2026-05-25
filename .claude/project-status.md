@@ -6,7 +6,7 @@
 
 **Phase 0 — Bootstrap & rules: complete.**
 
-**Next phase: blocked on `dbboard` Phase 1.** Per the [initial sequencing decision](./decisions.md), the desktop Turso vertical slice runs first so the HTTP API contract is shaped against a real working slice before this repo commits NestJS scaffolding to it.
+**Phase 1 — Monorepo scaffold: unblocked, not yet started.** The desktop client closed its Phase 1 / 1.5 / 1.6 / 1.7 at workspace `0.1.0` (2026-05-25) with a stable HTTP API contract. That contract has been mirrored into this repo as [`docs/api-contract.md`](../docs/api-contract.md). Phase 1 implementation work begins from that fixed target — see issue [`0001`](./issues/0001-web-contract-mirror.md) for the mirror and [`0002`](./issues/0001-web-contract-mirror.md#follow-up-issues-phase-1) onward for the implementation breakdown.
 
 ## Completed
 
@@ -14,10 +14,11 @@
 - Project rules captured in `CLAUDE.md`, `AI_AGENT_RULES.md`, `DESIGN.md`.
 - `.claude/` working directory created with roadmap, decisions, and an initial bootstrap issue.
 - Cross-repo audit with `dbboard` desktop (2026-05-19): coordination policy revised, sequencing decided, Phase 0 DoD checks complete.
+- **HTTP API contract mirrored from `dbboard` (2026-05-25):** [`docs/api-contract.md`](../docs/api-contract.md) snapshotted at `dbboard@89b7c70` (last contract change `3f114e4`, "publish the 10,000-row per-query cap"). See issue [`0001`](./issues/0001-web-contract-mirror.md) for provenance and scope.
 
 ## In progress
 
-- Nothing. Phase 1 (Monorepo scaffold) starts after `dbboard` Phase 1 produces a usable draft API contract.
+- **Issue [`0001`](./issues/0001-web-contract-mirror.md) — HTTP API contract mirror.** Documentation tasks complete; awaiting maintainer review and commit. Implementation work splits into follow-up issues `0002` (scaffold), `0003` (HTTP surface), `0004` (Postgres adapter), `0005` (row cap + conformance tests).
 
 ## Open questions
 

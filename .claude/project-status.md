@@ -6,7 +6,9 @@
 
 **Phase 0 — Bootstrap & rules: complete.**
 
-**Phase 1 — Monorepo scaffold: complete (2026-05-25).** pnpm workspace, NestJS 11 API skeleton, Nuxt 4 web skeleton, shared tooling (ESLint flat config v9, Prettier, Vitest 3, Husky 9) and the full per-commit verification chain (`format:check`, `typecheck`, `lint`, `test`, `build`) are all green on `feature/phase-1-bootstrap`. The next implementation work is the HTTP contract surface — see issue [`0003`](./issues/0001-web-contract-mirror.md#follow-up-issues-phase-1).
+**Phase 1 — Monorepo scaffold: complete (2026-05-25, merged 2026-05-26).** pnpm workspace, NestJS 11 API skeleton, Nuxt 4 web skeleton, shared tooling (ESLint flat config v9, Prettier, Vitest 3, Husky 9) and the full per-commit verification chain (`format:check`, `typecheck`, `lint`, `test`, `build`) all green. Landed via PR [#1](https://github.com/meta-taro/dbboard-web/pull/1), merge commit `1c204ed` on `develop`. Feature branch deleted local + remote.
+
+**Web is paused.** Per the original cross-repo sequencing (`dbboard@939fe22`), desktop now picks up Phase 2 — trait extraction + Capability + `/capabilities` endpoint. Web resumes the moment desktop publishes the updated `docs/api-contract.md`. See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md) for the brief sent to desktop.
 
 ## Completed
 
@@ -17,10 +19,21 @@
 - **HTTP API contract mirrored from `dbboard` (2026-05-25):** [`docs/api-contract.md`](../docs/api-contract.md) snapshotted at `dbboard@89b7c70` (last contract change `3f114e4`, "publish the 10,000-row per-query cap"). See issue [`0001`](./issues/0001-web-contract-mirror.md) for provenance and scope.
 - **Branch policy and distribution model decided (2026-05-25):** `feature/<slug>` → PR → `develop` (matches desktop ADR-0005); self-host only OSS distribution via Docker Compose + ghcr.io, no maintainer-run SaaS. See [`decisions.md`](./decisions.md).
 - **Phase 1 monorepo scaffold landed (2026-05-25):** pnpm@11.1.1 workspace (apps/api + apps/web), NestJS 11 with a smoke `GET /health` controller, Nuxt 4 with a smoke page, shared ESLint flat config, Prettier, Vitest 3 (api + happy-dom/nuxt environments), Husky 9 pre-commit (lint-staged) and pre-push (typecheck + lint + test + build). Full verification chain green. See issue [`0002`](./issues/0002-monorepo-scaffold.md).
+- **Phase 1 merged (2026-05-26):** PR [#1](https://github.com/meta-taro/dbboard-web/pull/1) merged to `develop` as `1c204ed`. `feature/phase-1-bootstrap` branch deleted local + remote. Follow-up `chore: migrate pnpm settings to pnpm-workspace.yaml` (settings home moved per pnpm 11 deprecation) included in the same PR.
 
 ## In progress
 
-- Nothing actively in progress. Phase 1 scaffold deliverables sit on `feature/phase-1-bootstrap` awaiting maintainer review and merge to `develop`.
+- Nothing actively in progress. Web is in wait state until desktop publishes the next contract update (Phase 2 / `/capabilities`). See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md).
+
+## Resume triggers
+
+Pick up web work again when **any** of these happen:
+
+- Desktop commits a `feat(contract): ...` or `docs(api-contract): ...` change to `dbboard/docs/api-contract.md` — re-mirror to `dbboard-web/docs/api-contract.md` and start issue `0003`.
+- Desktop emits a new `chore(handoff): ...` brief in `dbboard/` — read it and translate into a new web issue under `.claude/issues/`.
+- A maintainer-driven web-only change is required (e.g., security patch, dependency bump).
+
+To check: `cd ../dbboard && git log --oneline main..HEAD` and look for `(contract)`, `(handoff)`, or release-tag commits since `0b68aad` (the desktop tip when web paused).
 
 ## Open questions
 

@@ -1,0 +1,27 @@
+packages:
+  - "apps/*"
+
+# Build-script allowlist (pnpm 11+).
+#
+# Default policy (AI_AGENT_RULES.md §11): deny all install/postinstall scripts.
+# Explicit exceptions live here, each with a one-line reason. Add new entries
+# only when a dependency genuinely cannot work without its build step, and
+# review what the script does first.
+allowBuilds:
+  # NestJS vanity banner postinstall. Not required for runtime.
+  "@nestjs/core": false
+  # Native file-watcher used by Nuxt / Nitro dev mode. Required.
+  "@parcel/watcher": true
+  # esbuild downloads the platform-native binary on postinstall. Required by
+  # Vite, Vitest, and Nuxt.
+  esbuild: true
+  # Native module resolver used by ESLint / Nuxt; speeds up resolution and is
+  # required for some plugins to load on Windows.
+  unrs-resolver: true
+
+# Supply-chain quarantine (pnpm 11+).
+#
+# Refuse to install package versions released in the last 1440 minutes (24 h).
+# Mitigates dependency-confusion and post-publish-hijack attacks where a
+# malicious version is pulled within minutes of being pushed.
+minimumReleaseAge: 1440

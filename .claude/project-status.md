@@ -6,7 +6,7 @@
 
 **Phase 0 — Bootstrap & rules: complete.**
 
-**Next phase: blocked on `dbboard` Phase 1.** Per the [initial sequencing decision](./decisions.md), the desktop Turso vertical slice runs first so the HTTP API contract is shaped against a real working slice before this repo commits NestJS scaffolding to it.
+**Phase 1 — Monorepo scaffold: complete (2026-05-25).** pnpm workspace, NestJS 11 API skeleton, Nuxt 4 web skeleton, shared tooling (ESLint flat config v9, Prettier, Vitest 3, Husky 9) and the full per-commit verification chain (`format:check`, `typecheck`, `lint`, `test`, `build`) are all green on `feature/phase-1-bootstrap`. The next implementation work is the HTTP contract surface — see issue [`0003`](./issues/0001-web-contract-mirror.md#follow-up-issues-phase-1).
 
 ## Completed
 
@@ -14,10 +14,13 @@
 - Project rules captured in `CLAUDE.md`, `AI_AGENT_RULES.md`, `DESIGN.md`.
 - `.claude/` working directory created with roadmap, decisions, and an initial bootstrap issue.
 - Cross-repo audit with `dbboard` desktop (2026-05-19): coordination policy revised, sequencing decided, Phase 0 DoD checks complete.
+- **HTTP API contract mirrored from `dbboard` (2026-05-25):** [`docs/api-contract.md`](../docs/api-contract.md) snapshotted at `dbboard@89b7c70` (last contract change `3f114e4`, "publish the 10,000-row per-query cap"). See issue [`0001`](./issues/0001-web-contract-mirror.md) for provenance and scope.
+- **Branch policy and distribution model decided (2026-05-25):** `feature/<slug>` → PR → `develop` (matches desktop ADR-0005); self-host only OSS distribution via Docker Compose + ghcr.io, no maintainer-run SaaS. See [`decisions.md`](./decisions.md).
+- **Phase 1 monorepo scaffold landed (2026-05-25):** pnpm@11.1.1 workspace (apps/api + apps/web), NestJS 11 with a smoke `GET /health` controller, Nuxt 4 with a smoke page, shared ESLint flat config, Prettier, Vitest 3 (api + happy-dom/nuxt environments), Husky 9 pre-commit (lint-staged) and pre-push (typecheck + lint + test + build). Full verification chain green. See issue [`0002`](./issues/0002-monorepo-scaffold.md).
 
 ## In progress
 
-- Nothing. Phase 1 (Monorepo scaffold) starts after `dbboard` Phase 1 produces a usable draft API contract.
+- Nothing actively in progress. Phase 1 scaffold deliverables sit on `feature/phase-1-bootstrap` awaiting maintainer review and merge to `develop`.
 
 ## Open questions
 

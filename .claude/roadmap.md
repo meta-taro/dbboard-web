@@ -7,6 +7,7 @@ Phases for **dbboard-web** with explicit Definition of Done (DoD). Phases are co
 Establish the working agreement and AI-agent context before any code lands.
 
 **DoD**
+
 - [x] `CLAUDE.md`, `AI_AGENT_RULES.md`, `DESIGN.md`, `README.md` present.
 - [x] `.claude/{project-status,roadmap,decisions}.md` present.
 - [x] `.gitignore` in place.
@@ -16,20 +17,24 @@ Establish the working agreement and AI-agent context before any code lands.
 
 Initialize the pnpm workspace and empty Nuxt + NestJS apps.
 
-> **Scheduled after `dbboard` Phase 1.** See [decisions.md — Initial sequencing](./decisions.md). Wait until the desktop Turso vertical slice is working and a draft API contract exists, then start this phase against that contract.
+> **Complete (2026-05-25).** Scaffold landed on `feature/phase-1-bootstrap`. See issue [`0002`](./issues/0002-monorepo-scaffold.md).
 
 **DoD**
-- `pnpm install` succeeds from a clean clone.
-- `pnpm -r build` succeeds (Nuxt + NestJS).
-- `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test` succeed (empty test suites allowed).
-- Husky pre-commit and pre-push hooks installed and runnable.
-- `corepack` pins the pnpm version via the `packageManager` field.
+
+- [x] `pnpm install` succeeds from a clean clone.
+- [x] `pnpm -r build` succeeds (Nuxt + NestJS).
+- [x] `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test` succeed (smoke tests in place).
+- [x] Husky pre-commit and pre-push hooks installed and runnable.
+- [x] `corepack` pins the pnpm version via the `packageManager` field.
 
 ## Phase 2 — Database connection management API
 
 Backend module for registering and listing database connections.
 
+> **Out of scope for the desktop contract mirror.** Connection registration is a web-only concern (the desktop runs against a single backend chosen at startup). This phase introduces web-specific endpoints — they layer **on top of** the mirrored contract, not in place of it.
+
 **DoD**
+
 - NestJS module `database/` exposes `POST /connections`, `GET /connections`, `DELETE /connections/:id`.
 - Connections persisted (initial target: in-memory + file fallback).
 - Unit tests for domain and use case layers, integration test for the HTTP surface.
@@ -39,16 +44,21 @@ Backend module for registering and listing database connections.
 
 Backend module for executing queries against a registered connection.
 
+> **Conforms to [`docs/api-contract.md`](../docs/api-contract.md).** The `POST /connections/:id/query` endpoint reuses the contract's `QueryResult`, `Value`, error envelope, and 10,000-row cap. Drift from the contract is a bug and goes back through the desktop ADR loop first.
+
 **DoD**
+
 - `POST /connections/:id/query` returns rows + metadata or a structured error.
-- Per-connection timeout and row-limit enforcement.
+- Per-connection timeout and row-limit enforcement (10,000-row cap per the contract).
 - Integration test against at least one real provider (Neon branch or local libSQL).
+- Contract-conformance test runs the same requests against both this service and the desktop loopback server (skipped if the desktop binary is unavailable, gated on an env var).
 
 ## Phase 4 — Frontend: connection & query UI
 
 Nuxt UI for managing connections and executing queries.
 
 **DoD**
+
 - Connection list, add and remove flow.
 - SQL editor (Monaco or CodeMirror) with run shortcut.
 - Result grid with virtualized rendering.
@@ -59,6 +69,7 @@ Nuxt UI for managing connections and executing queries.
 Side panels for browsing tables / schemas and replaying past queries.
 
 **DoD**
+
 - Tree view of schemas → tables → columns for PostgreSQL and libSQL.
 - Local history with timestamp and connection scope.
 
@@ -67,6 +78,7 @@ Side panels for browsing tables / schemas and replaying past queries.
 Pluggable interface for AI-assisted SQL generation and explanation.
 
 **DoD**
+
 - `backend/src/modules/ai/` defines a provider port (interface).
 - At least one adapter (OpenAI or Claude) implemented behind an environment flag.
 - Core flows work with the AI module disabled.

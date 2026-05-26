@@ -2,18 +2,20 @@
 
 A modern multi-database web client with pluggable AI providers.
 
-`dbboard-web` is the browser-based counterpart of the `dbboard` desktop client. It provides a unified interface for managing and querying serverless PostgreSQL and libSQL databases, with optional AI assistance for query authoring and explanation.
+`dbboard-web` is the browser-based counterpart of the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client. It provides a unified interface for managing and querying serverless PostgreSQL and libSQL databases, with optional AI assistance for query authoring and explanation.
+
+The desktop client and `dbboard-web` are **independent applications** that share an HTTP API contract by convention. See [`docs/api-contract.md`](./docs/api-contract.md) and [.claude/decisions.md](./.claude/decisions.md).
 
 ## Status
 
-Early scaffolding — no application code yet. See [.claude/project-status.md](./.claude/project-status.md) and [.claude/roadmap.md](./.claude/roadmap.md).
+Phase 1 — monorepo scaffold. No application code yet, but the contract is mirrored and the toolchain is in place. See [.claude/project-status.md](./.claude/project-status.md) and [.claude/roadmap.md](./.claude/roadmap.md) for the live status.
 
 ## Stack
 
-- **Frontend:** Nuxt (Vue 3, TypeScript)
-- **Backend:** NestJS (Node.js, TypeScript)
+- **Frontend:** Nuxt 4 (Vue 3, TypeScript)
+- **Backend:** NestJS 11 (Node.js, TypeScript)
 - **Databases:** Neon, Supabase, Turso / libSQL
-- **Package manager:** pnpm (required — see [AI_AGENT_RULES.md](./AI_AGENT_RULES.md#2-package-manager))
+- **Package manager:** pnpm via corepack (required — see [AI_AGENT_RULES.md](./AI_AGENT_RULES.md#2-package-manager))
 
 ## Architecture
 
@@ -21,49 +23,93 @@ Early scaffolding — no application code yet. See [.claude/project-status.md](.
 User → Nuxt UI → NestJS API → Database
 ```
 
-All database access flows through the backend API. AI integration is an optional module and must not be tightly coupled to database logic.
+All database access flows through the backend API. AI integration is an optional module and must not be tightly coupled to database logic. The NestJS API conforms to the HTTP contract documented in [`docs/api-contract.md`](./docs/api-contract.md).
 
-## Getting started
+## How to get it
 
-> Detailed setup will be filled in once the monorepo skeleton lands (Phase 1 of the roadmap).
+`dbboard-web` is **self-hosted OSS**. There is no maintainer-operated SaaS, no hosted demo, and no managed offering. You run your own instance. See [.claude/decisions.md](./.claude/decisions.md) for the rationale.
+
+Three supported install paths, in order of how much you want to touch:
+
+1. **Docker Compose (recommended).** Pull the pre-built images and bring up the stack.
+
+   ```sh
+   curl -L -o docker-compose.yml https://raw.githubusercontent.com/meta-taro/dbboard-web/main/deploy/docker-compose.yml
+   docker compose up -d
+   # Open http://localhost:3000
+   ```
+
+   Images are published to `ghcr.io/meta-taro/dbboard-web-api` and `ghcr.io/meta-taro/dbboard-web-web`. The `deploy/docker-compose.yml` file lands with the Docker phase of the roadmap.
+
+2. **From source.**
+
+   ```sh
+   corepack enable
+   pnpm install
+   pnpm -r build
+   pnpm -r start
+   # API on http://localhost:4000, web on http://localhost:3000
+   ```
+
+3. **One-click templates.** Community-maintained deploy templates for Fly.io / Railway / Vercel + Render etc. may live under `deploy/` or a sibling repo. These are not the primary supported path.
+
+### Choosing between dbboard and dbboard-web
+
+|             | `dbboard` (desktop)     | `dbboard-web`                          |
+| ----------- | ----------------------- | -------------------------------------- |
+| Install     | Native binary           | Docker Compose / from source           |
+| Runs on     | Your laptop             | Laptop / VPS / homelab                 |
+| Access from | The host machine        | Any browser on your network            |
+| Users       | Single                  | Single now, team in a later phase      |
+| Best for    | Fastest local-only path | Multi-device access, self-hosted infra |
+| Auth        | None (local-only)       | None by default, optional OIDC later   |
+
+The two are siblings, not a tiered product. Pick whichever fits how you work.
+
+## Development
 
 ```sh
-# Prerequisite: pnpm via corepack
 corepack enable
 pnpm install
-pnpm dev
+pnpm dev           # starts both apps via the root script
+pnpm -r build
+pnpm -r typecheck
+pnpm -r lint
+pnpm -r test
 ```
 
-Environment variables are documented in `.env.example` (added during scaffolding).
+Environment variables are documented in `.env.example` (lands with the first adapter implementation).
 
-## Project layout (planned)
+## Project layout
 
 ```
-frontend/        # Nuxt app
-  pages/
-  components/
-  composables/
-backend/         # NestJS app
-  src/
-    modules/
-      database/
-      query/
-      ai/
-docs/            # Design references and deeper documents
-.claude/         # AI agent working files (status, roadmap, decisions, issues)
+apps/
+  web/             # Nuxt app (frontend)
+  api/             # NestJS app (backend)
+docs/              # API contract and design references
+  api-contract.md  # Canonical HTTP API contract (mirrored from dbboard)
+.claude/           # AI agent working files (status, roadmap, decisions, issues)
+deploy/            # Docker Compose stack and deploy templates (added in a later phase)
 ```
 
 ## Contributing
 
-Read [CLAUDE.md](./CLAUDE.md) and [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) first. The same rules apply to human and AI contributors.
+Read [CLAUDE.md](./CLAUDE.md) and [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) first. The same rules apply to human and AI contributors. In short:
+
+- TDD: failing test first, then minimal implementation.
+- pnpm only — never `npm` or `yarn`.
+- Keep business logic out of controllers; layered architecture is enforced.
+- AI authors commits; humans push and open PRs.
+- All repository files are in English.
 
 ## Purpose
 
-`dbboard-web` is intentionally not a production SaaS. It is:
+`dbboard-web` is intentionally **not a production SaaS**. It is:
 
 - A learning platform for full-stack development.
 - A reference for multi-database client architecture.
 - A base for AI-assisted developer tooling.
+- A self-hostable companion to the native desktop client.
 
 Clarity and extensibility are prioritized over feature completeness.
 

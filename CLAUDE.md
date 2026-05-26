@@ -19,15 +19,15 @@ All database access flows through the backend API layer. AI integration is optio
 
 ## Where to look
 
-| File | Purpose |
-|---|---|
-| [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) | Full rules (TDD, layering, commits, tooling, security) |
-| [DESIGN.md](./DESIGN.md) | Visual direction, colors, layout, UI patterns |
-| [README.md](./README.md) | Human-facing project introduction |
-| [.claude/project-status.md](./.claude/project-status.md) | Current phase and open work |
-| [.claude/roadmap.md](./.claude/roadmap.md) | Phases and completion criteria |
-| [.claude/decisions.md](./.claude/decisions.md) | Technical decisions and rationale |
-| [.claude/issues/](./.claude/issues/) | Work tickets |
+| File                                                     | Purpose                                                |
+| -------------------------------------------------------- | ------------------------------------------------------ |
+| [AI_AGENT_RULES.md](./AI_AGENT_RULES.md)                 | Full rules (TDD, layering, commits, tooling, security) |
+| [DESIGN.md](./DESIGN.md)                                 | Visual direction, colors, layout, UI patterns          |
+| [README.md](./README.md)                                 | Human-facing project introduction                      |
+| [.claude/project-status.md](./.claude/project-status.md) | Current phase and open work                            |
+| [.claude/roadmap.md](./.claude/roadmap.md)               | Phases and completion criteria                         |
+| [.claude/decisions.md](./.claude/decisions.md)           | Technical decisions and rationale                      |
+| [.claude/issues/](./.claude/issues/)                     | Work tickets                                           |
 
 ## Core rules (summary — see AI_AGENT_RULES.md for details)
 

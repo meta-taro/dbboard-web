@@ -1,0 +1,46 @@
+{
+  "name": "dbboard-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser-based multi-database client. Self-hosted OSS companion to the dbboard desktop client.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/meta-taro/dbboard-web.git"
+  },
+  "packageManager": "pnpm@11.1.1",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write \"**/*.{ts,vue,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,vue,json,md,yml,yaml}\"",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.18.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "lint-staged": {
+    "*.{ts,vue,js,mjs,cjs}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

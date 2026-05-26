@@ -18,3 +18,10 @@ allowBuilds:
   # Native module resolver used by ESLint / Nuxt; speeds up resolution and is
   # required for some plugins to load on Windows.
   unrs-resolver: true
+
+# Supply-chain quarantine (pnpm 11+).
+#
+# Refuse to install package versions released in the last 1440 minutes (24 h).
+# Mitigates dependency-confusion and post-publish-hijack attacks where a
+# malicious version is pulled within minutes of being pushed.
+minimumReleaseAge: 1440

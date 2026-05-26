@@ -42,9 +42,5 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [],
-    "minimumReleaseAge": 1440
   }
 }

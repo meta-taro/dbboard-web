@@ -8,7 +8,9 @@
 
 **Phase 1 — Monorepo scaffold: complete (2026-05-25, merged 2026-05-26).** pnpm workspace, NestJS 11 API skeleton, Nuxt 4 web skeleton, shared tooling (ESLint flat config v9, Prettier, Vitest 3, Husky 9) and the full per-commit verification chain (`format:check`, `typecheck`, `lint`, `test`, `build`) all green. Landed via PR [#1](https://github.com/meta-taro/dbboard-web/pull/1), merge commit `1c204ed` on `develop`. Feature branch deleted local + remote.
 
-**Web is paused.** Per the original cross-repo sequencing (`dbboard@939fe22`), desktop now picks up Phase 2 — trait extraction + Capability + `/capabilities` endpoint. Web resumes the moment desktop publishes the updated `docs/api-contract.md`. See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md) for the brief sent to desktop.
+**Web is paused on the contract track.** Per the original cross-repo sequencing (`dbboard@939fe22`), desktop now picks up Phase 2 — trait extraction + Capability + `/capabilities` endpoint. The contract-dependent web issues (`0003` HTTP surface, `0004` Postgres adapter, `0005` row cap + conformance) resume the moment desktop publishes the updated `docs/api-contract.md`. See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md) for the outgoing brief.
+
+**A parallel non-contract track opened on 2026-05-26 — Phase 1.5 PWA shell.** Desktop sent an incoming strategic brief ([`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md)) settling the mobile question: no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead to cover ambient, read-mostly mobile use (think GitHub mobile app — glance at signup counts, verify an order, kill a stuck query). PWA work touches only the app shell, so it runs **in parallel with the contract wait**. Tracked as issue [`0006`](./issues/0006-pwa-shell.md).
 
 ## Completed
 
@@ -23,7 +25,11 @@
 
 ## In progress
 
-- Nothing actively in progress. Web is in wait state until desktop publishes the next contract update (Phase 2 / `/capabilities`). See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md).
+- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Just opened; no implementation yet. This phase runs in parallel with the contract wait — it does not unblock or block `0003`/`0004`/`0005`.
+
+## Waiting
+
+- Contract follow-ups `0003`/`0004`/`0005` are blocked on desktop publishing the next `docs/api-contract.md` change (Phase 2 / `/capabilities`). See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md).
 
 ## Resume triggers
 

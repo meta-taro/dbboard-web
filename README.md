@@ -1,6 +1,17 @@
 # dbboard-web
 
-A modern multi-database web client with pluggable AI providers.
+**A self-hosted web client for your databases — runs in any browser on your network, installs to your phone as a PWA.**
+
+> **"Isn't the [desktop client](https://github.com/meta-taro/dbboard) enough?"**
+>
+> For working at your laptop, yes — that is what the desktop app is for. `dbboard-web` exists for the moments the desktop app cannot reach:
+>
+> - Glancing at production signup counts from your phone during a meeting.
+> - Verifying that a specific user's order actually went through, from the kitchen.
+> - Killing a long-running query while you are away from your desk.
+> - Letting a teammate hit the same database from their browser without installing anything.
+>
+> You run `dbboard-web` once on a laptop, a VPS, or a homelab box. After that, any device on your network reaches it through a browser — and on a phone you can install it to the home screen as a PWA for ambient, read-mostly access. No app store, no mobile build, no separate codebase.
 
 `dbboard-web` is the browser-based counterpart of the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client. It provides a unified interface for managing and querying serverless PostgreSQL and libSQL databases, with optional AI assistance for query authoring and explanation.
 
@@ -55,14 +66,16 @@ Three supported install paths, in order of how much you want to touch:
 
 ### Choosing between dbboard and dbboard-web
 
-|             | `dbboard` (desktop)     | `dbboard-web`                          |
-| ----------- | ----------------------- | -------------------------------------- |
-| Install     | Native binary           | Docker Compose / from source           |
-| Runs on     | Your laptop             | Laptop / VPS / homelab                 |
-| Access from | The host machine        | Any browser on your network            |
-| Users       | Single                  | Single now, team in a later phase      |
-| Best for    | Fastest local-only path | Multi-device access, self-hosted infra |
-| Auth        | None (local-only)       | None by default, optional OIDC later   |
+|              | `dbboard` (desktop)     | `dbboard-web`                                             |
+| ------------ | ----------------------- | --------------------------------------------------------- |
+| Install      | Native binary           | Docker Compose / from source                              |
+| Runs on      | Your laptop             | Laptop / VPS / homelab                                    |
+| Access from  | The host machine        | Any browser on your network                               |
+| Mobile       | Not supported           | Install as a PWA — Android Chrome + iOS Safari 16.4+      |
+| Mobile usage | —                       | Ambient, read-mostly (glance, verify, kill stuck query)   |
+| Users        | Single                  | Single now, team in a later phase                         |
+| Best for     | Fastest local-only path | Multi-device + phone access on your own self-hosted infra |
+| Auth         | None (local-only)       | None by default, optional OIDC later                      |
 
 The two are siblings, not a tiered product. Pick whichever fits how you work.
 

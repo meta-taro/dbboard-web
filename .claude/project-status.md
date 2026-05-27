@@ -8,9 +8,9 @@
 
 **Phase 1 — Monorepo scaffold: complete (2026-05-25, merged 2026-05-26).** pnpm workspace, NestJS 11 API skeleton, Nuxt 4 web skeleton, shared tooling (ESLint flat config v9, Prettier, Vitest 3, Husky 9) and the full per-commit verification chain (`format:check`, `typecheck`, `lint`, `test`, `build`) all green. Landed via PR [#1](https://github.com/meta-taro/dbboard-web/pull/1), merge commit `1c204ed` on `develop`. Feature branch deleted local + remote.
 
-**Web is paused on the contract track.** Per the original cross-repo sequencing (`dbboard@939fe22`), desktop now picks up Phase 2 — trait extraction + Capability + `/capabilities` endpoint. The contract-dependent web issues (`0003` HTTP surface, `0004` Postgres adapter, `0005` row cap + conformance) resume the moment desktop publishes the updated `docs/api-contract.md`. See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md) for the outgoing brief.
+**Contract wait lifted on 2026-05-27.** Desktop completed Phase 2 (ADR-0012 Capability pattern + `GET /capabilities`) and merged PR #5 as `dbboard@d7c58ad`. The web-bound mirror brief landed in `dbboard/.claude/issues/0002-web-capabilities-mirror.md` at desktop commit `f59107b`, capturing what to mirror and why. Receipt recorded at [`handoff/2026-05-27-contract-mirror-v2-incoming.md`](./handoff/2026-05-27-contract-mirror-v2-incoming.md). The implementation issues `0003` (HTTP surface), `0004` (Postgres adapter), `0005` (conformance) pick up the Phase 2 surface when they start; their DoD now covers `GET /capabilities`, the `Capabilities` shape, and the `capability` 404 envelope. Desktop's outgoing brief noted "desktop はしばらく contract change を待つフェーズ" — baton is on the web side.
 
-**A parallel non-contract track opened on 2026-05-26 — Phase 1.5 PWA shell.** Desktop sent an incoming strategic brief ([`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md)) settling the mobile question: no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead to cover ambient, read-mostly mobile use (think GitHub mobile app — glance at signup counts, verify an order, kill a stuck query). PWA work touches only the app shell, so it runs **in parallel with the contract wait**. Tracked as issue [`0006`](./issues/0006-pwa-shell.md).
+**A parallel non-contract track is still open — Phase 1.5 PWA shell.** Desktop sent an incoming strategic brief on 2026-05-26 ([`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md)) settling the mobile question: no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead to cover ambient, read-mostly mobile use (think GitHub mobile app — glance at signup counts, verify an order, kill a stuck query). PWA work touches only the app shell, so it runs **independently of the contract track**. Tracked as issue [`0006`](./issues/0006-pwa-shell.md).
 
 ## Completed
 
@@ -19,17 +19,19 @@
 - `.claude/` working directory created with roadmap, decisions, and an initial bootstrap issue.
 - Cross-repo audit with `dbboard` desktop (2026-05-19): coordination policy revised, sequencing decided, Phase 0 DoD checks complete.
 - **HTTP API contract mirrored from `dbboard` (2026-05-25):** [`docs/api-contract.md`](../docs/api-contract.md) snapshotted at `dbboard@89b7c70` (last contract change `3f114e4`, "publish the 10,000-row per-query cap"). See issue [`0001`](./issues/0001-web-contract-mirror.md) for provenance and scope.
+- **HTTP API contract mirror v2 — Phase 2 additions (2026-05-27):** Re-snapshotted at `dbboard@d7c58ad` (last contract change `1c350f6`, "feat(server): add GET /capabilities and the capability error category"). Three additive surfaces: `GET /capabilities` endpoint, `Capabilities` flat shape, `capability` error category (HTTP 404). The web `docs/api-contract.md` is now textually identical to the desktop file at the snapshot point. See issue [`0007`](./issues/0007-web-contract-mirror-v2.md) for provenance and scope; incoming brief at [`handoff/2026-05-27-contract-mirror-v2-incoming.md`](./handoff/2026-05-27-contract-mirror-v2-incoming.md).
 - **Branch policy and distribution model decided (2026-05-25):** `feature/<slug>` → PR → `develop` (matches desktop ADR-0005); self-host only OSS distribution via Docker Compose + ghcr.io, no maintainer-run SaaS. See [`decisions.md`](./decisions.md).
 - **Phase 1 monorepo scaffold landed (2026-05-25):** pnpm@11.1.1 workspace (apps/api + apps/web), NestJS 11 with a smoke `GET /health` controller, Nuxt 4 with a smoke page, shared ESLint flat config, Prettier, Vitest 3 (api + happy-dom/nuxt environments), Husky 9 pre-commit (lint-staged) and pre-push (typecheck + lint + test + build). Full verification chain green. See issue [`0002`](./issues/0002-monorepo-scaffold.md).
 - **Phase 1 merged (2026-05-26):** PR [#1](https://github.com/meta-taro/dbboard-web/pull/1) merged to `develop` as `1c204ed`. `feature/phase-1-bootstrap` branch deleted local + remote. Follow-up `chore: migrate pnpm settings to pnpm-workspace.yaml` (settings home moved per pnpm 11 deprecation) included in the same PR.
 
 ## In progress
 
-- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Just opened; no implementation yet. This phase runs in parallel with the contract wait — it does not unblock or block `0003`/`0004`/`0005`.
+- **Contract mirror v2** (issue [`0007`](./issues/0007-web-contract-mirror-v2.md)). Docs-only PR on branch `feature/contract-mirror-v2`. Mirrors the Phase 2 contract additions from desktop into `docs/api-contract.md`. No implementation in this PR; that flows into `0003`/`0004`/`0005`.
+- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Opened 2026-05-26; not started. Runs independently of the contract track.
 
-## Waiting
+## Ready to start
 
-- Contract follow-ups `0003`/`0004`/`0005` are blocked on desktop publishing the next `docs/api-contract.md` change (Phase 2 / `/capabilities`). See [`handoff/2026-05-26-back-to-desktop-phase-2.md`](./handoff/2026-05-26-back-to-desktop-phase-2.md).
+- **`0003` (NestJS HTTP surface)**, **`0004` (Postgres adapter)**, **`0005` (row cap + body limit + conformance test)** are unblocked now that the contract is mirrored at v2. Their DoD picks up the Phase 2 surface (`GET /capabilities`, `Capabilities` shape, `capability` 404 envelope) when each starts.
 
 ## Resume triggers
 

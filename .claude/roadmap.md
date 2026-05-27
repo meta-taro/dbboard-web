@@ -45,17 +45,25 @@ Make the Nuxt app installable as a Progressive Web App so a self-hosted instance
 - Mobile viewport 375 × 667 leaves schema browser and results table usable without layout breakage.
 - Cold start while offline shows the cached UI shell plus an explicit "offline" message — no white screen.
 
-## Phase 2 — Database connection management API
+## Contract mirror v2 (2026-05-27, done in flight)
 
-Backend module for registering and listing database connections.
+Re-snapshot of `docs/api-contract.md` against desktop after Phase 2 (ADR-0012 Capability pattern) landed. Strictly additive: `GET /capabilities`, the flat `Capabilities` shape, and the `capability` error category (HTTP 404). Tracked as issue [`0007`](./issues/0007-web-contract-mirror-v2.md); receipt at [`handoff/2026-05-27-contract-mirror-v2-incoming.md`](./handoff/2026-05-27-contract-mirror-v2-incoming.md).
 
-> **Out of scope for the desktop contract mirror.** Connection registration is a web-only concern (the desktop runs against a single backend chosen at startup). This phase introduces web-specific endpoints — they layer **on top of** the mirrored contract, not in place of it.
+The implementation phases below pick up this surface when they start — Phase 2 lists the new endpoints, Phase 3 covers the new error category in the conformance test.
+
+## Phase 2 — Database connection management API + capabilities endpoint
+
+Backend module for registering and listing database connections, plus the mirrored Phase 2 contract surface.
+
+> **Two layers.** Connection registration (`/connections`) is a web-only concern (the desktop runs against a single backend chosen at startup). `/capabilities` is the mirrored contract surface — it must conform exactly to `docs/api-contract.md`. Both ship together so this phase covers the full HTTP surface a Phase 2 web service exposes.
 
 **DoD**
 
 - NestJS module `database/` exposes `POST /connections`, `GET /connections`, `DELETE /connections/:id`.
+- NestJS exposes `GET /capabilities` returning `{ id, capabilities }` per `docs/api-contract.md`. The Postgres adapter ships an id of `"postgres"` and all flags `false`.
+- `capability` error category implemented as a single `HttpException` subclass that any capability-gated endpoint can throw; the envelope matches the contract exactly.
 - Connections persisted (initial target: in-memory + file fallback).
-- Unit tests for domain and use case layers, integration test for the HTTP surface.
+- Unit tests for domain and use case layers, integration test for the HTTP surface (incl. `GET /capabilities` shape assertion).
 - Secrets never logged or returned in responses.
 
 ## Phase 3 — SQL execution endpoint
@@ -69,7 +77,7 @@ Backend module for executing queries against a registered connection.
 - `POST /connections/:id/query` returns rows + metadata or a structured error.
 - Per-connection timeout and row-limit enforcement (10,000-row cap per the contract).
 - Integration test against at least one real provider (Neon branch or local libSQL).
-- Contract-conformance test runs the same requests against both this service and the desktop loopback server (skipped if the desktop binary is unavailable, gated on an env var).
+- Contract-conformance test runs the same requests against both this service and the desktop loopback server (skipped if the desktop binary is unavailable, gated on an env var). Extended to cover `GET /capabilities` — bodies must be deeply equal modulo the `id` field.
 
 ## Phase 4 — Frontend: connection & query UI
 

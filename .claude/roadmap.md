@@ -45,6 +45,23 @@ Make the Nuxt app installable as a Progressive Web App so a self-hosted instance
 - [x] Mobile viewport 375 × 667 leaves the shell usable without layout breakage; touch targets ≥ 44 × 44 px; iOS safe-area insets respected. (Schema browser and results table land in Phase 4 — they must keep this baseline.)
 - [ ] Cold start while offline shows the cached UI shell plus the `/offline` message — no white screen.
 
+## Phase 2.5 — Multilingual UI (Stage 1, 11 locales)
+
+Translate the Nuxt shell so a user installing the PWA can pick their language, mirroring the desktop sibling's ADR-0015 Stage 1 surface that landed on 2026-06-03.
+
+> **Parallel to Phase 2 and Phase 3.** i18n is a presentation concern in `apps/web`; the backend tracks (`0003` / `0004` / `0005`) touch `apps/api`. No file overlap. The desktop side ran Phase 2.5 in parallel with the rest of Phase 2 for the same reason. See decisions.md "2026-06-03 — Multi-language UI support (Stage 1, 11 locales)" and issue [`0008`](./issues/0008-i18n-stage-1.md).
+
+**DoD**
+
+- [x] `@nuxtjs/i18n@^10` wired in `apps/web/nuxt.config.ts` with the 11 Stage 1 locales (`en` / `ja` / `ko` / `zh-CN` / `zh-TW` / `de` / `fr` / `es` / `pt-BR` / `ru` / `it`). Arabic + Hindi explicitly deferred to Stage 2 to stay aligned with desktop.
+- [x] JSON resources at `apps/web/i18n/locales/<code>.json`; `en.json` is the canonical key set and every other locale mirrors it (parity test in `tests/i18n-locale-parity.test.ts`).
+- [x] Resolution priority `?lang=` query > `dbboard_lang` cookie > `Accept-Language` > `en`. `?lang=` enforced by `app/middleware/locale-query.global.ts`; cookie + Accept-Language by `@nuxtjs/i18n` `detectBrowserLanguage`.
+- [x] `<html lang>` follows the active locale via `useHead({ htmlAttrs: { lang: locale } })` so browser font fallback and screen readers pick the right script.
+- [x] `LocaleSwitcher` component visible in the header, 44 × 44 minimum touch target (Phase 1.5 baseline preserved), persists the user's choice via the cookie.
+- [x] Existing shell strings (`app.vue`, `pages/index.vue`, `pages/offline.vue`) translated via `t("…")`. Shared keys (`tables.*` / `sql.*` / `history.*` / `result.*` / `error.prefix.*`) match desktop's FTL key surface so future UI can adopt them without renaming.
+- [x] No change to `docs/api-contract.md`. `apps/api` continues to return the contract error envelope in English (translation drift would break ADR-0009).
+- [x] `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build` all green.
+
 ## Contract mirror v2 (2026-05-27, done in flight)
 
 Re-snapshot of `docs/api-contract.md` against desktop after Phase 2 (ADR-0012 Capability pattern) landed. Strictly additive: `GET /capabilities`, the flat `Capabilities` shape, and the `capability` error category (HTTP 404). Tracked as issue [`0007`](./issues/0007-web-contract-mirror-v2.md); receipt at [`handoff/2026-05-27-contract-mirror-v2-incoming.md`](./handoff/2026-05-27-contract-mirror-v2-incoming.md).

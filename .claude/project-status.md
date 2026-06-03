@@ -27,7 +27,7 @@
 ## In progress
 
 - **Contract mirror v2** (issue [`0007`](./issues/0007-web-contract-mirror-v2.md)). Docs-only PR on branch `feature/contract-mirror-v2`. Mirrors the Phase 2 contract additions from desktop into `docs/api-contract.md`. No implementation in this PR; that flows into `0003`/`0004`/`0005`.
-- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Opened 2026-05-26; not started. Runs independently of the contract track.
+- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Branch `feature/phase-1.5-pwa-shell` opened 2026-06-03. Code-side DoD complete: `@vite-pwa/nuxt` wired, `apps/web/public/manifest.json` shipped via the module with all required fields, icon set generated from `public/icons/source.svg` (192/512 + maskable 512 + apple-touch 180), offline fallback at `/offline`, iOS Safari head meta set, opt-in `useInstallPrompt` composable, mobile-first responsive baseline on the smoke shell. Full verification chain green (`format:check`, `typecheck`, `lint`, `test`, `build`); the build emits `.output/public/manifest.webmanifest` + `sw.js`. Remaining DoD items are real-device acceptance only — Android Chrome installability check, iOS Safari standalone launch, Lighthouse PWA score ≥ 90, offline cold-start verification — and require the maintainer to run them before this can be closed.
 
 ## Ready to start
 

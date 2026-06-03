@@ -32,7 +32,11 @@ _(no work in flight — `0006` real-device acceptance is owner-driven and not a 
 
 ## Ready to start
 
-- **`0003` (NestJS HTTP surface)**, **`0004` (Postgres adapter)**, **`0005` (row cap + body limit + conformance test)** are unblocked now that the contract is mirrored at v2. Their DoD picks up the Phase 2 surface (`GET /capabilities`, `Capabilities` shape, `capability` 404 envelope) when each starts.
+- **[`0003`](./issues/0003-nestjs-http-surface.md) — NestJS HTTP surface (Phase 2 + Phase 3 controllers).** Layered scaffolding for `/health`, `/tables`, `/capabilities`, `/query`, and the web-specific `/connections` family, all behind a `NullAdapter`. Suggested branch `feature/phase-2-http-surface`.
+- **[`0004`](./issues/0004-postgres-adapter.md) — Postgres adapter (Phase 2 / 3).** First real `DatabaseAdapter` implementation using `pg` + `testcontainers`. Suggested branch `feature/phase-2-postgres-adapter`.
+- **[`0005`](./issues/0005-row-cap-body-limit-conformance.md) — Row cap + body limit + contract-conformance test (Phase 2 / 3 closeout).** Enforces the contract's 10k-row cap and 64 KiB body cap, plus a cross-implementation conformance battery against the desktop loopback server. Suggested branch `feature/phase-3-conformance`.
+
+All three picked up `GET /capabilities`, the `Capabilities` shape, and the `capability` 404 envelope as part of their DoD per the v2 mirror.
 
 ## Resume triggers
 

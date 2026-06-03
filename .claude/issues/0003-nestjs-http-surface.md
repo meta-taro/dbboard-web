@@ -1,10 +1,10 @@
 # 0003 — NestJS HTTP surface (Phase 2 + Phase 3 controllers)
 
-- **Status:** open
+- **Status:** code complete on `feature/phase-2-http-surface`, awaiting PR
 - **Phase:** 2 (mostly) + Phase 3 (the `POST /query` family)
 - **Opened:** 2026-06-03
 - **Closed:** —
-- **Branch:** _to be created_ (`feature/phase-2-http-surface` suggested)
+- **Branch:** `feature/phase-2-http-surface`
 - **Depends on:** [0002](./0002-monorepo-scaffold.md) (monorepo scaffold), [0007](./0007-web-contract-mirror-v2.md) (contract mirror v2)
 - **Unblocks:** [0004](./0004-postgres-adapter.md), [0005](./0005-row-cap-body-limit-conformance.md)
 
@@ -107,30 +107,30 @@ This ticket lands option (b). The conformance test in 0005 spins up a server wit
 
 ## Tasks
 
-- [ ] Add the domain ports (`DatabaseAdapter`, `ConnectionRegistry`) and value types (`Value`, `Column`, `QueryResult`, `TableInfo`, `Capabilities`) under `apps/api/src/domain/`. No NestJS imports in `domain/`.
-- [ ] Add `CategorizedError` base + the 5 subclasses under `domain/errors/`.
-- [ ] Implement `NullAdapter` (returns `[]` for `listTables`, the all-false `Capabilities` for `getCapabilities`, throws `CapabilityError` for `executeQuery`) and `InMemoryConnectionRegistry` under `infrastructure/`.
-- [ ] Write the six use cases (`GetHealth`, `ListTables`, `GetCapabilities`, `ExecuteQuery`, `RegisterConnection`, `ListConnections`, `DeleteConnection`).
-- [ ] Write the four controllers + DTOs. Use `class-validator` for the 422 vs 400 split (`@IsString() @IsNotEmpty() sql: string` produces 422 on missing/wrong type; malformed JSON falls through to Nest's default 400 handler).
-- [ ] Wire the global `ContractErrorFilter` in `main.ts`.
-- [ ] Configure `Content-Type` enforcement (415 when not `application/json`).
-- [ ] Configure body-parser with a 64 KiB cap on `POST /query` (the actual limit lands in 0005; this ticket just exposes the seam).
-- [ ] Refactor the existing `health.controller.ts` to call the `GetHealth` use case so the test continues to pass.
-- [ ] Unit tests per layer: domain value invariants, each use case in isolation against a mock port, controllers via supertest.
-- [ ] Integration test: spin up the Nest app, hit every endpoint, assert response shapes against fixtures derived from `docs/api-contract.md`.
-- [ ] Update `.claude/project-status.md` to move `0003` from "Ready to start" → "In progress" / "Completed" and to flag `0004`/`0005` as the next steps.
+- [x] Add the domain ports (`DatabaseAdapter`, `ConnectionRegistry`) and value types (`Value`, `Column`, `QueryResult`, `TableInfo`, `Capabilities`) under `apps/api/src/domain/`. No NestJS imports in `domain/`.
+- [x] Add `CategorizedError` base + the 5 subclasses under `domain/errors/`.
+- [x] Implement `NullAdapter` (returns `[]` for `listTables`, the all-false `Capabilities` for `getCapabilities`, throws `CapabilityError` for `executeQuery`) and `InMemoryConnectionRegistry` under `infrastructure/`.
+- [x] Write the six use cases (`GetHealth`, `ListTables`, `GetCapabilities`, `ExecuteQuery`, `RegisterConnection`, `ListConnections`, `DeleteConnection`).
+- [x] Write the four controllers + DTOs. `class-validator` produces 422 on missing/wrong-type `sql` (global `ValidationPipe` with `errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY`); malformed JSON falls through to express's default 400.
+- [x] Wire the global `ContractErrorFilter` in `main.ts`.
+- [x] Configure `Content-Type` enforcement (415 when not `application/json`) via `bootstrap/content-type.middleware.ts` installed ahead of the body parser.
+- [x] Configure body-parser seam (`MAX_BODY_BYTES` constant in `bootstrap/config.ts`, applied via `app.useBodyParser('json', { limit })`). 0005 locks in the canonical 64 KiB value.
+- [x] Refactor `health.controller.ts` to call the `GetHealth` use case so the existing test continues to pass.
+- [x] Unit tests per layer: domain value invariants, each use case in isolation against a mock port, controllers driven directly (no HTTP).
+- [x] Integration test (`apps/api/test/http-contract.spec.ts`): spin up the Nest app, hit every endpoint, assert response shapes and the full request-level rejection matrix (400/413/415/422 + the 404 capability envelope).
+- [x] Update `.claude/project-status.md` to move `0003` from "Ready to start" → "In progress" / "Completed" and to flag `0004`/`0005` as the next steps.
 
 ## Definition of Done
 
 Per `roadmap.md` Phase 2 + parts of Phase 3 (the query controller; row cap and conformance live in 0005):
 
-- [ ] All seven endpoints respond with the contract-correct shape on a happy-path request.
-- [ ] Request-level rejection matrix passes (invalid JSON → 400, missing `sql` → 422, wrong content-type → 415; body cap seam in place but value comes from 0005).
-- [ ] All non-2xx domain errors carry `{ error: { category, message } }`. Categories cover `query` / `type_conversion` / `connection` / `schema` / `capability`.
-- [ ] No business logic in controllers — controllers only translate HTTP to use case input / output.
-- [ ] No secrets returned by `GET /connections` (password / connection-string fields stripped at the use case layer).
-- [ ] Unit tests per layer + integration test for HTTP shape.
-- [ ] `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build` all green.
+- [x] All seven endpoints respond with the contract-correct shape on a happy-path request.
+- [x] Request-level rejection matrix passes (invalid JSON → 400, missing `sql` → 422, wrong content-type → 415, oversize body → 413; body cap seam in place — the canonical value lands in 0005).
+- [x] All non-2xx domain errors carry `{ error: { category, message } }`. Categories cover `query` / `type_conversion` / `connection` / `schema` / `capability`.
+- [x] No business logic in controllers — controllers only translate HTTP to use case input / output.
+- [x] No secrets returned by `GET /connections` (the adapter instance + driver-specific config is stripped at the use case layer; the projected view is `{id, label, driver}` only).
+- [x] Unit tests per layer + integration test for HTTP shape (78 tests across 22 files, 21 unit + 1 integration).
+- [x] `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build` all green.
 
 ## Verification
 

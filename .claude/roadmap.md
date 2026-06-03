@@ -72,22 +72,26 @@ The implementation phases below pick up this surface when they start — Phase 2
 
 Backend module for registering and listing database connections, plus the mirrored Phase 2 contract surface.
 
+> **HTTP surface code complete on `feature/phase-2-http-surface` (2026-06-03).** Tracked by issue [`0003`](./issues/0003-nestjs-http-surface.md). Connections + capabilities + the `capability` 404 envelope all ship behind the `NullAdapter`; the Postgres-backed `getCapabilities` flag set + `id: "postgres"` lands with the adapter itself in [`0004`](./issues/0004-postgres-adapter.md).
+
 > **Two layers.** Connection registration (`/connections`) is a web-only concern (the desktop runs against a single backend chosen at startup). `/capabilities` is the mirrored contract surface — it must conform exactly to `docs/api-contract.md`. Both ship together so this phase covers the full HTTP surface a Phase 2 web service exposes.
 
 **DoD**
 
-- NestJS module `database/` exposes `POST /connections`, `GET /connections`, `DELETE /connections/:id`.
-- NestJS exposes `GET /capabilities` returning `{ id, capabilities }` per `docs/api-contract.md`. The Postgres adapter ships an id of `"postgres"` and all flags `false`.
-- `capability` error category implemented as a single `HttpException` subclass that any capability-gated endpoint can throw; the envelope matches the contract exactly.
-- Connections persisted (initial target: in-memory + file fallback).
-- Unit tests for domain and use case layers, integration test for the HTTP surface (incl. `GET /capabilities` shape assertion).
-- Secrets never logged or returned in responses.
+- NestJS module `database/` exposes `POST /connections`, `GET /connections`, `DELETE /connections/:id`. **[done, 0003]**
+- NestJS exposes `GET /capabilities` returning `{ id, capabilities }` per `docs/api-contract.md`. The Postgres adapter ships an id of `"postgres"` and all flags `false`. **[capabilities endpoint + envelope done in 0003 behind `NullAdapter` with id `"null"`; Postgres id lands in 0004]**
+- `capability` error category implemented as a single `HttpException` subclass that any capability-gated endpoint can throw; the envelope matches the contract exactly. **[done in 0003 — `CapabilityError` + `ContractErrorFilter`]**
+- Connections persisted (initial target: in-memory + file fallback). **[in-memory done in 0003 via `InMemoryConnectionRegistry`; file fallback deferred]**
+- Unit tests for domain and use case layers, integration test for the HTTP surface (incl. `GET /capabilities` shape assertion). **[done, 0003]**
+- Secrets never logged or returned in responses. **[done, 0003 — `GET /connections` projects `{id, label, driver}` only]**
 
 ## Phase 3 — SQL execution endpoint
 
 Backend module for executing queries against a registered connection.
 
 > **Conforms to [`docs/api-contract.md`](../docs/api-contract.md).** The `POST /connections/:id/query` endpoint reuses the contract's `QueryResult`, `Value`, error envelope, and 10,000-row cap. Drift from the contract is a bug and goes back through the desktop ADR loop first.
+
+> **Routing scaffold done in [`0003`](./issues/0003-nestjs-http-surface.md) (2026-06-03).** `POST /query` and `POST /connections/:id/query` both reach the `ExecuteQuery` use case; the `NullAdapter` raises `CapabilityError` (→ 404 envelope) so 0004's Postgres adapter drops in without controller changes. Row cap + 64 KiB body cap value + cross-implementation conformance ship in [`0005`](./issues/0005-row-cap-body-limit-conformance.md).
 
 **DoD**
 

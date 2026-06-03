@@ -19,7 +19,7 @@ The desktop client and `dbboard-web` are **independent applications** that share
 
 ## Status
 
-Phase 1 — monorepo scaffold. No application code yet, but the contract is mirrored and the toolchain is in place. See [.claude/project-status.md](./.claude/project-status.md) and [.claude/roadmap.md](./.claude/roadmap.md) for the live status.
+Phase 1.5 — PWA shell merged on `develop` (PR [#4](https://github.com/meta-taro/dbboard-web/pull/4)). The Nuxt app is installable as a Progressive Web App with manifest, auto-updating service worker, `/offline` fallback, iOS Safari head meta, an opt-in install prompt, and a mobile-first responsive baseline. Code-side DoD is green; the four real-device acceptance items (Android Chrome "Add to Home Screen", iOS Safari standalone, Lighthouse PWA ≥ 90, offline cold start) are still pending the maintainer. The HTTP contract is mirrored at v2 (Phase 2 surface from desktop). Phase 2 backend implementation (`0003` HTTP surface, `0004` Postgres adapter, `0005` conformance) is the next ready-to-start track. See [.claude/project-status.md](./.claude/project-status.md) and [.claude/roadmap.md](./.claude/roadmap.md) for the live status.
 
 ## Stack
 

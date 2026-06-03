@@ -10,7 +10,7 @@
 
 **Contract wait lifted on 2026-05-27.** Desktop completed Phase 2 (ADR-0012 Capability pattern + `GET /capabilities`) and merged PR #5 as `dbboard@d7c58ad`. The web-bound mirror brief landed in `dbboard/.claude/issues/0002-web-capabilities-mirror.md` at desktop commit `f59107b`, capturing what to mirror and why. Receipt recorded at [`handoff/2026-05-27-contract-mirror-v2-incoming.md`](./handoff/2026-05-27-contract-mirror-v2-incoming.md). The implementation issues `0003` (HTTP surface), `0004` (Postgres adapter), `0005` (conformance) pick up the Phase 2 surface when they start; their DoD now covers `GET /capabilities`, the `Capabilities` shape, and the `capability` 404 envelope. Desktop's outgoing brief noted "desktop はしばらく contract change を待つフェーズ" — baton is on the web side.
 
-**A parallel non-contract track is still open — Phase 1.5 PWA shell.** Desktop sent an incoming strategic brief on 2026-05-26 ([`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md)) settling the mobile question: no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead to cover ambient, read-mostly mobile use (think GitHub mobile app — glance at signup counts, verify an order, kill a stuck query). PWA work touches only the app shell, so it runs **independently of the contract track**. Tracked as issue [`0006`](./issues/0006-pwa-shell.md).
+**Phase 1.5 PWA shell — code-side merged on 2026-06-03.** PR [#4](https://github.com/meta-taro/dbboard-web/pull/4) merged to `develop` as `e1b490a`; `feature/phase-1.5-pwa-shell` deleted local + remote. The Nuxt app is installable as a PWA: manifest, auto-updating service worker, `/offline` fallback, iOS Safari head meta, opt-in `useInstallPrompt`, mobile-first responsive baseline. Four real-device acceptance items (Android Chrome A2HS, iOS Safari standalone, Lighthouse PWA ≥ 90, offline cold start) remain pending the maintainer per issue [`0006`](./issues/0006-pwa-shell.md); when they pass, the `chore(handoff): ...` brief back to desktop fires per § Handback. Incoming strategic brief for the PWA pivot is at [`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md) (no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead).
 
 ## Completed
 
@@ -23,11 +23,12 @@
 - **Branch policy and distribution model decided (2026-05-25):** `feature/<slug>` → PR → `develop` (matches desktop ADR-0005); self-host only OSS distribution via Docker Compose + ghcr.io, no maintainer-run SaaS. See [`decisions.md`](./decisions.md).
 - **Phase 1 monorepo scaffold landed (2026-05-25):** pnpm@11.1.1 workspace (apps/api + apps/web), NestJS 11 with a smoke `GET /health` controller, Nuxt 4 with a smoke page, shared ESLint flat config, Prettier, Vitest 3 (api + happy-dom/nuxt environments), Husky 9 pre-commit (lint-staged) and pre-push (typecheck + lint + test + build). Full verification chain green. See issue [`0002`](./issues/0002-monorepo-scaffold.md).
 - **Phase 1 merged (2026-05-26):** PR [#1](https://github.com/meta-taro/dbboard-web/pull/1) merged to `develop` as `1c204ed`. `feature/phase-1-bootstrap` branch deleted local + remote. Follow-up `chore: migrate pnpm settings to pnpm-workspace.yaml` (settings home moved per pnpm 11 deprecation) included in the same PR.
+- **Contract mirror v2 merged (2026-05-27):** PR [#3](https://github.com/meta-taro/dbboard-web/pull/3) merged to `develop` as `387f217`. Docs-only — mirrors the Phase 2 contract additions (`GET /capabilities`, `Capabilities` shape, `capability` 404 envelope) from desktop into `docs/api-contract.md`. Implementation flows into `0003`/`0004`/`0005` when they start.
+- **Phase 1.5 PWA shell code merged (2026-06-03):** PR [#4](https://github.com/meta-taro/dbboard-web/pull/4) merged to `develop` as `e1b490a`. 5 commits — `@vite-pwa/nuxt` wired, manifest extracted to `apps/web/app/pwa/manifest.ts`, icon set generated from `public/icons/source.svg`, offline fallback at `/offline`, iOS Safari head meta, opt-in `useInstallPrompt` composable, mobile-first responsive baseline, 20 / 20 tests green. `feature/phase-1.5-pwa-shell` deleted local + remote. **Not yet fully closed** — four real-device DoD items still pending the maintainer (Android Chrome A2HS, iOS Safari standalone, Lighthouse ≥ 90, offline cold start). When they pass, the `chore(handoff): ...` brief back to desktop fires per [`0006` § Handback](./issues/0006-pwa-shell.md#handback).
 
 ## In progress
 
-- **Contract mirror v2** (issue [`0007`](./issues/0007-web-contract-mirror-v2.md)). Docs-only PR on branch `feature/contract-mirror-v2`. Mirrors the Phase 2 contract additions from desktop into `docs/api-contract.md`. No implementation in this PR; that flows into `0003`/`0004`/`0005`.
-- **Phase 1.5 — PWA shell** (issue [`0006`](./issues/0006-pwa-shell.md)). Branch `feature/phase-1.5-pwa-shell` opened 2026-06-03. Code-side DoD complete: `@vite-pwa/nuxt` wired, `apps/web/public/manifest.json` shipped via the module with all required fields, icon set generated from `public/icons/source.svg` (192/512 + maskable 512 + apple-touch 180), offline fallback at `/offline`, iOS Safari head meta set, opt-in `useInstallPrompt` composable, mobile-first responsive baseline on the smoke shell. Full verification chain green (`format:check`, `typecheck`, `lint`, `test`, `build`); the build emits `.output/public/manifest.webmanifest` + `sw.js`. Remaining DoD items are real-device acceptance only — Android Chrome installability check, iOS Safari standalone launch, Lighthouse PWA score ≥ 90, offline cold-start verification — and require the maintainer to run them before this can be closed.
+_(no work in flight — `0006` real-device acceptance is owner-driven and not a coding task)_
 
 ## Ready to start
 
@@ -40,8 +41,11 @@ Pick up web work again when **any** of these happen:
 - Desktop commits a `feat(contract): ...` or `docs(api-contract): ...` change to `dbboard/docs/api-contract.md` — re-mirror to `dbboard-web/docs/api-contract.md` and start issue `0003`.
 - Desktop emits a new `chore(handoff): ...` brief in `dbboard/` — read it and translate into a new web issue under `.claude/issues/`.
 - A maintainer-driven web-only change is required (e.g., security patch, dependency bump).
+- The four real-device DoD items for `0006` pass — write the `chore(handoff): ...` brief back to desktop and close the issue.
 
-To check: `cd ../dbboard && git log --oneline main..HEAD` and look for `(contract)`, `(handoff)`, or release-tag commits since `0b68aad` (the desktop tip when web paused).
+To check desktop progress: `cd ../dbboard && git log --oneline d7c58ad..HEAD` and look for `(contract)`, `(handoff)`, or release-tag commits.
+
+**Desktop snapshot as of 2026-06-03:** desktop tip is `0b3f133`; 6 commits past `d7c58ad`, all on the **config layer** (ADR-0013: TOML connection store + keyring-backed secrets + env-var override, merged via desktop PR #6). **No `docs/api-contract.md` changes, no `.claude/handoff/` changes** — the web-side contract mirror v2 is still current and no incoming brief is waiting on the web side. The contract baton is still on the web side per the 2026-05-27 hand-off.
 
 ## Open questions
 

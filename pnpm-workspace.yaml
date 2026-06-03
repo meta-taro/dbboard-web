@@ -15,6 +15,10 @@ allowBuilds:
   # esbuild downloads the platform-native binary on postinstall. Required by
   # Vite, Vitest, and Nuxt.
   esbuild: true
+  # Native libvips bindings used by @vite-pwa/assets-generator to rasterize
+  # the source SVG into PNG icons at build time. Build-time only, no runtime
+  # surface.
+  sharp: true
   # Native module resolver used by ESLint / Nuxt; speeds up resolution and is
   # required for some plugins to load on Windows.
   unrs-resolver: true

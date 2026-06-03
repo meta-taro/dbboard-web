@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  dbboard-web mark — source for PWA icon generation.
+
+  Geometry kept inside the central 80% safe zone so the same artwork works
+  for the maskable variant (Android Chrome crops outer edges into a shape).
+  Brand accent #2563eb matches DESIGN.md.
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  width="512"
+  height="512"
+>
+  <rect width="512" height="512" rx="96" ry="96" fill="#2563eb" />
+
+  <g transform="translate(128, 96)" fill="#ffffff">
+    <!-- Database cylinder body. -->
+    <path
+      d="M0 56 C0 25 57 0 128 0 C199 0 256 25 256 56 L256 264 C256 295 199 320 128 320 C57 320 0 295 0 264 Z"
+      opacity="0.18"
+    />
+    <!-- Top ellipse (lid). -->
+    <ellipse cx="128" cy="56" rx="128" ry="40" />
+    <!-- Middle ellipse divider. -->
+    <ellipse
+      cx="128"
+      cy="160"
+      rx="128"
+      ry="40"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="16"
+      opacity="0.85"
+    />
+    <!-- Bottom ellipse divider. -->
+    <ellipse
+      cx="128"
+      cy="264"
+      rx="128"
+      ry="40"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="16"
+      opacity="0.85"
+    />
+    <!-- Cylinder side outlines. -->
+    <path
+      d="M0 56 L0 264 M256 56 L256 264"
+      stroke="#ffffff"
+      stroke-width="16"
+      fill="none"
+      opacity="0.85"
+    />
+  </g>
+</svg>

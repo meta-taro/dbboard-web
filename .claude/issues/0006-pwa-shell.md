@@ -74,3 +74,28 @@ When the top three Acceptance items (Android installability, iOS standalone, Lig
 - Incoming brief: [`../handoff/2026-05-26-pwa-pivot-incoming.md`](../handoff/2026-05-26-pwa-pivot-incoming.md)
 - Phase definition: [`../roadmap.md`](../roadmap.md) → Phase 1.5
 - `@vite-pwa/nuxt` docs (third-party): https://vite-pwa-org.netlify.app/frameworks/nuxt
+
+## Work log
+
+### 2026-06-03 — code-side implementation landed on `feature/phase-1.5-pwa-shell`
+
+- `@vite-pwa/nuxt@^1.1.0` + `@vite-pwa/assets-generator@^1.0.0` added as `apps/web` devDependencies. `sharp` added to the build-script allowlist in `pnpm-workspace.yaml` with reason (build-time only, used by the assets generator).
+- Manifest defined in `apps/web/app/pwa/manifest.ts` and consumed by both `nuxt.config.ts` and the unit tests so DoD fields cannot silently regress.
+- Icon assets generated from `apps/web/public/icons/source.svg` (minimal-2023 preset): `pwa-64x64.png`, `pwa-192x192.png`, `pwa-512x512.png`, `maskable-icon-512x512.png`, `apple-touch-icon-180x180.png`, `favicon.ico`. All checked in so the production build does not depend on the `sharp` binary being present.
+- App split into `app/app.vue` (shell + head + responsive baseline) and `app/pages/index.vue` (smoke). New `app/pages/offline.vue` is the Workbox `navigateFallback`.
+- iOS Safari meta tags (`apple-mobile-web-app-capable`, status-bar style, `apple-touch-icon`) wired via `useHead` in `app/app.vue`.
+- `useInstallPrompt` composable captures `beforeinstallprompt` and exposes opt-in `prompt()`. Mini-infobar never auto-fires; the module's built-in install banner is disabled (`client.installPrompt: false`).
+- Mobile-first CSS pass on the shell: 1rem padding at < 768px, install button is 44 × 44 minimum, safe-area insets respected for the iOS standalone status bar.
+- Tests: `tests/pwa-manifest.test.ts` asserts DoD-required manifest fields and icon shape; `tests/useInstallPrompt.test.ts` exercises capture → prompt → outcome → reset and the `appinstalled` reset, all under `@vue/test-utils` mounted into `happy-dom`.
+- Verification chain green: `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build`. The build emits `.output/public/manifest.webmanifest` and `.output/public/sw.js` (21 precache entries, 204.64 KiB).
+
+### Pending — maintainer manual verification
+
+The DoD items below cannot be exercised from this branch alone; they need a real browser and real device:
+
+- [ ] Android Chrome shows "Add to Home Screen" against a deployed `pnpm preview` build.
+- [ ] iOS Safari launches `dbboard-web` in standalone display mode with the icon on the home screen.
+- [ ] Lighthouse PWA score ≥ 90 against a production build.
+- [ ] Cold start while offline serves `/offline` from the precache with no white screen.
+
+Tag the issue closed once these pass, and send the handback brief to the desktop side per the Handback section above.

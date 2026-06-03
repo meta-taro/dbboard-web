@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "基于浏览器的多数据库客户端。"
+  },
+  "install": {
+    "button": "安装应用"
+  },
+  "scaffold": {
+    "heading": "Phase 1 脚手架",
+    "api-base-label": "API 基础 URL"
+  },
+  "offline": {
+    "title": "您当前处于离线状态",
+    "body": "dbboard-web 需要网络连接才能访问数据库。最近缓存的 UI 外壳仍在加载中 — 重新连接后即可再次运行查询。",
+    "hint": "如果是有意打开此页面，请在恢复连接后刷新页面。"
+  },
+  "tables": {
+    "heading": "数据表",
+    "empty": "(无数据表)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "运行"
+  },
+  "history": {
+    "title": "历史记录 ({count})",
+    "empty": "(无最近查询)"
+  },
+  "result": {
+    "heading": "结果",
+    "empty": "(请运行查询)",
+    "affected": "OK (受影响行数: {rows})"
+  },
+  "error": {
+    "prefix": {
+      "connection": "连接错误",
+      "query": "查询错误",
+      "schema": "模式错误",
+      "type-conversion": "类型转换错误",
+      "capability": "不支持此功能"
+    }
+  },
+  "locale-switcher": {
+    "label": "语言"
+  }
+}

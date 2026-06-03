@@ -12,6 +12,8 @@
 
 **Phase 1.5 PWA shell — code-side merged on 2026-06-03.** PR [#4](https://github.com/meta-taro/dbboard-web/pull/4) merged to `develop` as `e1b490a`; `feature/phase-1.5-pwa-shell` deleted local + remote. The Nuxt app is installable as a PWA: manifest, auto-updating service worker, `/offline` fallback, iOS Safari head meta, opt-in `useInstallPrompt`, mobile-first responsive baseline. Four real-device acceptance items (Android Chrome A2HS, iOS Safari standalone, Lighthouse PWA ≥ 90, offline cold start) remain pending the maintainer per issue [`0006`](./issues/0006-pwa-shell.md); when they pass, the `chore(handoff): ...` brief back to desktop fires per § Handback. Incoming strategic brief for the PWA pivot is at [`handoff/2026-05-26-pwa-pivot-incoming.md`](./handoff/2026-05-26-pwa-pivot-incoming.md) (no native `dbboard-mobile` repo; PWA-ify `dbboard-web` instead).
 
+**Phase 2.5 Multilingual UI Stage 1 — in progress on `feature/phase-2.5-i18n` (2026-06-03).** Mirrors desktop ADR-0015 that shipped earlier the same day. `@nuxtjs/i18n@^10.4.0` wired into `apps/web`, 11 JSON locale files (`en` / `ja` / `ko` / `zh-CN` / `zh-TW` / `de` / `fr` / `es` / `pt-BR` / `ru` / `it`) under `apps/web/i18n/locales/`, `<html lang>` reactive to the active locale, `LocaleSwitcher` in the header, resolution priority `?lang=` > `dbboard_lang` cookie > `Accept-Language` > `en` (the query-param leg enforced by a global route middleware). No HTTP contract change — `apps/api` continues to return the error envelope in English per ADR-0009 + desktop ADR-0015. Decision recorded as `.claude/decisions.md` "2026-06-03 — Multi-language UI support (Stage 1, 11 locales)" and tracked by issue [`0008`](./issues/0008-i18n-stage-1.md). Parallel to Phase 2 backend work — different files, no merge conflicts expected.
+
 ## Completed
 
 - Repository initialized (`develop` branch, `LICENSE` in place).
@@ -28,7 +30,7 @@
 
 ## In progress
 
-_(no work in flight — `0006` real-device acceptance is owner-driven and not a coding task)_
+- **[`0008`](./issues/0008-i18n-stage-1.md) — Multi-language UI Stage 1 (Phase 2.5).** Branch `feature/phase-2.5-i18n`. Mirrors desktop ADR-0015 (2026-06-03) into `apps/web`: `@nuxtjs/i18n` + 11 JSON locales + `?lang=` / cookie / Accept-Language resolution + `LocaleSwitcher`. No HTTP contract change.
 
 ## Ready to start
 

@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "ブラウザで動くマルチデータベースクライアント。"
+  },
+  "install": {
+    "button": "アプリをインストール"
+  },
+  "scaffold": {
+    "heading": "Phase 1 スキャフォールド",
+    "api-base-label": "API ベース URL"
+  },
+  "offline": {
+    "title": "オフラインです",
+    "body": "dbboard-web はデータベースに接続するためにネットワーク接続が必要です。キャッシュ済みの UI シェルは表示されています — 再接続するとクエリを再実行できます。",
+    "hint": "意図的にこのページを開いた場合は、接続が戻ったら再読み込みしてください。"
+  },
+  "tables": {
+    "heading": "テーブル",
+    "empty": "（テーブルなし）"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "実行"
+  },
+  "history": {
+    "title": "履歴 ({count})",
+    "empty": "（実行履歴なし）"
+  },
+  "result": {
+    "heading": "結果",
+    "empty": "（クエリを実行してください）",
+    "affected": "OK ({rows} 行に影響)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "接続エラー",
+      "query": "クエリエラー",
+      "schema": "スキーマ取得エラー",
+      "type-conversion": "型変換エラー",
+      "capability": "機能非対応"
+    }
+  },
+  "locale-switcher": {
+    "label": "言語"
+  }
+}

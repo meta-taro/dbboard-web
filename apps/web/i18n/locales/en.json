@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "Browser-based multi-database client."
+  },
+  "install": {
+    "button": "Install app"
+  },
+  "scaffold": {
+    "heading": "Phase 1 scaffold",
+    "api-base-label": "API base URL"
+  },
+  "offline": {
+    "title": "You are offline",
+    "body": "dbboard-web needs a network connection to reach your databases. Your last cached UI shell is still loaded — reconnect to run queries again.",
+    "hint": "If you came here on purpose, refresh the page once your connection is back."
+  },
+  "tables": {
+    "heading": "Tables",
+    "empty": "(no tables)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "Run"
+  },
+  "history": {
+    "title": "History ({count})",
+    "empty": "(no recent queries)"
+  },
+  "result": {
+    "heading": "Result",
+    "empty": "(run a query)",
+    "affected": "OK ({rows} rows affected)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "Connection error",
+      "query": "Query error",
+      "schema": "Schema error",
+      "type-conversion": "Type conversion error",
+      "capability": "Capability unavailable"
+    }
+  },
+  "locale-switcher": {
+    "label": "Language"
+  }
+}

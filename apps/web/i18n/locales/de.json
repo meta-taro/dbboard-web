@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "Browserbasierter Multi-Datenbank-Client."
+  },
+  "install": {
+    "button": "App installieren"
+  },
+  "scaffold": {
+    "heading": "Phase 1 Gerüst",
+    "api-base-label": "API-Basis-URL"
+  },
+  "offline": {
+    "title": "Sie sind offline",
+    "body": "dbboard-web benötigt eine Netzwerkverbindung, um auf Ihre Datenbanken zuzugreifen. Die zuletzt zwischengespeicherte UI-Hülle ist weiterhin geladen — stellen Sie die Verbindung wieder her, um Abfragen erneut auszuführen.",
+    "hint": "Falls Sie diese Seite absichtlich geöffnet haben, laden Sie die Seite nach Wiederherstellung der Verbindung neu."
+  },
+  "tables": {
+    "heading": "Tabellen",
+    "empty": "(keine Tabellen)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "Ausführen"
+  },
+  "history": {
+    "title": "Verlauf ({count})",
+    "empty": "(keine letzten Abfragen)"
+  },
+  "result": {
+    "heading": "Ergebnis",
+    "empty": "(Abfrage ausführen)",
+    "affected": "OK ({rows} Zeilen betroffen)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "Verbindungsfehler",
+      "query": "Abfragefehler",
+      "schema": "Schemafehler",
+      "type-conversion": "Typkonvertierungsfehler",
+      "capability": "Funktion nicht verfügbar"
+    }
+  },
+  "locale-switcher": {
+    "label": "Sprache"
+  }
+}

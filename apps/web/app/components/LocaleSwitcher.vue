@@ -1,0 +1,65 @@
+<script setup lang="ts">
+// User-facing locale switcher. Auto-discovered by Nuxt's component scanner
+// and placed in the header by app/app.vue.
+//
+// On change, setLocale() updates the dbboard_lang cookie (via the @nuxtjs/i18n
+// detectBrowserLanguage config), so the choice survives a reload. The ?lang=
+// query in app/middleware/locale-query.global.ts still takes priority when
+// present — exactly mirroring desktop's DBBOARD_LANG > OS > en ordering.
+
+import { computed } from "vue";
+import { SUPPORTED_LOCALES, isSupportedLocale } from "../../i18n/config";
+
+const { locale, setLocale, t } = useI18n();
+
+const options = computed(() => SUPPORTED_LOCALES);
+
+async function onChange(event: Event) {
+  const next = (event.target as HTMLSelectElement).value;
+  if (!isSupportedLocale(next)) {
+    return;
+  }
+  await setLocale(next);
+}
+</script>
+
+<template>
+  <label class="locale-switcher">
+    <span class="locale-switcher__label">{{ t("locale-switcher.label") }}</span>
+    <select :value="locale" class="locale-switcher__select" @change="onChange">
+      <option v-for="opt in options" :key="opt.code" :value="opt.code">
+        {{ opt.name }}
+      </option>
+    </select>
+  </label>
+</template>
+
+<style scoped>
+.locale-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.locale-switcher__label {
+  color: var(--text-muted, #5a6573);
+}
+
+.locale-switcher__select {
+  /* Touch target ≥ 44 × 44 per Phase 1.5 DoD. */
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border, #e3e6ea);
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.locale-switcher__select:focus-visible {
+  outline: 2px solid var(--accent, #2563eb);
+  outline-offset: 2px;
+}
+</style>

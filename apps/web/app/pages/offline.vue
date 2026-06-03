@@ -2,19 +2,18 @@
 // Served by the Workbox service worker as the navigateFallback when the
 // network is unreachable. Kept fully self-contained — no runtime data
 // fetching — so a cold offline launch can render it from precache alone.
+const { t } = useI18n();
+
 useHead({
-  title: "Offline — dbboard-web",
+  title: () => `${t("offline.title")} — ${t("app.title")}`,
 });
 </script>
 
 <template>
   <section class="offline">
-    <h2>You are offline</h2>
-    <p>
-      dbboard-web needs a network connection to reach your databases. Your last cached UI shell is
-      still loaded — reconnect to run queries again.
-    </p>
-    <p class="hint">If you came here on purpose, refresh the page once your connection is back.</p>
+    <h2>{{ t("offline.title") }}</h2>
+    <p>{{ t("offline.body") }}</p>
+    <p class="hint">{{ t("offline.hint") }}</p>
   </section>
 </template>
 

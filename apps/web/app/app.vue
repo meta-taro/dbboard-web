@@ -1,9 +1,13 @@
 <script setup lang="ts">
 // iOS Safari does not honour the web manifest fields below, so we wire them
 // explicitly through <head>. The theme color matches DESIGN.md accent.
+const { t, locale } = useI18n();
+
 useHead({
-  htmlAttrs: { lang: "en" },
-  title: "dbboard-web",
+  // <html lang> follows the active locale so screen readers and the browser
+  // font fallback (CJK system fonts in particular) pick the right shaping.
+  htmlAttrs: { lang: locale },
+  title: () => t("app.title"),
   meta: [
     { name: "viewport", content: "width=device-width, initial-scale=1" },
     { name: "theme-color", content: "#2563eb" },
@@ -37,11 +41,14 @@ async function onInstallClick() {
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <h1>dbboard-web</h1>
-      <p class="tagline">Browser-based multi-database client.</p>
-      <button v-if="canInstall" type="button" class="install-button" @click="onInstallClick">
-        Install app
-      </button>
+      <h1>{{ t("app.title") }}</h1>
+      <p class="tagline">{{ t("app.tagline") }}</p>
+      <div class="header-actions">
+        <button v-if="canInstall" type="button" class="install-button" @click="onInstallClick">
+          {{ t("install.button") }}
+        </button>
+        <LocaleSwitcher />
+      </div>
     </header>
     <main class="app-main">
       <NuxtPage />
@@ -98,6 +105,13 @@ body {
   color: var(--text-muted);
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .install-button {
   /* Touch target ≥ 44 × 44 per Phase 1.5 DoD. */
   min-height: 44px;
@@ -109,7 +123,6 @@ body {
   color: #ffffff;
   font-size: 0.95rem;
   cursor: pointer;
-  align-self: flex-start;
 }
 
 .install-button:focus-visible {

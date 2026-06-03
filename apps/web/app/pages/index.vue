@@ -2,13 +2,14 @@
 // Phase 1 scaffold placeholder. The real connection / query UI lands in
 // later phases per .claude/roadmap.md (Phase 4 onward).
 const apiBase = useRuntimeConfig().public.apiBaseUrl;
+const { t } = useI18n();
 </script>
 
 <template>
   <section>
-    <h2>Phase 1 scaffold</h2>
+    <h2>{{ t("scaffold.heading") }}</h2>
     <p>
-      API base URL: <code>{{ apiBase }}</code>
+      {{ t("scaffold.api-base-label") }}: <code>{{ apiBase }}</code>
     </p>
   </section>
 </template>

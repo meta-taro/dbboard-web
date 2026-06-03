@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "Cliente multibanco de dados para o navegador."
+  },
+  "install": {
+    "button": "Instalar aplicativo"
+  },
+  "scaffold": {
+    "heading": "Estrutura da Fase 1",
+    "api-base-label": "URL base da API"
+  },
+  "offline": {
+    "title": "Você está offline",
+    "body": "O dbboard-web precisa de uma conexão de rede para acessar seus bancos de dados. A última camada de interface em cache continua carregada — reconecte-se para executar consultas novamente.",
+    "hint": "Se você acessou esta página propositalmente, atualize a página assim que a conexão for restabelecida."
+  },
+  "tables": {
+    "heading": "Tabelas",
+    "empty": "(sem tabelas)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "Executar"
+  },
+  "history": {
+    "title": "Histórico ({count})",
+    "empty": "(sem consultas recentes)"
+  },
+  "result": {
+    "heading": "Resultado",
+    "empty": "(execute uma consulta)",
+    "affected": "OK ({rows} linhas afetadas)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "Erro de conexão",
+      "query": "Erro de consulta",
+      "schema": "Erro de esquema",
+      "type-conversion": "Erro de conversão de tipo",
+      "capability": "Recurso indisponível"
+    }
+  },
+  "locale-switcher": {
+    "label": "Idioma"
+  }
+}

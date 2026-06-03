@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "Client multi-base de données dans le navigateur."
+  },
+  "install": {
+    "button": "Installer l'application"
+  },
+  "scaffold": {
+    "heading": "Charpente Phase 1",
+    "api-base-label": "URL de base de l'API"
+  },
+  "offline": {
+    "title": "Vous êtes hors ligne",
+    "body": "dbboard-web a besoin d'une connexion réseau pour accéder à vos bases de données. La dernière coque d'interface mise en cache est toujours chargée — reconnectez-vous pour exécuter à nouveau des requêtes.",
+    "hint": "Si vous êtes arrivé ici intentionnellement, actualisez la page une fois la connexion rétablie."
+  },
+  "tables": {
+    "heading": "Tables",
+    "empty": "(aucune table)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "Exécuter"
+  },
+  "history": {
+    "title": "Historique ({count})",
+    "empty": "(aucune requête récente)"
+  },
+  "result": {
+    "heading": "Résultat",
+    "empty": "(exécutez une requête)",
+    "affected": "OK ({rows} lignes affectées)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "Erreur de connexion",
+      "query": "Erreur de requête",
+      "schema": "Erreur de schéma",
+      "type-conversion": "Erreur de conversion de type",
+      "capability": "Fonctionnalité indisponible"
+    }
+  },
+  "locale-switcher": {
+    "label": "Langue"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "瀏覽器多資料庫用戶端。"
+  },
+  "install": {
+    "button": "安裝應用程式"
+  },
+  "scaffold": {
+    "heading": "Phase 1 鷹架",
+    "api-base-label": "API 基底 URL"
+  },
+  "offline": {
+    "title": "您目前處於離線狀態",
+    "body": "dbboard-web 需要網路連線才能存取資料庫。最近快取的 UI 外殼仍會載入 — 重新連線後即可再次執行查詢。",
+    "hint": "若您是刻意開啟此頁面，連線恢復後請重新整理頁面。"
+  },
+  "tables": {
+    "heading": "資料表",
+    "empty": "(無資料表)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "執行"
+  },
+  "history": {
+    "title": "歷史紀錄 ({count})",
+    "empty": "(無近期查詢)"
+  },
+  "result": {
+    "heading": "結果",
+    "empty": "(請執行查詢)",
+    "affected": "OK (影響列數：{rows})"
+  },
+  "error": {
+    "prefix": {
+      "connection": "連線錯誤",
+      "query": "查詢錯誤",
+      "schema": "結構錯誤",
+      "type-conversion": "型別轉換錯誤",
+      "capability": "不支援此功能"
+    }
+  },
+  "locale-switcher": {
+    "label": "語言"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "dbboard-web",
+    "tagline": "브라우저 기반 멀티 데이터베이스 클라이언트."
+  },
+  "install": {
+    "button": "앱 설치"
+  },
+  "scaffold": {
+    "heading": "Phase 1 스캐폴드",
+    "api-base-label": "API 기본 URL"
+  },
+  "offline": {
+    "title": "오프라인 상태입니다",
+    "body": "dbboard-web가 데이터베이스에 접근하려면 네트워크 연결이 필요합니다. 마지막으로 캐시된 UI 셸은 그대로 표시됩니다 — 다시 연결하면 쿼리를 실행할 수 있습니다.",
+    "hint": "의도적으로 이 페이지를 열었다면 연결이 복구된 후 페이지를 새로고침하세요."
+  },
+  "tables": {
+    "heading": "테이블",
+    "empty": "(테이블 없음)"
+  },
+  "sql": {
+    "heading": "SQL",
+    "run-button": "실행"
+  },
+  "history": {
+    "title": "기록 ({count})",
+    "empty": "(최근 쿼리 없음)"
+  },
+  "result": {
+    "heading": "결과",
+    "empty": "(쿼리를 실행하세요)",
+    "affected": "OK ({rows}행 영향받음)"
+  },
+  "error": {
+    "prefix": {
+      "connection": "연결 오류",
+      "query": "쿼리 오류",
+      "schema": "스키마 오류",
+      "type-conversion": "형식 변환 오류",
+      "capability": "지원되지 않는 기능"
+    }
+  },
+  "locale-switcher": {
+    "label": "언어"
+  }
+}

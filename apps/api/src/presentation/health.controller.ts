@@ -1,11 +1,13 @@
 import { Controller, Get } from "@nestjs/common";
+import type { GetHealth} from "../usecase/get-health.use-case";
+import { type HealthStatus } from "../usecase/get-health.use-case";
 
-// Stub for the contract's GET /health endpoint.
-// The real liveness logic (binding state, adapter readiness) ships with issue 0003.
 @Controller("health")
 export class HealthController {
+  constructor(private readonly getHealth: GetHealth) {}
+
   @Get()
-  status(): { status: "ok" } {
-    return { status: "ok" };
+  status(): HealthStatus {
+    return this.getHealth.execute();
   }
 }

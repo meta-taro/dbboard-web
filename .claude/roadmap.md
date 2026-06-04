@@ -95,10 +95,10 @@ Backend module for executing queries against a registered connection.
 
 **DoD**
 
-- `POST /connections/:id/query` returns rows + metadata or a structured error.
-- Per-connection timeout and row-limit enforcement (10,000-row cap per the contract).
-- Integration test against at least one real provider (Neon branch or local libSQL).
-- Contract-conformance test runs the same requests against both this service and the desktop loopback server (skipped if the desktop binary is unavailable, gated on an env var). Extended to cover `GET /capabilities` — bodies must be deeply equal modulo the `id` field.
+- `POST /connections/:id/query` returns rows + metadata or a structured error. **[done, 0003 + 0004]**
+- Per-connection timeout and row-limit enforcement (10,000-row cap per the contract). **[row cap done, 0005 — enforced in `ExecuteQuery` against `ROW_CAP = 10_000` so no adapter can forget; per-connection timeout deferred to a follow-up ticket]**
+- Integration test against at least one real provider (Neon branch or local libSQL). **[done, 0004 — testcontainers `postgres:16-alpine`]**
+- Contract-conformance test runs the same requests against both this service and the desktop loopback server (skipped if the desktop binary is unavailable, gated on an env var). Extended to cover `GET /capabilities` — bodies must be deeply equal modulo the `id` field. **[done, 0005 — 11-case battery under `apps/api/tests/conformance/`, gated on `DBBOARD_SERVER_BIN` + Docker; `pnpm conformance`]**
 
 ## Phase 4 — Frontend: connection & query UI
 

@@ -6,6 +6,7 @@ import { AppModule } from "./app.module";
 import { MAX_BODY_BYTES } from "./bootstrap/config";
 import { contentTypeGuard } from "./bootstrap/content-type.middleware";
 import { ContractErrorFilter } from "./presentation/filters/contract-error.filter";
+import { RequestLevelRejectionFilter } from "./presentation/filters/request-level-rejection.filter";
 
 export async function createApp(): Promise<NestExpressApplication> {
   // bodyParser: false + app.useBodyParser — the seam 0003 needs.
@@ -26,7 +27,14 @@ export async function createApp(): Promise<NestExpressApplication> {
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
     }),
   );
-  app.useGlobalFilters(new ContractErrorFilter());
+  // Nest evaluates global filters LIFO (last registered = first matched),
+  // so list the catch-all first and the specific filter last:
+  //   - RequestLevelRejectionFilter (@Catch()): plain-text 400 / 413,
+  //     pass-through JSON for 422 / 404, generic 500 for uncaught.
+  //   - ContractErrorFilter (@Catch(CategorizedError)): JSON envelope
+  //     for domain errors. Wins for any CategorizedError because Nest
+  //     picks the most-recently-registered matching filter first.
+  app.useGlobalFilters(new RequestLevelRejectionFilter(), new ContractErrorFilter());
   return app;
 }
 

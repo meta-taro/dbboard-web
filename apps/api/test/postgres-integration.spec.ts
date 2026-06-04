@@ -40,7 +40,7 @@ describe("Postgres adapter integration (testcontainers)", () => {
         .start();
     } catch (e) {
       skipReason = `Docker not available (${e instanceof Error ? e.message : String(e)})`;
-       
+
       console.warn(`[postgres-integration] SKIPPING: ${skipReason}`);
       return;
     }

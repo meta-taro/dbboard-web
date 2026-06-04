@@ -12,7 +12,8 @@
     "lint:fix": "eslint --fix \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "conformance": "vitest run --config vitest.conformance.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

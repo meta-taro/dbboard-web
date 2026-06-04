@@ -3,5 +3,5 @@
   "compilerOptions": {
     "rootDir": "./src"
   },
-  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "test", "tests", "**/*.spec.ts", "**/*.test.ts"]
 }

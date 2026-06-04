@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
-import { CapabilityError } from "../domain/errors";
+import { CapabilityError, QueryError } from "../domain/errors";
+import { ROW_CAP } from "../domain/limits";
 import { NULL_CAPABILITIES, type QueryResult } from "../domain/values";
 import type { ConnectionRecord, ConnectionRegistry } from "./connection-registry.port";
 import { ExecuteQuery } from "./execute-query.use-case";
@@ -56,5 +57,36 @@ describe("ExecuteQuery", () => {
   it("raises CapabilityError for an unknown connectionId so the route 404s", async () => {
     const useCase = new ExecuteQuery(defaultAdapter, registry([]));
     await expect(useCase.execute("SELECT 1", "missing")).rejects.toBeInstanceOf(CapabilityError);
+  });
+
+  // docs/api-contract.md: a single query is capped at 10,000 rows. The
+  // cap lives in the use case (not per adapter) so no driver can forget
+  // it. The rejection text references "10,000-row cap" — the conformance
+  // test matches against that substring on both desktop and web.
+  it("rejects ROW_CAP + 1 rows with QueryError mentioning the 10,000-row cap", async () => {
+    const oversized: QueryResult = {
+      columns: [{ name: "n", declared_type: null }],
+      rows: Array.from({ length: ROW_CAP + 1 }, (_, i) => [i + 1]),
+      rows_affected: 0,
+    };
+    const fat = adapter("fat", oversized);
+    const useCase = new ExecuteQuery(fat, registry([]));
+    await expect(useCase.execute("SELECT generate_series(1, 10001)")).rejects.toBeInstanceOf(
+      QueryError,
+    );
+    await expect(useCase.execute("SELECT generate_series(1, 10001)")).rejects.toThrow(
+      /10,000-row cap/,
+    );
+  });
+
+  it("returns ROW_CAP rows unchanged (boundary)", async () => {
+    const justFits: QueryResult = {
+      columns: [{ name: "n", declared_type: null }],
+      rows: Array.from({ length: ROW_CAP }, (_, i) => [i + 1]),
+      rows_affected: 0,
+    };
+    const snug = adapter("snug", justFits);
+    const useCase = new ExecuteQuery(snug, registry([]));
+    await expect(useCase.execute("SELECT 1")).resolves.toBe(justFits);
   });
 });

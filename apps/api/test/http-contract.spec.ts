@@ -1,0 +1,184 @@
+import type { INestApplication } from "@nestjs/common";
+import request from "supertest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "../src/main";
+
+describe("HTTP contract surface (0003)", () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    app = await createApp();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  // ---- Contract-mirror endpoints --------------------------------------
+
+  it("GET /health → { status: 'ok' }", async () => {
+    const res = await request(app.getHttpServer()).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+
+  it("GET /tables → empty list behind the NullAdapter", async () => {
+    const res = await request(app.getHttpServer()).get("/tables");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ tables: [] });
+  });
+
+  it("GET /capabilities → { id: 'null', capabilities: <all false> }", async () => {
+    const res = await request(app.getHttpServer()).get("/capabilities");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: "null",
+      capabilities: {
+        has_views: false,
+        has_functions: false,
+        has_auth: false,
+        has_storage: false,
+        has_realtime: false,
+      },
+    });
+  });
+
+  // ---- POST /query --------------------------------------------------
+
+  it("POST /query against the NullAdapter → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: { category: "capability", message: expect.stringContaining("null adapter") },
+    });
+  });
+
+  // ---- Request-level rejections (contract § "Request-level rejections")
+
+  it("POST /query with text/plain → 415", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "text/plain")
+      .send("SELECT 1");
+    expect(res.status).toBe(415);
+  });
+
+  it("POST /query with malformed JSON → 400 (express.json default)", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send("{not json");
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /query missing sql → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send({});
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /query with non-string sql → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: 12 });
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /query with empty sql → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: "" });
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /query body over the seam → 413", async () => {
+    // The seam currently sits at 64 KiB. Build a payload above it to
+    // confirm the cap rejects rather than reaches the handler.
+    const big = "x".repeat(70 * 1024);
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: big });
+    expect(res.status).toBe(413);
+  });
+
+  // ---- /connections surface ----------------------------------------
+
+  it("POST /connections then GET /connections returns the registered view (no adapter/secrets)", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Integration", driver: "null" });
+    expect(create.status).toBe(201);
+    expect(create.body.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+
+    const list = await request(app.getHttpServer()).get("/connections");
+    expect(list.status).toBe(200);
+    const view = list.body.connections.find((c: { id: string }) => c.id === create.body.id);
+    expect(view).toEqual({ id: create.body.id, label: "Integration", driver: "null" });
+    expect(view).not.toHaveProperty("adapter");
+  });
+
+  it("POST /connections with an unknown driver → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Postgres prod", driver: "postgres" });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: { category: "capability", message: expect.stringContaining("unknown driver") },
+    });
+  });
+
+  it("POST /connections/:id/query routes to the registered adapter", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Scoped null", driver: "null" });
+    const res = await request(app.getHttpServer())
+      .post(`/connections/${create.body.id}/query`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+    // NullAdapter still throws capability, but the route was reached.
+    expect(res.status).toBe(404);
+    expect(res.body.error.category).toBe("capability");
+  });
+
+  it("POST /connections/:id/query with an unknown id → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections/does-not-exist/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({
+      category: "capability",
+      message: expect.stringContaining("unknown connection"),
+    });
+  });
+
+  it("DELETE /connections/:id → 204; idempotent on a missing id", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Doomed", driver: "null" });
+
+    const first = await request(app.getHttpServer()).delete(`/connections/${create.body.id}`);
+    expect(first.status).toBe(204);
+
+    const second = await request(app.getHttpServer()).delete(`/connections/${create.body.id}`);
+    expect(second.status).toBe(204);
+
+    const third = await request(app.getHttpServer()).delete("/connections/never-existed");
+    expect(third.status).toBe(204);
+  });
+});

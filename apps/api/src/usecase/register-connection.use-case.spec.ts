@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { CapabilityError } from "../domain/errors";
 import { NULL_CAPABILITIES } from "../domain/values";
@@ -39,7 +39,9 @@ describe("RegisterConnection", () => {
   let factory: AdapterFactory;
 
   beforeEach(() => {
-    factory = { create: (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)) };
+    factory = {
+      create: (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)),
+    };
   });
 
   it("constructs an adapter, generates an id, and stores the record", () => {
@@ -54,12 +56,39 @@ describe("RegisterConnection", () => {
     expect(records[0]?.adapter.getId()).toBe("null");
   });
 
+  it("forwards the connection config to the factory but does NOT copy it onto the record", () => {
+    // The leak path 0004 § Tasks calls out: passwords / connection strings
+    // travel through the use case to the factory, but they must never land
+    // on the ConnectionRecord — only the adapter holds them.
+    const { registry, records } = inMemoryRegistry();
+    const factorySpy = vi.fn().mockReturnValue(stubAdapter());
+    const useCase = new RegisterConnection(registry, { create: factorySpy }, () => "fixed-id");
+
+    useCase.execute({
+      label: "Prod",
+      driver: "postgres",
+      connectionString: "postgresql://u:SECRET@host/db",
+      password: "SECRET-PW",
+    });
+
+    expect(factorySpy).toHaveBeenCalledWith("postgres", {
+      connectionString: "postgresql://u:SECRET@host/db",
+      password: "SECRET-PW",
+    });
+    expect(records[0]).toEqual({
+      id: "fixed-id",
+      label: "Prod",
+      driver: "postgres",
+      adapter: expect.any(Object),
+    });
+    // Belt and braces: nothing on the record encodes the password.
+    expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
+  });
+
   it("propagates the factory's CapabilityError for unknown drivers", () => {
     const { registry, records } = inMemoryRegistry();
     const useCase = new RegisterConnection(registry, factory);
-    expect(() => useCase.execute({ label: "pg", driver: "postgres" })).toThrowError(
-      CapabilityError,
-    );
+    expect(() => useCase.execute({ label: "x", driver: "mongo" })).toThrowError(CapabilityError);
     expect(records).toHaveLength(0);
   });
 });

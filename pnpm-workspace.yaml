@@ -16,13 +16,23 @@ allowBuilds:
   # NestJS DI in the API integration tests (vanilla esbuild drops it).
   # Postinstall verifies the native binary; build-time only.
   "@swc/core": true
+  # testcontainers transitive dep: native CPU feature detection used by
+  # ssh2 for SSH crypto perf. SSH-tunneled docker is not exercised — local
+  # docker socket only — so the prebuilt JS fallback is sufficient.
+  cpu-features: false
   # esbuild downloads the platform-native binary on postinstall. Required by
   # Vite, Vitest, and Nuxt.
   esbuild: true
+  # testcontainers transitive dep: protobuf compiler step. Prebuilt JS is
+  # bundled and works at runtime; the install-time codegen is not needed.
+  protobufjs: false
   # Native libvips bindings used by @vite-pwa/assets-generator to rasterize
   # the source SVG into PNG icons at build time. Build-time only, no runtime
   # surface.
   sharp: true
+  # testcontainers transitive dep: SSH client used for remote-docker
+  # tunnelling. Local docker socket only — no SSH path is taken.
+  ssh2: false
   # Native module resolver used by ESLint / Nuxt; speeds up resolution and is
   # required for some plugins to load on Windows.
   unrs-resolver: true

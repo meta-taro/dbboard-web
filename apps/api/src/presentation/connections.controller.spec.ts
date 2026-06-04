@@ -56,7 +56,7 @@ describe("ConnectionsController", () => {
     expect(out).toEqual({ connections: [{ id: "1", label: "L", driver: "null" }] });
   });
 
-  it("DELETE /connections/:id is idempotent and does not throw on a missing id", () => {
+  it("DELETE /connections/:id is idempotent and does not throw on a missing id", async () => {
     const reg = inMemRegistry();
     const spy = vi.spyOn(reg, "delete");
     const controller = new ConnectionsController(
@@ -64,7 +64,7 @@ describe("ConnectionsController", () => {
       new ListConnections(reg),
       new DeleteConnection(reg),
     );
-    expect(() => controller.remove("missing")).not.toThrow();
+    await expect(controller.remove("missing")).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalledWith("missing");
   });
 });

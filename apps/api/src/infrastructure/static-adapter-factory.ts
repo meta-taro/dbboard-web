@@ -1,17 +1,20 @@
 import { CapabilityError } from "../domain/errors";
-import type { AdapterFactory } from "../usecase/adapter-factory.port";
+import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.port";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
+import { createPostgresAdapter } from "./postgres-adapter";
 
-// 0003 ships with the null driver only. 0004 adds the "postgres" case
-// by extending this switch; nothing else in the system needs to learn
-// about the new driver because the use case and registry already
-// dispatch by id.
+// 0004 adds the "postgres" branch. Each driver-branch validates the
+// shape of `config` it needs; the factory itself stays oblivious. An
+// unknown driver raises CapabilityError so POST /connections lands as
+// 404 rather than a hard 500.
 export class StaticAdapterFactory implements AdapterFactory {
-  create(driver: string): DatabaseAdapter {
+  create(driver: string, config: AdapterConfig): DatabaseAdapter {
     switch (driver) {
       case "null":
         return new NullAdapter();
+      case "postgres":
+        return createPostgresAdapter(config);
       default:
         throw new CapabilityError(`unknown driver: ${driver}`);
     }

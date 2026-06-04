@@ -37,8 +37,9 @@
 - **[`0003`](./issues/0003-nestjs-http-surface.md) — NestJS HTTP surface (Phase 2 + Phase 3 controllers).** Layered scaffolding for `/health`, `/tables`, `/capabilities`, `/query`, and the web-specific `/connections` family, all behind a `NullAdapter`. Suggested branch `feature/phase-2-http-surface`.
 - **[`0004`](./issues/0004-postgres-adapter.md) — Postgres adapter (Phase 2 / 3).** First real `DatabaseAdapter` implementation using `pg` + `testcontainers`. Suggested branch `feature/phase-2-postgres-adapter`.
 - **[`0005`](./issues/0005-row-cap-body-limit-conformance.md) — Row cap + body limit + contract-conformance test (Phase 2 / 3 closeout).** Enforces the contract's 10k-row cap and 64 KiB body cap, plus a cross-implementation conformance battery against the desktop loopback server. Suggested branch `feature/phase-3-conformance`.
+- **[`0009`](./issues/0009-web-history-schema-mirror.md) — Query-history schema mirror (ADR-0017, Phase 2 observability).** Adopt desktop ADR-0017's per-record JSON schema for query-history persistence (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`). No HTTP contract change — ADR-0017 §8 keeps history off the wire. Storage / rotation / retention are web's call; the **record shape** is not. Depends on `0003` (request lifecycle) and `0004` (real `QueryResult` populating `rows` / `duration_ms`). Incoming brief at [`handoff/2026-06-04-history-schema-mirror-incoming.md`](./handoff/2026-06-04-history-schema-mirror-incoming.md). Suggested branch `feature/history-schema-mirror-impl`.
 
-All three picked up `GET /capabilities`, the `Capabilities` shape, and the `capability` 404 envelope as part of their DoD per the v2 mirror.
+Issues `0003`/`0004`/`0005` picked up `GET /capabilities`, the `Capabilities` shape, and the `capability` 404 envelope as part of their DoD per the v2 mirror.
 
 ## Resume triggers
 
@@ -51,7 +52,15 @@ Pick up web work again when **any** of these happen:
 
 To check desktop progress: `cd ../dbboard && git log --oneline d7c58ad..HEAD` and look for `(contract)`, `(handoff)`, or release-tag commits.
 
-**Desktop snapshot as of 2026-06-03:** desktop tip is `0b3f133`; 6 commits past `d7c58ad`, all on the **config layer** (ADR-0013: TOML connection store + keyring-backed secrets + env-var override, merged via desktop PR #6). **No `docs/api-contract.md` changes, no `.claude/handoff/` changes** — the web-side contract mirror v2 is still current and no incoming brief is waiting on the web side. The contract baton is still on the web side per the 2026-05-27 hand-off.
+**Desktop snapshot as of 2026-06-04:** desktop tip is `ae86627`; 28 commits past `d7c58ad`. New surfaces since the last web check-in:
+
+- **ADR-0013 config layer** (PR #6, `0b3f133` closeout): TOML connection store + keyring-backed secrets + env-var override. Web equivalent is already shipped via the in-memory `ConnectionRegistry` from issue `0003` — no mirror needed.
+- **ADR-0014 in-memory query history Stage 1** (PR #7, `658755e` merge): UI ring buffer with no persistence. Web equivalent not yet started (Stage 1 is a UI affordance; the cross-repo work landed at Stage 2).
+- **ADR-0015 multilingual UI** (PR #8): mirrored on web side via in-progress issue [`0008`](./issues/0008-i18n-stage-1.md).
+- **ADR-0016 connection management UI** (PR #9): desktop-only UI; no contract surface, no web mirror brief.
+- **ADR-0017 query-history persistence (Stage 2, JSON Lines)** (`62ed834..ae86627`, not yet on a PR): per-record JSON schema designated as **shared cross-repo**. Desktop opened a handoff brief at `dbboard@c7aac22:.claude/issues/0003-web-history-schema-mirror.md`. **Web brief received** at [`handoff/2026-06-04-history-schema-mirror-incoming.md`](./handoff/2026-06-04-history-schema-mirror-incoming.md); web action tracked as issue [`0009`](./issues/0009-web-history-schema-mirror.md). HTTP contract unchanged — ADR-0017 §8 keeps history off the wire.
+
+`docs/api-contract.md` has not changed since `1c350f6` — the web-side contract mirror v2 is still current and no contract-level incoming brief is waiting. The schema-level incoming brief (ADR-0017) is filed under `0009`.
 
 ## Open questions
 

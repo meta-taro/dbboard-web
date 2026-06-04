@@ -1,13 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
-import type { DeleteConnection } from "../usecase/delete-connection.use-case";
-import type { ListConnections} from "../usecase/list-connections.use-case";
-import { type ListConnectionsOutput } from "../usecase/list-connections.use-case";
-import type {
-  RegisterConnection} from "../usecase/register-connection.use-case";
+import { DeleteConnection } from "../usecase/delete-connection.use-case";
+import { ListConnections, type ListConnectionsOutput } from "../usecase/list-connections.use-case";
 import {
+  RegisterConnection,
   type RegisterConnectionOutput,
 } from "../usecase/register-connection.use-case";
-import type { RegisterConnectionDto } from "./dto/register-connection.dto";
+import { RegisterConnectionDto } from "./dto/register-connection.dto";
 
 @Controller("connections")
 export class ConnectionsController {

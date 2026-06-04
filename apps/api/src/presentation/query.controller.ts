@@ -1,7 +1,7 @@
 import { Body, Controller, Param, Post } from "@nestjs/common";
 import type { QueryResult } from "../domain/values";
-import type { ExecuteQuery } from "../usecase/execute-query.use-case";
-import type { QueryRequestDto } from "./dto/query-request.dto";
+import { ExecuteQuery } from "../usecase/execute-query.use-case";
+import { QueryRequestDto } from "./dto/query-request.dto";
 
 @Controller()
 export class QueryController {

@@ -17,7 +17,10 @@ export class ConnectionsController {
 
   @Post()
   register(@Body() body: RegisterConnectionDto): RegisterConnectionOutput {
-    return this.registerConnection.execute({ label: body.label, driver: body.driver });
+    // Forward the whole validated DTO — class-validator's whitelist:true
+    // pipe has already dropped any non-declared fields, so this is the
+    // contract surface that reaches the use case.
+    return this.registerConnection.execute(body);
   }
 
   @Get()
@@ -27,7 +30,7 @@ export class ConnectionsController {
 
   @Delete(":id")
   @HttpCode(204)
-  remove(@Param("id") id: string): void {
-    this.deleteConnection.execute(id);
+  async remove(@Param("id") id: string): Promise<void> {
+    await this.deleteConnection.execute(id);
   }
 }

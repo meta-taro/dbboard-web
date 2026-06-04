@@ -15,6 +15,11 @@ export interface DatabaseAdapter {
   getCapabilities(): Capabilities;
   listTables(): Promise<TableInfo[]>;
   executeQuery(sql: string): Promise<QueryResult>;
+  // Optional teardown hook. Implementations that hold network resources
+  // (PostgresAdapter's pg.Pool) implement this so DELETE /connections
+  // can release the sockets before evicting the registry record.
+  // NullAdapter has nothing to close and omits it.
+  close?(): Promise<void>;
 }
 
 // Provider token used by NestJS DI. Keeps the controller / use case

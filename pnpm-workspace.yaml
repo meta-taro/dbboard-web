@@ -12,6 +12,10 @@ allowBuilds:
   "@nestjs/core": false
   # Native file-watcher used by Nuxt / Nitro dev mode. Required.
   "@parcel/watcher": true
+  # SWC compiler used by unplugin-swc to emit decorator metadata for
+  # NestJS DI in the API integration tests (vanilla esbuild drops it).
+  # Postinstall verifies the native binary; build-time only.
+  "@swc/core": true
   # esbuild downloads the platform-native binary on postinstall. Required by
   # Vite, Vitest, and Nuxt.
   esbuild: true

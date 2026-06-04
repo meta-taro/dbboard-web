@@ -6,7 +6,6 @@
     "target": "ES2023",
     "outDir": "./dist",
     "baseUrl": "./",
-    "rootDir": "./src",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "declaration": false,

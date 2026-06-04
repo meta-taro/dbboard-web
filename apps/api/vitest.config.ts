@@ -1,8 +1,12 @@
 import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
+import swc from "unplugin-swc";
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  // unplugin-swc replaces Vite's default esbuild transform so the
+  // `design:paramtypes` metadata Nest's DI needs is actually emitted
+  // (vanilla esbuild drops it even with experimentalDecorators).
+  plugins: [tsconfigPaths(), swc.vite({ module: { type: "es6" } })],
   test: {
     globals: true,
     environment: "node",

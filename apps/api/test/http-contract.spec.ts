@@ -133,11 +133,21 @@ describe("HTTP contract surface (0003)", () => {
     const res = await request(app.getHttpServer())
       .post("/connections")
       .set("Content-Type", "application/json")
-      .send({ label: "Postgres prod", driver: "postgres" });
+      .send({ label: "Mongo prod", driver: "mongo" });
     expect(res.status).toBe(404);
     expect(res.body).toEqual({
       error: { category: "capability", message: expect.stringContaining("unknown driver") },
     });
+  });
+
+  it("POST /connections with driver=postgres but no connection info → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Postgres prod", driver: "postgres" });
+    expect(res.status).toBe(404);
+    expect(res.body.error.category).toBe("capability");
+    expect(res.body.error.message).toMatch(/connectionString|host/);
   });
 
   it("POST /connections/:id/query routes to the registered adapter", async () => {
@@ -164,6 +174,40 @@ describe("HTTP contract surface (0003)", () => {
       category: "capability",
       message: expect.stringContaining("unknown connection"),
     });
+  });
+
+  // ---- Secret-leak guard (0004 § Tasks) ----------------------------
+
+  it("GET /connections never echoes the registered password or connectionString", async () => {
+    // Sentinel values chosen so a substring scan over the JSON response
+    // catches any leak path — record fields, error messages, anything.
+    const PW = "PW-SENTINEL-9f3c";
+    const URL_SENTINEL = "URL-SENTINEL-1a2b";
+    await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Leak guard",
+        driver: "postgres",
+        connectionString: `postgresql://u:${URL_SENTINEL}@127.0.0.1:1/db?app=${URL_SENTINEL}`,
+      });
+    await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Leak guard 2",
+        driver: "postgres",
+        host: "127.0.0.1",
+        port: 5432,
+        database: "db",
+        user: "u",
+        password: PW,
+      });
+    const list = await request(app.getHttpServer()).get("/connections");
+    expect(list.status).toBe(200);
+    const dumped = JSON.stringify(list.body);
+    expect(dumped).not.toContain(PW);
+    expect(dumped).not.toContain(URL_SENTINEL);
   });
 
   it("DELETE /connections/:id → 204; idempotent on a missing id", async () => {

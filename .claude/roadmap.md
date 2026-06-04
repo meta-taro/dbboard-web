@@ -119,10 +119,15 @@ Nuxt UI for managing connections and executing queries.
 
 Side panels for browsing tables / schemas and replaying past queries.
 
+> **Query-history persistence mirrors desktop ADR-0017 at the record-schema level.** Issue [`0009`](./issues/0009-web-history-schema-mirror.md) lays out the per-record JSON contract (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`). Storage / rotation / retention are web's call; the record shape is not. No HTTP contract change — ADR-0017 §8 explicitly rejects `GET /history` on the wire. Incoming brief at [`handoff/2026-06-04-history-schema-mirror-incoming.md`](./handoff/2026-06-04-history-schema-mirror-incoming.md).
+
 **DoD**
 
 - Tree view of schemas → tables → columns for PostgreSQL and libSQL.
 - Local history with timestamp and connection scope.
+- Persistence layer emits one record per query completion in the ADR-0017 schema (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`); see issue [`0009`](./issues/0009-web-history-schema-mirror.md) for field semantics and acceptance criteria.
+- Export endpoint streams `application/x-ndjson` records that round-trip via `jq -c .` against a desktop `history.jsonl` fixture.
+- Reader tolerates unknown fields and drops records with unknown `v` / `status` with an observable counter.
 
 ## Phase 6 — Optional AI provider interface
 

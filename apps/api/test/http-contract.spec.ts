@@ -59,20 +59,26 @@ describe("HTTP contract surface (0003)", () => {
 
   // ---- Request-level rejections (contract § "Request-level rejections")
 
-  it("POST /query with text/plain → 415", async () => {
+  it("POST /query with text/plain → 415 plain text", async () => {
     const res = await request(app.getHttpServer())
       .post("/query")
       .set("Content-Type", "text/plain")
       .send("SELECT 1");
     expect(res.status).toBe(415);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+    // No JSON envelope on request-level rejections (docs/api-contract.md
+    // § Request-level rejections).
+    expect(res.body).toEqual({});
   });
 
-  it("POST /query with malformed JSON → 400 (express.json default)", async () => {
+  it("POST /query with malformed JSON → 400 plain text", async () => {
     const res = await request(app.getHttpServer())
       .post("/query")
       .set("Content-Type", "application/json")
       .send("{not json");
     expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+    expect(res.body).toEqual({});
   });
 
   it("POST /query missing sql → 422", async () => {
@@ -99,15 +105,18 @@ describe("HTTP contract surface (0003)", () => {
     expect(res.status).toBe(422);
   });
 
-  it("POST /query body over the seam → 413", async () => {
-    // The seam currently sits at 64 KiB. Build a payload above it to
-    // confirm the cap rejects rather than reaches the handler.
+  it("POST /query body over the seam → 413 plain text", async () => {
+    // The contract pins the limit at 64 KiB. Build a payload above it to
+    // confirm the cap rejects rather than reaches the handler, and that
+    // the body comes back as plain text (no JSON envelope).
     const big = "x".repeat(70 * 1024);
     const res = await request(app.getHttpServer())
       .post("/query")
       .set("Content-Type", "application/json")
       .send({ sql: big });
     expect(res.status).toBe(413);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+    expect(res.body).toEqual({});
   });
 
   // ---- /connections surface ----------------------------------------

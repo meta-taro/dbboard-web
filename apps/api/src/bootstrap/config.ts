@@ -1,9 +1,10 @@
-// Seam for the per-request body cap. 0003 ships the cap so the
-// surrounding plumbing (415 / 413 mapping) is exercised end-to-end;
-// 0005 lowers (or confirms) the production value alongside the
-// row-cap conformance test. Override via DBBOARD_API_MAX_BODY_BYTES
-// for local experimentation only — do not commit non-contract values.
+import { QUERY_BODY_LIMIT_BYTES } from "../domain/limits";
+
+// Seam for the per-request body cap. The canonical value lives in
+// domain/limits.ts (QUERY_BODY_LIMIT_BYTES = 64 KiB, pinned by
+// docs/api-contract.md). DBBOARD_API_MAX_BODY_BYTES is a local
+// experimentation override only — do not commit non-contract values.
 export const MAX_BODY_BYTES = Number.parseInt(
-  process.env.DBBOARD_API_MAX_BODY_BYTES ?? `${64 * 1024}`,
+  process.env.DBBOARD_API_MAX_BODY_BYTES ?? `${QUERY_BODY_LIMIT_BYTES}`,
   10,
 );

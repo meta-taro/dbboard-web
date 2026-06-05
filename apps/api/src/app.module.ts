@@ -7,6 +7,7 @@ import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
 import { HealthController } from "./presentation/health.controller";
+import { HistoryController } from "./presentation/history.controller";
 import { HistoryRecordingInterceptor } from "./presentation/interceptors/history-recording.interceptor";
 import { QueryController } from "./presentation/query.controller";
 import { TablesController } from "./presentation/tables.controller";
@@ -14,6 +15,7 @@ import { ADAPTER_FACTORY } from "./usecase/adapter-factory.port";
 import { CONNECTION_REGISTRY } from "./usecase/connection-registry.port";
 import { DeleteConnection } from "./usecase/delete-connection.use-case";
 import { ExecuteQuery } from "./usecase/execute-query.use-case";
+import { ExportHistory } from "./usecase/export-history.use-case";
 import { GetCapabilities } from "./usecase/get-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
 import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
@@ -39,6 +41,7 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
     CapabilitiesController,
     QueryController,
     ConnectionsController,
+    HistoryController,
   ],
   providers: [
     { provide: DATABASE_ADAPTER, useClass: NullAdapter },
@@ -81,6 +84,11 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
     {
       provide: RecordHistory,
       useFactory: (store: HistoryStore) => new RecordHistory(store),
+      inject: [HISTORY_STORE],
+    },
+    {
+      provide: ExportHistory,
+      useFactory: (store: HistoryStore) => new ExportHistory(store),
       inject: [HISTORY_STORE],
     },
     HistoryRecordingInterceptor,

@@ -1,21 +1,27 @@
 import { Module } from "@nestjs/common";
 import { DATABASE_ADAPTER } from "./domain/database-adapter.port";
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
+import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
 import { HealthController } from "./presentation/health.controller";
+import { HistoryController } from "./presentation/history.controller";
+import { HistoryRecordingInterceptor } from "./presentation/interceptors/history-recording.interceptor";
 import { QueryController } from "./presentation/query.controller";
 import { TablesController } from "./presentation/tables.controller";
 import { ADAPTER_FACTORY } from "./usecase/adapter-factory.port";
 import { CONNECTION_REGISTRY } from "./usecase/connection-registry.port";
 import { DeleteConnection } from "./usecase/delete-connection.use-case";
 import { ExecuteQuery } from "./usecase/execute-query.use-case";
+import { ExportHistory } from "./usecase/export-history.use-case";
 import { GetCapabilities } from "./usecase/get-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
+import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
 import { ListConnections } from "./usecase/list-connections.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
+import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
 
 // Layered structure (per AI_AGENT_RULES.md §3):
@@ -35,6 +41,7 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
     CapabilitiesController,
     QueryController,
     ConnectionsController,
+    HistoryController,
   ],
   providers: [
     { provide: DATABASE_ADAPTER, useClass: NullAdapter },
@@ -73,6 +80,18 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
       useFactory: (registry: InMemoryConnectionRegistry) => new DeleteConnection(registry),
       inject: [CONNECTION_REGISTRY],
     },
+    { provide: HISTORY_STORE, useClass: InMemoryHistoryStore },
+    {
+      provide: RecordHistory,
+      useFactory: (store: HistoryStore) => new RecordHistory(store),
+      inject: [HISTORY_STORE],
+    },
+    {
+      provide: ExportHistory,
+      useFactory: (store: HistoryStore) => new ExportHistory(store),
+      inject: [HISTORY_STORE],
+    },
+    HistoryRecordingInterceptor,
   ],
 })
 export class AppModule {}

@@ -102,15 +102,15 @@ Schema and contents stay verbatim per ADR-0017 §7. Tenant scoping, retention, a
 
 - [x] Receive desktop's brief into [`../handoff/2026-06-04-history-schema-mirror-incoming.md`](../handoff/2026-06-04-history-schema-mirror-incoming.md).
 - [x] Open this issue (`0009`) and update [`project-status.md`](../project-status.md) with the incoming brief and refreshed desktop snapshot pointer.
-- [ ] Draft web ADR — `.claude/decisions.md` (or `docs/decisions.md` if we promote that file): cite desktop ADR-0017 by anchor, record only the web-specific I/O bits (storage choice, env var for retention, multi-tenant `actor` semantics, NestJS write path).
-- [ ] Define the record shape as a Zod schema in `apps/api/src/domain/values.ts` (or a new `apps/api/src/domain/history-record.ts`) so it can be `safeParse`'d at write and at export.
-- [ ] Implement a `HistoryRecorder` usecase that consumes the existing `QueryResult` + request metadata and persists one record per query completion. Wire it into the `/query` and `/connections/:id/query` controllers behind a NestJS interceptor (so the write path is observable as middleware, not buried in each controller).
-- [ ] Implement a storage adapter behind a `HISTORY_STORE` symbol provider token, parallel to `DATABASE_ADAPTER` / `CONNECTION_REGISTRY`. Default to an in-memory adapter; pick the Postgres adapter when [`0004`](./0004-postgres-adapter.md) lands.
-- [ ] Implement the export endpoint streaming `application/x-ndjson`. A round-trip test asserts `jq -c .` is a no-op on the output.
-- [ ] Forward-compat test: a record with an unknown field (`"future_field": 42`) round-trips through the reader and the field is dropped on re-emit.
-- [ ] Unknown-version test: a record with `"v": 2` is dropped and the skip counter ticks.
-- [ ] `ts` round-trip test: `Date.parse(record.ts) → new Date().toISOString()` is a no-op.
-- [ ] Update [`project-status.md`](../project-status.md) and [`roadmap.md`](../roadmap.md) when the implementation ships.
+- [x] Draft web ADR — `.claude/decisions.md` "2026-06-05 — Query-history persistence mirrors desktop ADR-0017 (web Stage 2)" cites desktop ADR-0017 by anchor (`dbboard@62ed834:docs/decisions.md`) without restating the schema; records only the web-specific I/O bits (in-memory default adapter, retention deferred to the Postgres follow-up, `actor=null` until auth, NestJS interceptor write path, `_default` sentinel for connection-less `/query`).
+- [x] Define the record shape as a Zod schema at `apps/api/src/domain/history-record.ts` (commit `a8b76e3`). Verbatim ADR-0017 §2 mirror, `superRefine` enforces the three cross-field invariants.
+- [x] Implement a `RecordHistory` usecase that consumes the existing `QueryResult` + request metadata and persists one record per query completion (commit `57e6e78`). Wired into `POST /query` and `POST /connections/:id/query` behind `HistoryRecordingInterceptor` via `@UseInterceptors(HistoryRecordingInterceptor)` on `QueryController` (commit `8c87f13`).
+- [x] Implement a storage adapter behind a `HISTORY_STORE` symbol provider token, parallel to `DATABASE_ADAPTER` / `CONNECTION_REGISTRY` (commit `0f649ce`). Default is `InMemoryHistoryStore`; a Postgres-backed adapter is a follow-up ticket scheduled after Aurora DSQL lands.
+- [x] Implement the export endpoint streaming `application/x-ndjson` (commit on Step 5). Round-trip test asserts each line `JSON.parse`s back to the original record (`history.controller.spec.ts`, `export-history.use-case.spec.ts`).
+- [x] Forward-compat test: a record with an unknown field (`"future_field": 42`) round-trips through the reader and the field is dropped on re-emit (`history-record.spec.ts` — "strips unknown fields silently").
+- [x] Unknown-version test: a record with `"v": 2` is rejected at the schema boundary so it cannot enter the store (`history-record.spec.ts` — "rejects an unknown schema version"). **Drop counter is deferred to the Postgres adapter follow-up** — the in-memory writer guarantees `v: 1`, so cross-version records cannot enter the in-memory store; the counter becomes meaningful only when records can be loaded from a persistent store written by a different build.
+- [x] `ts` round-trip test: `new Date(parsed.ts).toISOString() === parsed.ts` is asserted in `history-record.spec.ts` ("preserves ts under Date round-trip").
+- [x] Update [`project-status.md`](../project-status.md) and [`roadmap.md`](../roadmap.md) — entries added for "2026-06-05 / 0009-impl code complete on `feature/history-schema-mirror-impl`".
 
 ## Definition of Done
 

@@ -1,9 +1,11 @@
-import { Body, Controller, HttpCode, Param, Post } from "@nestjs/common";
+import { Body, Controller, HttpCode, Param, Post, UseInterceptors } from "@nestjs/common";
 import type { QueryResult } from "../domain/values";
 import { ExecuteQuery } from "../usecase/execute-query.use-case";
 import { QueryRequestDto } from "./dto/query-request.dto";
+import { HistoryRecordingInterceptor } from "./interceptors/history-recording.interceptor";
 
 @Controller()
+@UseInterceptors(HistoryRecordingInterceptor)
 export class QueryController {
   constructor(private readonly executeQuery: ExecuteQuery) {}
 

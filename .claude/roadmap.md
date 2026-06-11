@@ -106,13 +106,15 @@ Nuxt UI for managing connections and executing queries.
 
 > **Mobile-first responsive requirement.** Phase 1.5 made the app installable as a PWA; this phase must avoid undoing that by shipping desktop-only layouts. Touch targets and viewport behavior are part of the DoD, not a polish pass deferred to "later."
 
+> **Sliced into four tickets.** Slice 1 is the connection list (issue [`0011`](./issues/0011-frontend-connection-list.md), in progress on `feature/0011-frontend-connection-list` (2026-06-11)). Slices 2 (SQL editor), 3 (result grid), and 4 (mobile E2E) follow. The first slice ships the `useConnections()` composable that owns `POST/GET/DELETE /connections` I/O and the `ContractErrorFilter` underscore→hyphen i18n bridge — both reused by the later slices.
+
 **DoD**
 
-- Connection list, add and remove flow.
+- Connection list, add and remove flow. **[done, 0011 — `useConnections()` + `/connections` page; pre-merge on `feature/0011-frontend-connection-list`]**
 - SQL editor (Monaco or CodeMirror) with run shortcut.
 - Result grid with virtualized rendering.
-- Mobile viewport 375 × 667 keeps the connection list, editor, and result grid usable — schema sidebar collapses, editor stacks vertically, results table scrolls horizontally.
-- All interactive controls have touch targets ≥ 44 × 44 px.
+- Mobile viewport 375 × 667 keeps the connection list, editor, and result grid usable — schema sidebar collapses, editor stacks vertically, results table scrolls horizontally. **[connection list portion done, 0011 — single-column flow at 375 px, two-column row layout ≥ 768 px, all controls 44 × 44 px]**
+- All interactive controls have touch targets ≥ 44 × 44 px. **[connection list portion done, 0011]**
 - E2E smoke test via Playwright covers at least one mobile viewport in addition to desktop.
 
 ## Phase 5 — Schema browser & query history

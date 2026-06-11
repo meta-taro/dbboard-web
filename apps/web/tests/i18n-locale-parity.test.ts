@@ -55,7 +55,14 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("offline.body");
     expect(enPaths).toContain("offline.hint");
     expect(enPaths).toContain("tables.heading");
-    expect(enPaths).toContain("sql.run-button");
+    expect(enPaths).toContain("sql.title");
+    expect(enPaths).toContain("sql.editor.label");
+    expect(enPaths).toContain("sql.run");
+    expect(enPaths).toContain("sql.running");
+    expect(enPaths).toContain("sql.result.empty");
+    expect(enPaths).toContain("sql.result.summary");
+    expect(enPaths).toContain("sql.result.preview-heading");
+    expect(enPaths).toContain("sql.link-from-row");
     expect(enPaths).toContain("history.title");
     expect(enPaths).toContain("result.affected");
     expect(enPaths).toContain("error.prefix.connection");

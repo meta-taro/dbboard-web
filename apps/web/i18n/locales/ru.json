@@ -20,8 +20,18 @@
     "empty": "(нет таблиц)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "Выполнить"
+    "title": "Выполнить SQL",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "Выполнить",
+    "running": "Выполняется…",
+    "result": {
+      "empty": "Выполните запрос, чтобы увидеть результаты.",
+      "summary": "{columns} столбцов × {rows} строк, затронуто {affected} строк.",
+      "preview-heading": "Первая строка"
+    },
+    "link-from-row": "Выполнить SQL"
   },
   "history": {
     "title": "История ({count})",

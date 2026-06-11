@@ -20,8 +20,18 @@
     "empty": "(sin tablas)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "Ejecutar"
+    "title": "Ejecutar SQL",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "Ejecutar",
+    "running": "Ejecutando…",
+    "result": {
+      "empty": "Ejecuta una consulta para ver los resultados.",
+      "summary": "{columns} columnas × {rows} filas, {affected} filas afectadas.",
+      "preview-heading": "Primera fila"
+    },
+    "link-from-row": "Ejecutar SQL"
   },
   "history": {
     "title": "Historial ({count})",

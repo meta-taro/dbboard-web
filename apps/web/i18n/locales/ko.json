@@ -20,8 +20,18 @@
     "empty": "(테이블 없음)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "실행"
+    "title": "SQL 실행",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "실행",
+    "running": "실행 중…",
+    "result": {
+      "empty": "쿼리를 실행하면 결과가 표시됩니다.",
+      "summary": "{columns}개 열 × {rows}개 행, 영향받은 행 {affected}개.",
+      "preview-heading": "첫 번째 행"
+    },
+    "link-from-row": "SQL 실행"
   },
   "history": {
     "title": "기록 ({count})",

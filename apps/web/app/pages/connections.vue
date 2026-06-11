@@ -70,14 +70,23 @@ async function onSubmit() {
             {{ t("connections.row.id-label") }}: <code>{{ row.id }}</code>
           </span>
         </div>
-        <button
-          type="button"
-          data-testid="delete-button"
-          class="delete-button"
-          @click="remove(row.id)"
-        >
-          {{ t("connections.row.delete") }}
-        </button>
+        <div class="row-actions">
+          <NuxtLink
+            :to="`/connections/${row.id}/sql`"
+            data-testid="run-sql-link"
+            class="run-sql-link"
+          >
+            {{ t("sql.link-from-row") }}
+          </NuxtLink>
+          <button
+            type="button"
+            data-testid="delete-button"
+            class="delete-button"
+            @click="remove(row.id)"
+          >
+            {{ t("connections.row.delete") }}
+          </button>
+        </div>
       </li>
     </ul>
     <p v-else class="empty">{{ t("connections.empty") }}</p>
@@ -185,8 +194,34 @@ async function onSubmit() {
   color: var(--text-muted);
 }
 
+.row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-self: stretch;
+}
+
+.run-sql-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.run-sql-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .delete-button {
-  align-self: flex-end;
   min-height: 44px;
   min-width: 44px;
   padding: 0 1rem;
@@ -214,7 +249,8 @@ async function onSubmit() {
     justify-content: space-between;
   }
 
-  .delete-button {
+  .row-actions {
+    flex-direction: row;
     align-self: center;
   }
 }

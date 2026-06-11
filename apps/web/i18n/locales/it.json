@@ -20,8 +20,18 @@
     "empty": "(nessuna tabella)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "Esegui"
+    "title": "Esegui SQL",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "Esegui",
+    "running": "In esecuzione…",
+    "result": {
+      "empty": "Esegui una query per vedere i risultati.",
+      "summary": "{columns} colonne × {rows} righe, {affected} righe interessate.",
+      "preview-heading": "Prima riga"
+    },
+    "link-from-row": "Esegui SQL"
   },
   "history": {
     "title": "Cronologia ({count})",

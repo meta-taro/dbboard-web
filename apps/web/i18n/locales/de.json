@@ -20,8 +20,18 @@
     "empty": "(keine Tabellen)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "Ausführen"
+    "title": "SQL ausführen",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "Ausführen",
+    "running": "Wird ausgeführt…",
+    "result": {
+      "empty": "Führe eine Abfrage aus, um Ergebnisse zu sehen.",
+      "summary": "{columns} Spalten × {rows} Zeilen, {affected} betroffene Zeilen.",
+      "preview-heading": "Erste Zeile"
+    },
+    "link-from-row": "SQL ausführen"
   },
   "history": {
     "title": "Verlauf ({count})",

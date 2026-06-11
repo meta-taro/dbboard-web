@@ -20,8 +20,18 @@
     "empty": "（テーブルなし）"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "実行"
+    "title": "SQL 実行",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "実行",
+    "running": "実行中…",
+    "result": {
+      "empty": "クエリを実行すると結果が表示されます。",
+      "summary": "{columns} 列 × {rows} 行、影響行数 {affected}。",
+      "preview-heading": "先頭行"
+    },
+    "link-from-row": "SQL を実行"
   },
   "history": {
     "title": "履歴 ({count})",

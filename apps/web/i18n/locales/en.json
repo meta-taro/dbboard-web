@@ -20,8 +20,18 @@
     "empty": "(no tables)"
   },
   "sql": {
-    "heading": "SQL",
-    "run-button": "Run"
+    "title": "Run SQL",
+    "editor": {
+      "label": "SQL"
+    },
+    "run": "Run",
+    "running": "Running…",
+    "result": {
+      "empty": "Run a query to see results.",
+      "summary": "{columns} columns × {rows} rows, {affected} rows affected.",
+      "preview-heading": "First row"
+    },
+    "link-from-row": "Run SQL"
   },
   "history": {
     "title": "History ({count})",

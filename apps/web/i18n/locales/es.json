@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "Idioma"
+  },
+  "connections": {
+    "title": "Conexiones",
+    "empty": "Aún no hay conexiones registradas.",
+    "link-from-home": "Ir a las conexiones",
+    "add": {
+      "heading": "Registrar una conexión",
+      "label-input": "Etiqueta",
+      "driver-input": "Controlador",
+      "connection-string-input": "Cadena de conexión",
+      "submit": "Registrar"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "Eliminar"
+    }
   }
 }

@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "언어"
+  },
+  "connections": {
+    "title": "연결",
+    "empty": "등록된 연결이 없습니다.",
+    "link-from-home": "연결 목록으로",
+    "add": {
+      "heading": "연결 등록",
+      "label-input": "레이블",
+      "driver-input": "드라이버",
+      "connection-string-input": "연결 문자열",
+      "submit": "등록"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "삭제"
+    }
   }
 }

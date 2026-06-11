@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "Язык"
+  },
+  "connections": {
+    "title": "Подключения",
+    "empty": "Подключения ещё не зарегистрированы.",
+    "link-from-home": "К подключениям",
+    "add": {
+      "heading": "Зарегистрировать подключение",
+      "label-input": "Метка",
+      "driver-input": "Драйвер",
+      "connection-string-input": "Строка подключения",
+      "submit": "Зарегистрировать"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "Удалить"
+    }
   }
 }

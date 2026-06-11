@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "言語"
+  },
+  "connections": {
+    "title": "接続",
+    "empty": "接続が登録されていません。",
+    "link-from-home": "接続一覧へ",
+    "add": {
+      "heading": "接続を登録",
+      "label-input": "ラベル",
+      "driver-input": "ドライバ",
+      "connection-string-input": "接続文字列",
+      "submit": "登録"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "削除"
+    }
   }
 }

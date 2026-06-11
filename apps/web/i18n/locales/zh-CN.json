@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "语言"
+  },
+  "connections": {
+    "title": "连接",
+    "empty": "尚未注册连接。",
+    "link-from-home": "前往连接",
+    "add": {
+      "heading": "注册连接",
+      "label-input": "标签",
+      "driver-input": "驱动",
+      "connection-string-input": "连接字符串",
+      "submit": "注册"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "删除"
+    }
   }
 }

@@ -43,5 +43,21 @@
   },
   "locale-switcher": {
     "label": "語言"
+  },
+  "connections": {
+    "title": "連線",
+    "empty": "尚未註冊連線。",
+    "link-from-home": "前往連線",
+    "add": {
+      "heading": "註冊連線",
+      "label-input": "標籤",
+      "driver-input": "驅動程式",
+      "connection-string-input": "連線字串",
+      "submit": "註冊"
+    },
+    "row": {
+      "id-label": "ID",
+      "delete": "刪除"
+    }
   }
 }

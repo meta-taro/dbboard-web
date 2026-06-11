@@ -6,13 +6,15 @@
  * `@nuxt/test-utils`), readonly wrappers on the public surface so callers
  * cannot mutate internal refs.
  *
- * The composable bridges the wire-format underscore (`type_conversion`
- * emitted by `ContractErrorFilter`) to the existing hyphen i18n key
- * namespace (`error.prefix.type-conversion`). All other categories pass
- * through verbatim.
+ * The wire-format underscore -> hyphen i18n bridge lives in
+ * `./internal/i18n-error.ts` so other composables (the SQL editor's
+ * useQueryExecution being the first) share one source of truth.
  */
 import { onMounted, readonly, ref } from "vue";
 import { apiFetch } from "./internal/http";
+import { parseError, type CategorisedError } from "./internal/i18n-error";
+
+export type { CategorisedError, ErrorCategory } from "./internal/i18n-error";
 
 export type Driver = "postgres" | "null";
 
@@ -26,14 +28,6 @@ export interface RegisterInput {
   label: string;
   driver: Driver;
   connectionString?: string;
-}
-
-export type ErrorCategory = "connection" | "query" | "schema" | "type_conversion" | "capability";
-
-export interface CategorisedError {
-  category: ErrorCategory;
-  message: string;
-  i18nKey: `error.prefix.${string}`;
 }
 
 export type ConnectionsState = "idle" | "loading" | "error";
@@ -50,10 +44,6 @@ interface RegisterResponse {
   id: string;
 }
 
-interface BackendErrorShape {
-  data?: { error?: { category?: string; message?: string } };
-}
-
 function resolveApiBase(explicit: string | undefined): string {
   if (explicit !== undefined) return explicit;
   // useRuntimeConfig is only present in a Nuxt app context. Tests pass
@@ -64,27 +54,6 @@ function resolveApiBase(explicit: string | undefined): string {
     }
   ).useRuntimeConfig;
   return cfg?.().public.apiBaseUrl ?? "";
-}
-
-function toI18nKey(category: ErrorCategory): `error.prefix.${string}` {
-  // en.json uses `type-conversion` (hyphen); the backend emits
-  // `type_conversion` (underscore). The other four categories share spelling.
-  const suffix = category === "type_conversion" ? "type-conversion" : category;
-  return `error.prefix.${suffix}`;
-}
-
-function parseError(err: unknown): CategorisedError {
-  const envelope = (err as BackendErrorShape | null | undefined)?.data?.error;
-  if (envelope && typeof envelope.category === "string" && typeof envelope.message === "string") {
-    const category = envelope.category as ErrorCategory;
-    return { category, message: envelope.message, i18nKey: toI18nKey(category) };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return {
-    category: "connection",
-    message,
-    i18nKey: "error.prefix.connection",
-  };
 }
 
 export function useConnections(options?: UseConnectionsOptions) {

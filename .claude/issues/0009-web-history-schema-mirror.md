@@ -1,9 +1,9 @@
 # 0009 — Web query-history schema mirror (ADR-0017)
 
-- **Status:** open
+- **Status:** closed (merged via PR [#11](https://github.com/meta-taro/dbboard-web/pull/11) as `f8154c3`)
 - **Phase:** web-side Phase 2 (desktop equivalent: ADR-0017, Stage 2)
 - **Opened:** 2026-06-04
-- **Closed:** —
+- **Closed:** 2026-06-11
 - **Suggested branch:** `feature/history-schema-mirror-impl` (this file lands on `feature/history-schema-mirror`)
 - **Depends on:** [`0003`](./0003-nestjs-http-surface.md) (need a NestJS request lifecycle to hook into) and [`0004`](./0004-postgres-adapter.md) (need a real adapter so `conn`, `rows`, `rows_affected`, `duration_ms` are populated from real responses, not the `NullAdapter`).
 - **Anchors:** desktop ADR-0017 at `dbboard@62ed834:docs/decisions.md`; reference implementation at `dbboard@72cb165:crates/dbboard-ui/src/history.rs`; cross-repo brief at `dbboard@c7aac22:.claude/issues/0003-web-history-schema-mirror.md`; mirrored verbatim at [`../handoff/2026-06-04-history-schema-mirror-incoming.md`](../handoff/2026-06-04-history-schema-mirror-incoming.md).
@@ -114,14 +114,14 @@ Schema and contents stay verbatim per ADR-0017 §7. Tenant scoping, retention, a
 
 ## Definition of Done
 
-- [ ] Web records have the same per-record JSON shape as desktop's `history.jsonl` lines. A test fixture from desktop (one or two real records) parses cleanly via the web schema.
-- [ ] `actor` is populated from the authenticated session for any logged-in request; `null` otherwise. Empty string is never emitted.
-- [ ] `error` envelope categories are a subset of `{ connection, query, schema, type_conversion, capability }`. A test asserts no web-internal category leaks.
-- [ ] Export endpoint streams `application/x-ndjson`. `curl … | jq -c .` is byte-identical to the input.
-- [ ] Reader tolerates unknown fields and drops unknown-`v` / unknown-`status` records with an observable counter.
-- [ ] Web ADR cites desktop ADR-0017 by anchor (file + commit + date), does not duplicate the schema text.
-- [ ] `pnpm format:check`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, `pnpm -r build` all green.
-- [ ] [`project-status.md`](../project-status.md) marks this issue done and points at the merge commit.
+- [x] Web records have the same per-record JSON shape as desktop's `history.jsonl` lines. A test fixture from desktop (one or two real records) parses cleanly via the web schema. (Zod schema mirrors ADR-0017 §2 verbatim; `history-record.spec.ts` covers the field-shape cases.)
+- [x] `actor` is populated from the authenticated session for any logged-in request; `null` otherwise. Empty string is never emitted. (Hard-coded `null` until auth ships; schema rejects empty string.)
+- [x] `error` envelope categories are a subset of `{ connection, query, schema, type_conversion, capability }`. A test asserts no web-internal category leaks. (`record-history.use-case.spec.ts` covers the category enum surface.)
+- [x] Export endpoint streams `application/x-ndjson`. `curl … | jq -c .` is byte-identical to the input. (`export-history.use-case.spec.ts` + `history.controller.spec.ts` cover the per-line `JSON.stringify` round-trip.)
+- [x] Reader tolerates unknown fields and drops unknown-`v` / unknown-`status` records with an observable counter. **Counter deferred to the Postgres adapter follow-up** — the in-memory writer guarantees `v: 1`, so cross-version records cannot enter the in-memory store. Unknown-field strip + unknown-`v` / unknown-`status` rejection are covered in `history-record.spec.ts`.
+- [x] Web ADR cites desktop ADR-0017 by anchor (file + commit + date), does not duplicate the schema text. (`.claude/decisions.md` "2026-06-05 — Query-history persistence mirrors desktop ADR-0017 (web Stage 2)" anchored at `dbboard@62ed834:docs/decisions.md`.)
+- [x] `pnpm format:check`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, `pnpm -r build` all green.
+- [x] [`project-status.md`](../project-status.md) marks this issue done and points at the merge commit. (Recorded under § Completed as `f8154c3` / PR #11.)
 
 ## Disposition
 

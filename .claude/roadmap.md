@@ -106,15 +106,15 @@ Nuxt UI for managing connections and executing queries.
 
 > **Mobile-first responsive requirement.** Phase 1.5 made the app installable as a PWA; this phase must avoid undoing that by shipping desktop-only layouts. Touch targets and viewport behavior are part of the DoD, not a polish pass deferred to "later."
 
-> **Sliced into four tickets.** Slice 1 is the connection list (issue [`0011`](./issues/0011-frontend-connection-list.md), landed on `develop` 2026-06-11). Slice 2 is the SQL editor (issue [`0012`](./issues/0012-frontend-sql-editor.md), code complete locally 2026-06-12, awaiting maintainer push). Slices 3 (result grid + IME guard) and 4 (mobile E2E) follow. Slice 1 ships the `useConnections()` composable that owns `POST/GET/DELETE /connections` I/O and the `ContractErrorFilter` underscore→hyphen i18n bridge; slice 2 ships the `useQueryExecution()` composable for `POST /connections/:id/query` and lifts the i18n bridge into a shared `internal/i18n-error.ts` reused by both — and by any future Phase 4 composables.
+> **Sliced into four tickets.** Slice 1 is the connection list (issue [`0011`](./issues/0011-frontend-connection-list.md), landed on `develop` 2026-06-11). Slice 2 is the SQL editor (issue [`0012`](./issues/0012-frontend-sql-editor.md), landed on `develop` 2026-06-12). Slice 3 is the virtualised result grid + IME guard (issue [`0013`](./issues/0013-frontend-result-grid.md), code complete locally 2026-06-13, awaiting maintainer push). Slice 4 (mobile E2E) follows. Slice 1 ships the `useConnections()` composable that owns `POST/GET/DELETE /connections` I/O and the `ContractErrorFilter` underscore→hyphen i18n bridge; slice 2 ships the `useQueryExecution()` composable for `POST /connections/:id/query` and lifts the i18n bridge into a shared `internal/i18n-error.ts` reused by both — and by any future Phase 4 composables. Slice 3 wraps `@tanstack/vue-virtual` in a `ResultGrid` component and adds a pure `formatValue()` utility that handles `null` / `number` / `string` / `{ $blob }` so the grid styles by type without re-parsing.
 
 **DoD**
 
 - Connection list, add and remove flow. **[done, 0011 — `useConnections()` + `/connections` page; landed on `develop`]**
-- SQL editor (Monaco or CodeMirror) with run shortcut. **[textarea + Ctrl/Cmd+Enter shortcut + `useQueryExecution()` done, 0012 (`develop` local) — Monaco/CodeMirror upgrade and IME `isComposing` guard deferred to slice 3]**
-- Result grid with virtualized rendering.
-- Mobile viewport 375 × 667 keeps the connection list, editor, and result grid usable — schema sidebar collapses, editor stacks vertically, results table scrolls horizontally. **[connection list portion done, 0011; SQL editor portion done, 0012 — single-column at 375 px, full-width textarea, 44 × 44 Run button + row-action cluster horizontal at ≥ 768 px]**
-- All interactive controls have touch targets ≥ 44 × 44 px. **[connection list + SQL editor portions done, 0011 + 0012]**
+- SQL editor (Monaco or CodeMirror) with run shortcut. **[textarea + Ctrl/Cmd+Enter shortcut + `useQueryExecution()` + IME composition guard (`isComposing` || legacy `keyCode === 229`) done, 0012 + 0013 (`develop` local through slice 3) — Monaco/CodeMirror upgrade still deferred]**
+- Result grid with virtualized rendering. **[done, 0013 (`develop` local) — `ResultGrid.vue` wraps `@tanstack/vue-virtual@^3.13.0`; `formatValue()` handles null / number / string / blob; `cell--<kind>` BEM modifiers for SQL-aware styling]**
+- Mobile viewport 375 × 667 keeps the connection list, editor, and result grid usable — schema sidebar collapses, editor stacks vertically, results table scrolls horizontally. **[connection list portion done, 0011; SQL editor portion done, 0012; result grid portion done, 0013 — `.grid-scroll` is the horizontal-scroll surface, sticky headers, single-column at 375 px]**
+- All interactive controls have touch targets ≥ 44 × 44 px. **[connection list + SQL editor + result grid portions done, 0011 + 0012 + 0013]**
 - E2E smoke test via Playwright covers at least one mobile viewport in addition to desktop.
 
 ## Phase 5 — Schema browser & query history

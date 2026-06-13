@@ -83,7 +83,7 @@ describe("SqlPage", () => {
 
     expect(wrapper.find("[data-testid='result-empty']").exists()).toBe(true);
     expect(wrapper.find("[data-testid='result-summary']").exists()).toBe(false);
-    expect(wrapper.find("[data-testid='result-preview']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='result-grid']").exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -138,6 +138,38 @@ describe("SqlPage", () => {
     wrapper.unmount();
   });
 
+  it("does NOT dispatch run() when Ctrl+Enter fires mid-IME composition (isComposing=true)", async () => {
+    // Slice 2 explicitly deferred this guard because happy-dom couldn't model
+    // `KeyboardEvent.isComposing` as a runtime IME concept — but the field is
+    // perfectly representable as an event payload, and a Japanese / Chinese /
+    // Korean user pressing Enter to commit a candidate must NOT trigger the
+    // query. Slice 3 closes this gap.
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    const input = wrapper.find("[data-testid='sql-input']");
+    await input.setValue("SELECT 中");
+    await input.trigger("keydown", { key: "Enter", ctrlKey: true, isComposing: true });
+
+    expect(mocks.run).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("does NOT dispatch run() when Ctrl+Enter fires with the legacy keyCode 229 (Safari/Android)", async () => {
+    // Safari and older Android WebViews do not always set isComposing on the
+    // keydown that commits an IME candidate, but they DO emit a synthetic
+    // event with keyCode === 229. The guard must catch both paths.
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    const input = wrapper.find("[data-testid='sql-input']");
+    await input.setValue("SELECT 中");
+    await input.trigger("keydown", { key: "Enter", ctrlKey: true, keyCode: 229 });
+
+    expect(mocks.run).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("renders the result summary with column count, row count, and rows_affected", async () => {
     resultRef.value = {
       columns: [
@@ -163,7 +195,10 @@ describe("SqlPage", () => {
     wrapper.unmount();
   });
 
-  it("renders the result preview with the JSON of rows[0] when at least one row exists", async () => {
+  it("mounts the ResultGrid container when result has at least one row", async () => {
+    // Slice 2 rendered a JSON <pre> preview as a stop-gap. Slice 3 swaps in
+    // the virtualised grid — the page only owns the mount point; ResultGrid
+    // itself is covered by result-grid.test.ts.
     resultRef.value = {
       columns: [{ name: "x", declared_type: "INTEGER" }],
       rows: [[42]],
@@ -173,13 +208,14 @@ describe("SqlPage", () => {
     const wrapper = mount(SqlPage, mountOptions);
     await flushPromises();
 
-    const preview = wrapper.find("[data-testid='result-preview']");
-    expect(preview.exists()).toBe(true);
-    expect(preview.text()).toContain("42");
+    expect(wrapper.find("[data-testid='result-grid']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='result-preview']").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("does not render the result preview when rows is empty", async () => {
+  it("does not mount the ResultGrid when rows is empty (write-style statements)", async () => {
+    // INSERT / UPDATE / DELETE return zero columns and zero rows — the
+    // summary line carries rows_affected, but there's nothing to grid.
     resultRef.value = {
       columns: [],
       rows: [],
@@ -190,7 +226,7 @@ describe("SqlPage", () => {
     await flushPromises();
 
     expect(wrapper.find("[data-testid='result-summary']").exists()).toBe(true);
-    expect(wrapper.find("[data-testid='result-preview']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='result-grid']").exists()).toBe(false);
     wrapper.unmount();
   });
 

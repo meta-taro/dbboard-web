@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
+import ResultGrid from "../../../components/ResultGrid.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 
 const { t } = useI18n();
@@ -22,15 +23,19 @@ const summaryParams = computed(() =>
     : null,
 );
 
-const firstRowJson = computed(() =>
-  result.value && result.value.rows.length > 0 ? JSON.stringify(result.value.rows[0]) : null,
-);
+const hasRows = computed(() => (result.value?.rows.length ?? 0) > 0);
 
 async function onRun() {
   await run(sqlInput.value);
 }
 
 function onEditorKeydown(event: KeyboardEvent) {
+  // IME composition guard: Safari and older Android WebViews emit a
+  // synthetic keyCode 229 on the keydown that commits an IME candidate
+  // without setting isComposing yet — check both.
+  if (event.isComposing || event.keyCode === 229) {
+    return;
+  }
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     void onRun();
@@ -84,10 +89,7 @@ function onEditorKeydown(event: KeyboardEvent) {
         <p data-testid="result-summary" class="result-summary">
           {{ t("sql.result.summary", summaryParams ?? {}) }}
         </p>
-        <template v-if="firstRowJson">
-          <h3 class="preview-heading">{{ t("sql.result.preview-heading") }}</h3>
-          <pre data-testid="result-preview" class="result-preview">{{ firstRowJson }}</pre>
-        </template>
+        <ResultGrid v-if="hasRows" :result="result" />
       </template>
     </section>
   </section>
@@ -194,20 +196,5 @@ function onEditorKeydown(event: KeyboardEvent) {
 
 .result-summary {
   margin: 0;
-}
-
-.preview-heading {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.result-preview {
-  margin: 0;
-  padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.03);
-  border-radius: 4px;
-  overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85rem;
 }
 </style>

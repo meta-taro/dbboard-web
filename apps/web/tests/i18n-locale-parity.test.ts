@@ -61,7 +61,6 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("sql.running");
     expect(enPaths).toContain("sql.result.empty");
     expect(enPaths).toContain("sql.result.summary");
-    expect(enPaths).toContain("sql.result.preview-heading");
     expect(enPaths).toContain("sql.link-from-row");
     expect(enPaths).toContain("history.title");
     expect(enPaths).toContain("result.affected");

@@ -28,8 +28,7 @@
     "running": "執行中…",
     "result": {
       "empty": "執行查詢以查看結果。",
-      "summary": "{columns} 欄 × {rows} 列，影響 {affected} 列。",
-      "preview-heading": "首列"
+      "summary": "{columns} 欄 × {rows} 列，影響 {affected} 列。"
     },
     "link-from-row": "執行 SQL"
   },

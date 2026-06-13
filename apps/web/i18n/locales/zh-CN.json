@@ -28,8 +28,7 @@
     "running": "运行中…",
     "result": {
       "empty": "运行查询以查看结果。",
-      "summary": "{columns} 列 × {rows} 行，影响 {affected} 行。",
-      "preview-heading": "首行"
+      "summary": "{columns} 列 × {rows} 行，影响 {affected} 行。"
     },
     "link-from-row": "运行 SQL"
   },

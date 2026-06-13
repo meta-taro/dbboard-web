@@ -28,8 +28,7 @@
     "running": "Выполняется…",
     "result": {
       "empty": "Выполните запрос, чтобы увидеть результаты.",
-      "summary": "{columns} столбцов × {rows} строк, затронуто {affected} строк.",
-      "preview-heading": "Первая строка"
+      "summary": "{columns} столбцов × {rows} строк, затронуто {affected} строк."
     },
     "link-from-row": "Выполнить SQL"
   },

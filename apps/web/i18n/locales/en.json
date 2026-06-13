@@ -28,8 +28,7 @@
     "running": "Running…",
     "result": {
       "empty": "Run a query to see results.",
-      "summary": "{columns} columns × {rows} rows, {affected} rows affected.",
-      "preview-heading": "First row"
+      "summary": "{columns} columns × {rows} rows, {affected} rows affected."
     },
     "link-from-row": "Run SQL"
   },

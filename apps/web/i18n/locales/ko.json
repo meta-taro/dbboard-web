@@ -28,8 +28,7 @@
     "running": "실행 중…",
     "result": {
       "empty": "쿼리를 실행하면 결과가 표시됩니다.",
-      "summary": "{columns}개 열 × {rows}개 행, 영향받은 행 {affected}개.",
-      "preview-heading": "첫 번째 행"
+      "summary": "{columns}개 열 × {rows}개 행, 영향받은 행 {affected}개."
     },
     "link-from-row": "SQL 실행"
   },

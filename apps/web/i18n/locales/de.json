@@ -28,8 +28,7 @@
     "running": "Wird ausgeführt…",
     "result": {
       "empty": "Führe eine Abfrage aus, um Ergebnisse zu sehen.",
-      "summary": "{columns} Spalten × {rows} Zeilen, {affected} betroffene Zeilen.",
-      "preview-heading": "Erste Zeile"
+      "summary": "{columns} Spalten × {rows} Zeilen, {affected} betroffene Zeilen."
     },
     "link-from-row": "SQL ausführen"
   },

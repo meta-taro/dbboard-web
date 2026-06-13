@@ -28,8 +28,7 @@
     "running": "Executando…",
     "result": {
       "empty": "Execute uma consulta para ver os resultados.",
-      "summary": "{columns} colunas × {rows} linhas, {affected} linhas afetadas.",
-      "preview-heading": "Primeira linha"
+      "summary": "{columns} colunas × {rows} linhas, {affected} linhas afetadas."
     },
     "link-from-row": "Executar SQL"
   },

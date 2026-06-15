@@ -49,6 +49,7 @@ desktop.ini
 # テスト・E2E アーティファクト
 playwright-report/
 test-results/
+blob-report/
 storybook-static/
 
 # Claude Code / AI エージェントの一時ファイル

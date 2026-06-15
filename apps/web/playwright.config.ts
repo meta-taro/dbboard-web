@@ -19,8 +19,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   use: {
-    baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
+    // Pin to IPv4 so Chromium's resolver does not race the Node listener:
+    // on Windows, `nuxt dev` defaults to binding `[::1]` only, and Chromium
+    // prefers IPv4 for `localhost`, which leads to a connect-then-hang.
+    baseURL: "http://127.0.0.1:3000",
+    navigationTimeout: 60_000,
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
   },
@@ -35,11 +39,18 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:3000",
+    // `--host 127.0.0.1` forces Nuxt to bind IPv4 in line with the baseURL
+    // pin above. We invoke `nuxt dev` via `pnpm exec` so pnpm doesn't pass
+    // the script-args delimiter `--` to Nuxt's CLI (Nuxt would otherwise
+    // read it as a positional `rootDir`, fall back to the default scaffold
+    // and serve the welcome page instead of our app).
+    command: "pnpm exec nuxt dev --host 127.0.0.1",
+    url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: "ignore",
     stderr: "pipe",
+    // Disables Vite's HMR error overlay + DevTools panel under nuxt.config.ts.
+    env: { DBBOARD_E2E: "1" },
   },
 });

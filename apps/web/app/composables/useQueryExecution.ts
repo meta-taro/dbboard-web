@@ -10,6 +10,7 @@
  * Run is user-initiated only. There is no `onMounted` auto-run.
  */
 import { readonly, ref } from "vue";
+import { useRuntimeConfig } from "#imports";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
@@ -35,12 +36,9 @@ export interface UseQueryExecutionOptions {
 
 function resolveApiBase(explicit: string | undefined): string {
   if (explicit !== undefined) return explicit;
-  const cfg = (
-    globalThis as unknown as {
-      useRuntimeConfig?: () => { public: { apiBaseUrl: string } };
-    }
-  ).useRuntimeConfig;
-  return cfg?.().public.apiBaseUrl ?? "";
+  // Mirrors useConnections — see note there.
+  const cfg = useRuntimeConfig();
+  return cfg.public.apiBaseUrl ?? "";
 }
 
 export function useQueryExecution(connectionId: string, options?: UseQueryExecutionOptions) {

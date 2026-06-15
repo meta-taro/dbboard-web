@@ -11,6 +11,7 @@
  * useQueryExecution being the first) share one source of truth.
  */
 import { onMounted, readonly, ref } from "vue";
+import { useRuntimeConfig } from "#imports";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
@@ -46,14 +47,11 @@ interface RegisterResponse {
 
 function resolveApiBase(explicit: string | undefined): string {
   if (explicit !== undefined) return explicit;
-  // useRuntimeConfig is only present in a Nuxt app context. Tests pass
-  // `apiBase` explicitly, so this branch is production-only.
-  const cfg = (
-    globalThis as unknown as {
-      useRuntimeConfig?: () => { public: { apiBaseUrl: string } };
-    }
-  ).useRuntimeConfig;
-  return cfg?.().public.apiBaseUrl ?? "";
+  // Imported from `#imports` rather than relying on bare auto-import: the
+  // explicit edge keeps Vite HMR happy when this file is hot-reloaded.
+  // Unit tests always pass `apiBase` and never reach this branch.
+  const cfg = useRuntimeConfig();
+  return cfg.public.apiBaseUrl ?? "";
 }
 
 export function useConnections(options?: UseConnectionsOptions) {

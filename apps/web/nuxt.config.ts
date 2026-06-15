@@ -2,10 +2,29 @@
 import { pwaManifest } from "./app/pwa/manifest";
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from "./i18n/config";
 
+// Under Playwright we don't want Vite's HMR error overlay to intercept
+// pointer events when an unrelated HMR-internal hiccup fires (Vite 7 has
+// a known `_clientModule` undefined throw during FSWatcher diffs, which
+// is harmless to the running app but blocks `locator.click()` in tests).
+// Playwright sets PLAYWRIGHT_TEST=1 in its child env automatically; we
+// also honour the explicit DBBOARD_E2E flag for ad-hoc runs.
+const isE2E = process.env.PLAYWRIGHT_TEST === "1" || process.env.DBBOARD_E2E === "1";
+
 export default defineNuxtConfig({
   compatibilityDate: "2026-05-25",
-  devtools: { enabled: true },
+  devtools: { enabled: !isE2E },
   modules: ["@nuxt/eslint", "@nuxtjs/i18n", "@vite-pwa/nuxt"],
+  vite: {
+    server: {
+      hmr: isE2E ? { overlay: false } : undefined,
+      watch: {
+        // Keep Playwright artefacts from re-triggering HMR. Do NOT include
+        // `.nuxt/` here — Nuxt regenerates route stubs there in dev and
+        // Vite must keep watching it for the SPA to wire up correctly.
+        ignored: ["**/test-results/**", "**/playwright-report/**"],
+      },
+    },
+  },
   typescript: {
     strict: true,
     typeCheck: false,

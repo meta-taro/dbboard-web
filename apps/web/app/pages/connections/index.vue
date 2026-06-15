@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useConnections, type Driver } from "../composables/useConnections";
+import { useConnections, type Driver } from "../../composables/useConnections";
 
 const { t } = useI18n();
 const { list, lastError, register, remove } = useConnections();

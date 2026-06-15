@@ -1,7 +1,7 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ref, type Ref } from "vue";
-import ConnectionsPage from "../app/pages/connections.vue";
+import ConnectionsPage from "../app/pages/connections/index.vue";
 
 // vi.hoisted runs before imports so the mock factory below can safely close
 // over `mocks.register/remove/refresh`. The reactive refs themselves are

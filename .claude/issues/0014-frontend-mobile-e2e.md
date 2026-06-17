@@ -1,9 +1,9 @@
 # 0014 — Frontend mobile Playwright E2E (Phase 4 slice 4)
 
-- **Status:** open
+- **Status:** closed (landed on `develop` 2026-06-15, commits `1fc9fca` + `1aa437a` on top of the `8f6b1e3` chore)
 - **Phase:** Phase 4 (frontend) — fourth slice
 - **Opened:** 2026-06-15
-- **Closed:** —
+- **Closed:** 2026-06-15
 - **Suggested branch:** `feature/0014-frontend-mobile-e2e`
 - **Depends on:** [`0011`](./0011-frontend-connection-list.md) (the `/connections` page registers and lists connections), [`0012`](./0012-frontend-sql-editor.md) (the `/connections/:id/sql` page + `useQueryExecution()` POSTs the query), [`0013`](./0013-frontend-result-grid.md) (the `ResultGrid` + IME guard the E2E exercises). Phase 1.5 mobile DoD ([`0006`](./0006-pwa-shell.md)) carries over verbatim — the 375 × 667 viewport is still the baseline.
 - **Blocks:** the four real-device acceptance items still listed under `0006` — once a Playwright mobile project consistently passes the critical path, the maintainer's manual real-device session has a smaller gap to cover.

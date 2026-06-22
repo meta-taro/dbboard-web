@@ -46,6 +46,21 @@
       "load": "Impossibile caricare la cronologia"
     }
   },
+  "schema": {
+    "heading": "Schema",
+    "refresh": "Aggiorna",
+    "empty": "(nessuna tabella)",
+    "default-schema": "predefinito",
+    "columns": {
+      "loading": "Caricamento colonne…"
+    },
+    "error": {
+      "load": "Impossibile caricare lo schema",
+      "columns": "Impossibile caricare le colonne"
+    },
+    "insert-table": "Inserisci identificatore di tabella",
+    "insert-column": "Inserisci identificatore di colonna"
+  },
   "result": {
     "heading": "Risultato",
     "empty": "(esegui una query)",

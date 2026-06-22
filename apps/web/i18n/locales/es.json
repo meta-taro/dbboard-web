@@ -46,6 +46,21 @@
       "load": "No se pudo cargar el historial"
     }
   },
+  "schema": {
+    "heading": "Esquema",
+    "refresh": "Actualizar",
+    "empty": "(sin tablas)",
+    "default-schema": "predeterminado",
+    "columns": {
+      "loading": "Cargando columnas…"
+    },
+    "error": {
+      "load": "No se pudo cargar el esquema",
+      "columns": "No se pudieron cargar las columnas"
+    },
+    "insert-table": "Insertar identificador de tabla",
+    "insert-column": "Insertar identificador de columna"
+  },
   "result": {
     "heading": "Resultado",
     "empty": "(ejecuta una consulta)",

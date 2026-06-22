@@ -46,6 +46,21 @@
       "load": "Verlauf konnte nicht geladen werden"
     }
   },
+  "schema": {
+    "heading": "Schema",
+    "refresh": "Aktualisieren",
+    "empty": "(keine Tabellen)",
+    "default-schema": "Standard",
+    "columns": {
+      "loading": "Spalten werden geladen…"
+    },
+    "error": {
+      "load": "Schema konnte nicht geladen werden",
+      "columns": "Spalten konnten nicht geladen werden"
+    },
+    "insert-table": "Tabellenbezeichner einfügen",
+    "insert-column": "Spaltenbezeichner einfügen"
+  },
   "result": {
     "heading": "Ergebnis",
     "empty": "(Abfrage ausführen)",

@@ -46,6 +46,21 @@
       "load": "기록을 불러오지 못했습니다"
     }
   },
+  "schema": {
+    "heading": "스키마",
+    "refresh": "새로고침",
+    "empty": "(테이블 없음)",
+    "default-schema": "기본",
+    "columns": {
+      "loading": "컬럼을 불러오는 중…"
+    },
+    "error": {
+      "load": "스키마를 불러오지 못했습니다",
+      "columns": "컬럼을 불러오지 못했습니다"
+    },
+    "insert-table": "테이블 식별자 삽입",
+    "insert-column": "컬럼 식별자 삽입"
+  },
   "result": {
     "heading": "결과",
     "empty": "(쿼리를 실행하세요)",

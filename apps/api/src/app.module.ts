@@ -5,6 +5,7 @@ import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
+import { ConnectionTablesController } from "./presentation/connection-tables.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
 import { HealthController } from "./presentation/health.controller";
 import { HistoryController } from "./presentation/history.controller";
@@ -19,6 +20,7 @@ import { ExportHistory } from "./usecase/export-history.use-case";
 import { GetCapabilities } from "./usecase/get-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
 import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
+import { ListConnectionTables } from "./usecase/list-connection-tables.use-case";
 import { ListConnections } from "./usecase/list-connections.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
@@ -41,6 +43,7 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
     CapabilitiesController,
     QueryController,
     ConnectionsController,
+    ConnectionTablesController,
     HistoryController,
   ],
   providers: [
@@ -62,6 +65,12 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
       provide: ExecuteQuery,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new ExecuteQuery(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    {
+      provide: ListConnectionTables,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new ListConnectionTables(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     {

@@ -46,6 +46,21 @@
       "load": "履歴の読み込みに失敗しました"
     }
   },
+  "schema": {
+    "heading": "スキーマ",
+    "refresh": "更新",
+    "empty": "（テーブルなし）",
+    "default-schema": "デフォルト",
+    "columns": {
+      "loading": "カラムを読み込み中…"
+    },
+    "error": {
+      "load": "スキーマの読み込みに失敗しました",
+      "columns": "カラムの読み込みに失敗しました"
+    },
+    "insert-table": "テーブル識別子を挿入",
+    "insert-column": "カラム識別子を挿入"
+  },
   "result": {
     "heading": "結果",
     "empty": "（クエリを実行してください）",

@@ -46,6 +46,21 @@
       "load": "Falha ao carregar o histórico"
     }
   },
+  "schema": {
+    "heading": "Esquema",
+    "refresh": "Atualizar",
+    "empty": "(sem tabelas)",
+    "default-schema": "padrão",
+    "columns": {
+      "loading": "Carregando colunas…"
+    },
+    "error": {
+      "load": "Falha ao carregar o esquema",
+      "columns": "Falha ao carregar as colunas"
+    },
+    "insert-table": "Inserir identificador da tabela",
+    "insert-column": "Inserir identificador da coluna"
+  },
   "result": {
     "heading": "Resultado",
     "empty": "(execute uma consulta)",

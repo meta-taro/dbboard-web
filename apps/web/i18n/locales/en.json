@@ -46,6 +46,21 @@
       "load": "Failed to load history"
     }
   },
+  "schema": {
+    "heading": "Schema",
+    "refresh": "Refresh",
+    "empty": "(no tables)",
+    "default-schema": "default",
+    "columns": {
+      "loading": "Loading columns…"
+    },
+    "error": {
+      "load": "Failed to load schema",
+      "columns": "Failed to load columns"
+    },
+    "insert-table": "Insert table identifier",
+    "insert-column": "Insert column identifier"
+  },
   "result": {
     "heading": "Result",
     "empty": "(run a query)",

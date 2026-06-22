@@ -46,6 +46,21 @@
       "load": "載入歷史紀錄失敗"
     }
   },
+  "schema": {
+    "heading": "結構",
+    "refresh": "重新整理",
+    "empty": "(無資料表)",
+    "default-schema": "預設",
+    "columns": {
+      "loading": "正在載入欄位…"
+    },
+    "error": {
+      "load": "載入結構失敗",
+      "columns": "載入欄位失敗"
+    },
+    "insert-table": "插入資料表識別碼",
+    "insert-column": "插入欄位識別碼"
+  },
   "result": {
     "heading": "結果",
     "empty": "(請執行查詢)",

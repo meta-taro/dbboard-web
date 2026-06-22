@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { useRoute } from "vue-router";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
+import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 
 const { t } = useI18n();
@@ -14,6 +15,7 @@ const { result, state, lastError, run } = useQueryExecution(connectionId);
 const sqlInput = ref("");
 const isLoading = computed(() => state.value === "loading");
 const historyRef = ref<InstanceType<typeof HistorySidebar> | null>(null);
+const sqlInputRef = ref<HTMLTextAreaElement | null>(null);
 
 const summaryParams = computed(() =>
   result.value
@@ -40,6 +42,24 @@ function onReplay(sql: string) {
   // Load the past SQL into the editor; the user still presses Run.
   // Auto-execute would be surprising and could re-run an expensive query.
   sqlInput.value = sql;
+}
+
+async function onInsertIdentifier(text: string) {
+  const el = sqlInputRef.value;
+  if (!el) {
+    sqlInput.value += text;
+    return;
+  }
+  const start = el.selectionStart ?? sqlInput.value.length;
+  const end = el.selectionEnd ?? sqlInput.value.length;
+  const next = sqlInput.value.slice(0, start) + text + sqlInput.value.slice(end);
+  sqlInput.value = next;
+  const caret = start + text.length;
+  // Wait for v-model to flush so the textarea node has the new value before
+  // we adjust the caret — otherwise selectionStart resets to the end.
+  await nextTick();
+  el.focus();
+  el.setSelectionRange(caret, caret);
 }
 
 function onEditorKeydown(event: KeyboardEvent) {
@@ -74,6 +94,7 @@ function onEditorKeydown(event: KeyboardEvent) {
         <label class="editor-label" for="sql-input">{{ t("sql.editor.label") }}</label>
         <textarea
           id="sql-input"
+          ref="sqlInputRef"
           v-model="sqlInput"
           data-testid="sql-input"
           class="editor"
@@ -109,7 +130,8 @@ function onEditorKeydown(event: KeyboardEvent) {
         </section>
       </div>
 
-      <div class="history-column">
+      <div class="sidebar-column">
+        <SchemaBrowser :connection-id="connectionId" @insert="onInsertIdentifier" />
         <HistorySidebar ref="historyRef" :connection-id="connectionId" @replay="onReplay" />
       </div>
     </div>
@@ -160,8 +182,11 @@ function onEditorKeydown(event: KeyboardEvent) {
   min-width: 0;
 }
 
-.history-column {
+.sidebar-column {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 @media (min-width: 768px) {
@@ -172,7 +197,7 @@ function onEditorKeydown(event: KeyboardEvent) {
   .editor-column {
     flex: 1 1 auto;
   }
-  .history-column {
+  .sidebar-column {
     flex: 0 0 280px;
   }
 }

@@ -46,6 +46,21 @@
       "load": "Échec du chargement de l'historique"
     }
   },
+  "schema": {
+    "heading": "Schéma",
+    "refresh": "Actualiser",
+    "empty": "(aucune table)",
+    "default-schema": "défaut",
+    "columns": {
+      "loading": "Chargement des colonnes…"
+    },
+    "error": {
+      "load": "Échec du chargement du schéma",
+      "columns": "Échec du chargement des colonnes"
+    },
+    "insert-table": "Insérer l'identifiant de la table",
+    "insert-column": "Insérer l'identifiant de la colonne"
+  },
   "result": {
     "heading": "Résultat",
     "empty": "(exécutez une requête)",

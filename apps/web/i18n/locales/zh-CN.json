@@ -46,6 +46,21 @@
       "load": "加载历史记录失败"
     }
   },
+  "schema": {
+    "heading": "模式",
+    "refresh": "刷新",
+    "empty": "(无表)",
+    "default-schema": "默认",
+    "columns": {
+      "loading": "正在加载列…"
+    },
+    "error": {
+      "load": "加载模式失败",
+      "columns": "加载列失败"
+    },
+    "insert-table": "插入表标识符",
+    "insert-column": "插入列标识符"
+  },
   "result": {
     "heading": "结果",
     "empty": "(请运行查询)",

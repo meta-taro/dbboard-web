@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "歷史紀錄 ({count})",
-    "empty": "(無近期查詢)"
+    "empty": "(無近期查詢)",
+    "refresh": "重新整理",
+    "replay": "載入",
+    "status": {
+      "ok": "成功",
+      "error": "錯誤"
+    },
+    "duration": "{ms} 毫秒",
+    "error": {
+      "load": "載入歷史紀錄失敗"
+    }
   },
   "result": {
     "heading": "結果",

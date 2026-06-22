@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "履歴 ({count})",
-    "empty": "（実行履歴なし）"
+    "empty": "（実行履歴なし）",
+    "refresh": "更新",
+    "replay": "読み込み",
+    "status": {
+      "ok": "OK",
+      "error": "エラー"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "履歴の読み込みに失敗しました"
+    }
   },
   "result": {
     "heading": "結果",

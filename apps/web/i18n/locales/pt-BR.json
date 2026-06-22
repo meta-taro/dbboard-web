@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "Histórico ({count})",
-    "empty": "(sem consultas recentes)"
+    "empty": "(sem consultas recentes)",
+    "refresh": "Atualizar",
+    "replay": "Carregar",
+    "status": {
+      "ok": "OK",
+      "error": "Erro"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "Falha ao carregar o histórico"
+    }
   },
   "result": {
     "heading": "Resultado",

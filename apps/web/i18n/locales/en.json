@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "History ({count})",
-    "empty": "(no recent queries)"
+    "empty": "(no recent queries)",
+    "refresh": "Refresh",
+    "replay": "Load",
+    "status": {
+      "ok": "OK",
+      "error": "Error"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "Failed to load history"
+    }
   },
   "result": {
     "heading": "Result",

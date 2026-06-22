@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "Verlauf ({count})",
-    "empty": "(keine letzten Abfragen)"
+    "empty": "(keine letzten Abfragen)",
+    "refresh": "Aktualisieren",
+    "replay": "Laden",
+    "status": {
+      "ok": "OK",
+      "error": "Fehler"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "Verlauf konnte nicht geladen werden"
+    }
   },
   "result": {
     "heading": "Ergebnis",

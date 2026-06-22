@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "Cronologia ({count})",
-    "empty": "(nessuna query recente)"
+    "empty": "(nessuna query recente)",
+    "refresh": "Aggiorna",
+    "replay": "Carica",
+    "status": {
+      "ok": "OK",
+      "error": "Errore"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "Impossibile caricare la cronologia"
+    }
   },
   "result": {
     "heading": "Risultato",

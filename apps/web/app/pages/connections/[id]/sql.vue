@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
+import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 
@@ -12,6 +13,7 @@ const { result, state, lastError, run } = useQueryExecution(connectionId);
 
 const sqlInput = ref("");
 const isLoading = computed(() => state.value === "loading");
+const historyRef = ref<InstanceType<typeof HistorySidebar> | null>(null);
 
 const summaryParams = computed(() =>
   result.value
@@ -27,6 +29,17 @@ const hasRows = computed(() => (result.value?.rows.length ?? 0) > 0);
 
 async function onRun() {
   await run(sqlInput.value);
+  // Pick up the just-emitted history record. Sidebar refresh is fire-
+  // and-forget here — the editor surface stays responsive even if the
+  // history fetch lags. Failures are also persisted (interceptor logs
+  // status="error"), so refresh fires unconditionally.
+  await historyRef.value?.refresh();
+}
+
+function onReplay(sql: string) {
+  // Load the past SQL into the editor; the user still presses Run.
+  // Auto-execute would be surprising and could re-run an expensive query.
+  sqlInput.value = sql;
 }
 
 function onEditorKeydown(event: KeyboardEvent) {
@@ -56,42 +69,50 @@ function onEditorKeydown(event: KeyboardEvent) {
       {{ t(lastError.i18nKey) }}: {{ lastError.message }}
     </p>
 
-    <label class="editor-label" for="sql-input">{{ t("sql.editor.label") }}</label>
-    <textarea
-      id="sql-input"
-      v-model="sqlInput"
-      data-testid="sql-input"
-      class="editor"
-      rows="6"
-      spellcheck="false"
-      autocomplete="off"
-      autocapitalize="off"
-      @keydown="onEditorKeydown"
-    />
+    <div class="columns">
+      <div class="editor-column">
+        <label class="editor-label" for="sql-input">{{ t("sql.editor.label") }}</label>
+        <textarea
+          id="sql-input"
+          v-model="sqlInput"
+          data-testid="sql-input"
+          class="editor"
+          rows="6"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          @keydown="onEditorKeydown"
+        />
 
-    <div class="actions">
-      <button
-        type="button"
-        data-testid="run-button"
-        class="run-button"
-        :disabled="isLoading"
-        @click="onRun"
-      >
-        {{ isLoading ? t("sql.running") : t("sql.run") }}
-      </button>
+        <div class="actions">
+          <button
+            type="button"
+            data-testid="run-button"
+            class="run-button"
+            :disabled="isLoading"
+            @click="onRun"
+          >
+            {{ isLoading ? t("sql.running") : t("sql.run") }}
+          </button>
+        </div>
+
+        <section class="result-area">
+          <p v-if="!result" data-testid="result-empty" class="result-empty">
+            {{ t("sql.result.empty") }}
+          </p>
+          <template v-else>
+            <p data-testid="result-summary" class="result-summary">
+              {{ t("sql.result.summary", summaryParams ?? {}) }}
+            </p>
+            <ResultGrid v-if="hasRows" :result="result" />
+          </template>
+        </section>
+      </div>
+
+      <div class="history-column">
+        <HistorySidebar ref="historyRef" :connection-id="connectionId" @replay="onReplay" />
+      </div>
     </div>
-
-    <section class="result-area">
-      <p v-if="!result" data-testid="result-empty" class="result-empty">
-        {{ t("sql.result.empty") }}
-      </p>
-      <template v-else>
-        <p data-testid="result-summary" class="result-summary">
-          {{ t("sql.result.summary", summaryParams ?? {}) }}
-        </p>
-        <ResultGrid v-if="hasRows" :result="result" />
-      </template>
-    </section>
   </section>
 </template>
 
@@ -124,6 +145,36 @@ function onEditorKeydown(event: KeyboardEvent) {
   background: rgba(220, 38, 38, 0.1);
   color: #991b1b;
   border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.columns {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.editor-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.history-column {
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .columns {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .editor-column {
+    flex: 1 1 auto;
+  }
+  .history-column {
+    flex: 0 0 280px;
+  }
 }
 
 .editor-label {

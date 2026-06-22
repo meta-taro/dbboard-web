@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "历史记录 ({count})",
-    "empty": "(无最近查询)"
+    "empty": "(无最近查询)",
+    "refresh": "刷新",
+    "replay": "载入",
+    "status": {
+      "ok": "成功",
+      "error": "错误"
+    },
+    "duration": "{ms} 毫秒",
+    "error": {
+      "load": "加载历史记录失败"
+    }
   },
   "result": {
     "heading": "结果",

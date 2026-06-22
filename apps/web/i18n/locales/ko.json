@@ -34,7 +34,17 @@
   },
   "history": {
     "title": "기록 ({count})",
-    "empty": "(최근 쿼리 없음)"
+    "empty": "(최근 쿼리 없음)",
+    "refresh": "새로고침",
+    "replay": "불러오기",
+    "status": {
+      "ok": "성공",
+      "error": "오류"
+    },
+    "duration": "{ms} ms",
+    "error": {
+      "load": "기록을 불러오지 못했습니다"
+    }
   },
   "result": {
     "heading": "결과",

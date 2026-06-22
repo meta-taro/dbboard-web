@@ -3,18 +3,33 @@ import { HttpStatus, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module";
-import { MAX_BODY_BYTES } from "./bootstrap/config";
+import { API_SECRET, BIND_HOST, MAX_BODY_BYTES, assertSafeBindConfig } from "./bootstrap/config";
 import { contentTypeGuard } from "./bootstrap/content-type.middleware";
 import { ContractErrorFilter } from "./presentation/filters/contract-error.filter";
 import { RequestLevelRejectionFilter } from "./presentation/filters/request-level-rejection.filter";
+import { createBearerAuthMiddleware } from "./presentation/middleware/bearer-auth.middleware";
 
-export async function createApp(): Promise<NestExpressApplication> {
+export interface CreateAppOverrides {
+  // Test-only seam: lets the integration suite inject a known secret
+  // without juggling process.env across test files (vi.resetModules
+  // does not reliably re-evaluate config.ts when other specs share the
+  // worker). Production paths pass nothing and resolve from env.
+  apiSecret?: string;
+}
+
+export async function createApp(overrides?: CreateAppOverrides): Promise<NestExpressApplication> {
+  const secret = overrides?.apiSecret ?? API_SECRET;
   // bodyParser: false + app.useBodyParser — the seam 0003 needs.
   // Routes the 64 KiB cap (and the value 0005 will lock in) through a
   // single configurable hook rather than NestFactory's default 100 KiB
   // limit. Keeps express off the dependency surface.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   app.use(contentTypeGuard);
+  // Bearer-auth gate (issue 0016). Runs after the content-type guard so
+  // a malformed POST still surfaces 415 rather than 401, but before any
+  // controller logic so unauthenticated SQL bodies never reach the
+  // recording interceptor.
+  app.use(createBearerAuthMiddleware(secret));
   app.useBodyParser("json", { limit: MAX_BODY_BYTES });
   // class-validator failures → 422 (semantic). Malformed JSON falls
   // through to express.json's default 400; oversized bodies surface as
@@ -39,9 +54,14 @@ export async function createApp(): Promise<NestExpressApplication> {
 }
 
 async function bootstrap(): Promise<void> {
+  // Fail-fast: refuse to bind to a non-loopback address without an API
+  // secret (issue 0016). Couples network exposure to authentication so
+  // an exposed-but-unauthenticated misconfiguration cannot reach
+  // `app.listen`.
+  assertSafeBindConfig({ bindHost: BIND_HOST, apiSecret: API_SECRET });
   const app = await createApp();
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port);
+  await app.listen(port, BIND_HOST);
 }
 
 if (require.main === module) {

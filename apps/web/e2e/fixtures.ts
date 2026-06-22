@@ -13,7 +13,10 @@
  * guard suppressed dispatch, or that the run button fired exactly once.
  *
  * `apiOrigin` mirrors `runtimeConfig.public.apiBaseUrl` in
- * apps/web/nuxt.config.ts. If that URL changes, this default tracks.
+ * apps/web/nuxt.config.ts. Since issue 0016 the composables call the
+ * same-origin proxy at /api/proxy/* (the proxy injects the bearer
+ * secret server-side), so the default origin is the Playwright baseURL
+ * + that prefix. The NestJS API never starts under Playwright.
  */
 
 import { expect as baseExpect, test as base, type Page } from "@playwright/test";
@@ -72,7 +75,7 @@ export interface MockApiState {
   readonly connections: ReadonlyArray<MockedConnection>;
 }
 
-const DEFAULT_ORIGIN = "http://localhost:4000";
+const DEFAULT_ORIGIN = "http://127.0.0.1:3000/api/proxy";
 
 const DEFAULT_QUERY_RESPONSE: MockedQueryResult = {
   columns: [

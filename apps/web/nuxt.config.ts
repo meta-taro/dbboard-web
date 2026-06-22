@@ -30,9 +30,18 @@ export default defineNuxtConfig({
     typeCheck: false,
   },
   runtimeConfig: {
+    // Server-only — never reaches the browser bundle (issue 0016).
+    // The /api/proxy/[...path] handler reads these to inject
+    // `Authorization: Bearer <apiSecret>` when forwarding to the
+    // upstream NestJS API. Override via NUXT_API_SECRET / NUXT_API_UPSTREAM.
+    apiSecret: "",
+    apiUpstream: "http://localhost:4000",
     public: {
-      // Base URL of the NestJS API. Override at runtime via NUXT_PUBLIC_API_BASE_URL.
-      apiBaseUrl: "http://localhost:4000",
+      // Composables call `${apiBaseUrl}/<endpoint>` — same-origin path so
+      // the browser only ever talks to the Nuxt server, and the proxy is
+      // what reaches NestJS with the bearer secret. Override at runtime
+      // via NUXT_PUBLIC_API_BASE_URL.
+      apiBaseUrl: "/api/proxy",
     },
   },
   i18n: {

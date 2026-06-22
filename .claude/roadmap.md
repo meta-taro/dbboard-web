@@ -127,6 +127,22 @@ Side panels for browsing tables / schemas and replaying past queries.
 
 > **Frontend slice 1 — history sidebar — landed on `develop` (2026-06-22).** Issue [`0015`](./issues/0015-frontend-history-sidebar.md). `useQueryHistory` composable consumes `GET /history/export.jsonl`, filters by connection + sorts newest-first; `HistorySidebar` component renders the rows with status badge / duration / load-and-replay button; `sql.vue` wires the sidebar into a two-column layout (stacked at mobile, 1fr + 280 px at ≥ 768 px), refreshes it after each Run, and loads replayed SQL back into the editor without auto-running. Six new `history.*` keys translated across all 11 locales.
 
+## Security hardening — API bearer-auth + localhost bind (2026-06-22, out-of-band)
+
+Closes the two CRITICAL findings from the device-loss security audit (LAN-adjacent attacker on a stolen-but-locked laptop with the API process still alive): every API route was unauthenticated and the API bound to `0.0.0.0` by default. Tracked by issue [`0016`](./issues/0016-api-auth-localhost-bind.md), landed on `develop` on 2026-06-22.
+
+**DoD**
+
+- [x] `DBBOARD_BIND_HOST` defaults to `127.0.0.1`; loopback is the only address that does not require a secret.
+- [x] `DBBOARD_API_SECRET`, when set, gates every route except `GET /health` via a constant-time `timingSafeEqual` bearer-token compare in `apps/api/src/presentation/middleware/bearer-auth.middleware.ts`.
+- [x] `assertSafeBindConfig` refuses to start the API when `DBBOARD_BIND_HOST` is non-loopback and `DBBOARD_API_SECRET` is unset — auth and network exposure are coupled.
+- [x] Browser bundle never sees the secret — Nuxt `runtimeConfig.apiSecret` is server-only and read inside the Nitro `/api/proxy/[...path]` handler, which injects `Authorization: Bearer <secret>` against `runtimeConfig.apiUpstream`. Composables call same-origin `/api/proxy/*`.
+- [x] NDJSON streaming preserved through the proxy (`h3.proxyRequest`), so `GET /history/export.jsonl` works unchanged via the proxy.
+- [x] `docs/deployment.md` documents the threat model, env reference, localhost quickstart, LAN/Internet exposure recipe with Caddy auto-HTTPS, secret rotation runbook, and the device-level controls (FileVault / BitLocker / screen-lock + remote-wipe) that the codebase cannot replace.
+- [x] `.env.example` updated with `DBBOARD_BIND_HOST`, `DBBOARD_API_SECRET`, `NUXT_API_SECRET`, `NUXT_API_UPSTREAM`; the dead `CORS_ORIGINS` line (never read by code) removed.
+- [x] 241 API tests green (8 config + 11 middleware + 7 integration added on top of the prior 215); `pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm -r build` all green.
+- [x] No HTTP contract change — auth is transport-level, `docs/api-contract.md` untouched.
+
 **DoD**
 
 - Tree view of schemas → tables → columns for PostgreSQL and libSQL.

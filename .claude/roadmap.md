@@ -127,6 +127,8 @@ Side panels for browsing tables / schemas and replaying past queries.
 
 > **Frontend slice 1 — history sidebar — landed on `develop` (2026-06-22).** Issue [`0015`](./issues/0015-frontend-history-sidebar.md). `useQueryHistory` composable consumes `GET /history/export.jsonl`, filters by connection + sorts newest-first; `HistorySidebar` component renders the rows with status badge / duration / load-and-replay button; `sql.vue` wires the sidebar into a two-column layout (stacked at mobile, 1fr + 280 px at ≥ 768 px), refreshes it after each Run, and loads replayed SQL back into the editor without auto-running. Six new `history.*` keys translated across all 11 locales.
 
+> **Frontend slice 2 — schema browser tree — landed on `develop` (2026-06-22).** Issue [`0017`](./issues/0017-frontend-schema-browser.md). New connection-scoped `GET /connections/:id/tables` endpoint (the web app registers adapters per-connection at runtime, so the existing default-adapter `GET /tables` can't reach a registered connection's schema). Column introspection deliberately reuses the existing `POST /connections/:id/query` with `SELECT * FROM <quoted-schema>.<quoted-table> LIMIT 0` instead of a new `/columns` route — every adapter gets the surface for free, HTTP contract stays small. `useSchemaBrowser` composable + `SchemaBrowser.vue` panel render schemas → tables → columns as nested `<details>` (null schema collapsed under `schema.default-schema`); each row carries a `+` insert button that emits the quoted identifier. `sql.vue` stacks the new browser above `HistorySidebar` in a renamed `.sidebar-column`, with `onInsertIdentifier` splicing the text at the textarea caret. Nine new `schema.*` i18n keys translated across all 11 locales.
+
 ## Security hardening — API bearer-auth + localhost bind (2026-06-22, out-of-band)
 
 Closes the two CRITICAL findings from the device-loss security audit (LAN-adjacent attacker on a stolen-but-locked laptop with the API process still alive): every API route was unauthenticated and the API bound to `0.0.0.0` by default. Tracked by issue [`0016`](./issues/0016-api-auth-localhost-bind.md), landed on `develop` on 2026-06-22.
@@ -145,7 +147,7 @@ Closes the two CRITICAL findings from the device-loss security audit (LAN-adjace
 
 **DoD**
 
-- Tree view of schemas → tables → columns for PostgreSQL and libSQL.
+- [x] Tree view of schemas → tables → columns for PostgreSQL and libSQL. **[done, 0017 — `GET /connections/:id/tables` + `LIMIT 0` column introspection through the existing query endpoint; works against any registered adapter]**
 - [x] Local history with timestamp and connection scope. **[done, 0015]**
 - [x] Persistence layer emits one record per query completion in the ADR-0017 schema (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`); see issue [`0009`](./issues/0009-web-history-schema-mirror.md) for field semantics and acceptance criteria. **[done, 0009-impl — `f8154c3`]**
 - [x] Export endpoint streams `application/x-ndjson` records that round-trip via `jq -c .` against a desktop `history.jsonl` fixture. **[done, 0009-impl — `f8154c3`; round-trip cross-check against an actual desktop fixture still pending]**

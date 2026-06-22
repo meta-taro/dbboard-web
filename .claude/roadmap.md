@@ -125,12 +125,14 @@ Side panels for browsing tables / schemas and replaying past queries.
 
 > **Persistence layer merged ahead of the UI work (2026-06-11).** PR [#11](https://github.com/meta-taro/dbboard-web/pull/11) merged to `develop` as `f8154c3`. The API-side bits of the schema mirror — Zod schema, in-memory `HistoryStore`, `RecordHistory` use case, `HistoryRecordingInterceptor` on `/query` routes, and the NDJSON egress at `GET /history/export.jsonl` — landed so the UI work below has a real write/read path to bind against. The Phase 5 UI items still own the schema browser tree view, history sidebar, and replay UX. Decision recorded as `.claude/decisions.md` "2026-06-05 — Query-history persistence mirrors desktop ADR-0017 (web Stage 2)".
 
+> **Frontend slice 1 — history sidebar — landed on `develop` (2026-06-22).** Issue [`0015`](./issues/0015-frontend-history-sidebar.md). `useQueryHistory` composable consumes `GET /history/export.jsonl`, filters by connection + sorts newest-first; `HistorySidebar` component renders the rows with status badge / duration / load-and-replay button; `sql.vue` wires the sidebar into a two-column layout (stacked at mobile, 1fr + 280 px at ≥ 768 px), refreshes it after each Run, and loads replayed SQL back into the editor without auto-running. Six new `history.*` keys translated across all 11 locales.
+
 **DoD**
 
 - Tree view of schemas → tables → columns for PostgreSQL and libSQL.
-- Local history with timestamp and connection scope.
-- Persistence layer emits one record per query completion in the ADR-0017 schema (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`); see issue [`0009`](./issues/0009-web-history-schema-mirror.md) for field semantics and acceptance criteria.
-- Export endpoint streams `application/x-ndjson` records that round-trip via `jq -c .` against a desktop `history.jsonl` fixture.
+- [x] Local history with timestamp and connection scope. **[done, 0015]**
+- [x] Persistence layer emits one record per query completion in the ADR-0017 schema (`v` / `ts` / `conn` / `actor` / `sql` / `status` / `duration_ms` / `rows` / `rows_affected` / `error`); see issue [`0009`](./issues/0009-web-history-schema-mirror.md) for field semantics and acceptance criteria. **[done, 0009-impl — `f8154c3`]**
+- [x] Export endpoint streams `application/x-ndjson` records that round-trip via `jq -c .` against a desktop `history.jsonl` fixture. **[done, 0009-impl — `f8154c3`; round-trip cross-check against an actual desktop fixture still pending]**
 - Reader tolerates unknown fields and drops records with unknown `v` / `status` with an observable counter.
 
 ## Phase 6 — Optional AI provider interface

@@ -70,6 +70,15 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("history.status.error");
     expect(enPaths).toContain("history.duration");
     expect(enPaths).toContain("history.error.load");
+    expect(enPaths).toContain("schema.heading");
+    expect(enPaths).toContain("schema.refresh");
+    expect(enPaths).toContain("schema.empty");
+    expect(enPaths).toContain("schema.default-schema");
+    expect(enPaths).toContain("schema.columns.loading");
+    expect(enPaths).toContain("schema.error.load");
+    expect(enPaths).toContain("schema.error.columns");
+    expect(enPaths).toContain("schema.insert-table");
+    expect(enPaths).toContain("schema.insert-column");
     expect(enPaths).toContain("result.affected");
     expect(enPaths).toContain("error.prefix.connection");
     expect(enPaths).toContain("error.prefix.query");

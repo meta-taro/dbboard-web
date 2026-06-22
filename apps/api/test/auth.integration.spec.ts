@@ -54,6 +54,11 @@ describe("HTTP bearer-auth integration (0016)", () => {
     expect(res.status).toBe(401);
   });
 
+  it("GET /connections/:id/tables returns 401 without the bearer header (0017)", async () => {
+    const res = await request(app.getHttpServer()).get("/connections/anything/tables");
+    expect(res.status).toBe(401);
+  });
+
   it("rejects a wrong bearer token with 401", async () => {
     const res = await request(app.getHttpServer())
       .get("/connections")

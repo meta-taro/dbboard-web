@@ -185,6 +185,27 @@ describe("HTTP contract surface (0003)", () => {
     });
   });
 
+  // ---- /connections/:id/tables surface (0017) ----------------------
+
+  it("GET /connections/:id/tables returns the contract shape behind the NullAdapter", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Scoped tables", driver: "null" });
+    const res = await request(app.getHttpServer()).get(`/connections/${create.body.id}/tables`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ tables: [] });
+  });
+
+  it("GET /connections/:id/tables with an unknown id → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer()).get("/connections/does-not-exist/tables");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({
+      category: "capability",
+      message: expect.stringContaining("unknown connection"),
+    });
+  });
+
   // ---- Secret-leak guard (0004 § Tasks) ----------------------------
 
   it("GET /connections never echoes the registered password or connectionString", async () => {

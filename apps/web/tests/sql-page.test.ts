@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   useQueryExecutionFactory: vi.fn(),
   sidebarRefresh: vi.fn(),
   sidebarConstructed: vi.fn(),
+  schemaConstructed: vi.fn(),
 }));
 
 let resultRef: Ref<{
@@ -63,6 +64,21 @@ vi.mock("../app/components/HistorySidebar.vue", () => ({
   }),
 }));
 
+// Same stub pattern for the schema browser. The page-level tests only
+// care that it mounts and that `insert` events round-trip into the
+// editor; the real component is covered by schema-browser.test.ts.
+vi.mock("../app/components/SchemaBrowser.vue", () => ({
+  default: defineComponent({
+    name: "SchemaBrowser",
+    props: ["connectionId"],
+    emits: ["insert"],
+    setup(props) {
+      mocks.schemaConstructed(props.connectionId);
+      return () => h("aside", { "data-testid": "schema-browser" });
+    },
+  }),
+}));
+
 const mountOptions = {
   global: {
     stubs: {
@@ -84,6 +100,7 @@ describe("SqlPage", () => {
     mocks.useQueryExecutionFactory.mockReset();
     mocks.sidebarRefresh.mockReset();
     mocks.sidebarConstructed.mockReset();
+    mocks.schemaConstructed.mockReset();
   });
 
   afterEach(() => {
@@ -329,6 +346,34 @@ describe("SqlPage", () => {
     await flushPromises();
 
     expect(mocks.sidebarRefresh).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("mounts the schema browser with the route id passed through (0017)", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='schema-browser']").exists()).toBe(true);
+    expect(mocks.schemaConstructed).toHaveBeenCalledWith("route-id");
+    wrapper.unmount();
+  });
+
+  it("splices an emitted insert identifier into the textarea at the caret position", async () => {
+    const wrapper = mount(SqlPage, { ...mountOptions, attachTo: document.body });
+    await flushPromises();
+
+    const textarea = wrapper.find<HTMLTextAreaElement>("[data-testid='sql-input']");
+    await textarea.setValue("SELECT * FROM ");
+    // Place caret at end of "SELECT * FROM ".
+    textarea.element.selectionStart = textarea.element.selectionEnd = textarea.element.value.length;
+
+    const schema = wrapper.findComponent({ name: "SchemaBrowser" });
+    schema.vm.$emit("insert", '"public"."users"');
+    await flushPromises();
+
+    expect(textarea.element.value).toBe('SELECT * FROM "public"."users"');
+    expect(textarea.element.selectionStart).toBe(textarea.element.value.length);
+    expect(textarea.element.selectionEnd).toBe(textarea.element.value.length);
     wrapper.unmount();
   });
 });

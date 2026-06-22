@@ -1,15 +1,18 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ref, type Ref } from "vue";
+import { defineComponent, h, ref, type Ref } from "vue";
 import SqlPage from "../app/pages/connections/[id]/sql.vue";
 
 // vi.hoisted lets the mock factories below close over the spies safely.
 // useQueryExecutionFactory is the constructor mock — it records the
 // (connectionId, options?) call so we can assert the page passed the
-// route id through.
+// route id through. sidebarRefresh is the spy the HistorySidebar stub
+// exposes via defineExpose so the page can refresh history after Run.
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   useQueryExecutionFactory: vi.fn(),
+  sidebarRefresh: vi.fn(),
+  sidebarConstructed: vi.fn(),
 }));
 
 let resultRef: Ref<{
@@ -43,6 +46,23 @@ vi.mock("vue-router", () => ({
   useRoute: () => ({ params: { id: "route-id" } }),
 }));
 
+// Stub the sidebar so the page-level assertions don't race with the
+// sidebar's own mount-time fetch and so we can spy on refresh(). The
+// stub exposes `refresh` via defineExpose, mirroring the production
+// component's surface used by the parent page.
+vi.mock("../app/components/HistorySidebar.vue", () => ({
+  default: defineComponent({
+    name: "HistorySidebar",
+    props: ["connectionId"],
+    emits: ["replay"],
+    setup(props, { expose }) {
+      mocks.sidebarConstructed(props.connectionId);
+      expose({ refresh: mocks.sidebarRefresh });
+      return () => h("aside", { "data-testid": "history-sidebar" });
+    },
+  }),
+}));
+
 const mountOptions = {
   global: {
     stubs: {
@@ -62,6 +82,8 @@ describe("SqlPage", () => {
     } | null>(null);
     mocks.run.mockReset();
     mocks.useQueryExecutionFactory.mockReset();
+    mocks.sidebarRefresh.mockReset();
+    mocks.sidebarConstructed.mockReset();
   });
 
   afterEach(() => {
@@ -255,6 +277,58 @@ describe("SqlPage", () => {
 
     const button = wrapper.find("[data-testid='run-button']");
     expect(button.attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it("mounts the history sidebar with the route id passed through", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='history-sidebar']").exists()).toBe(true);
+    expect(mocks.sidebarConstructed).toHaveBeenCalledWith("route-id");
+    wrapper.unmount();
+  });
+
+  it("loads the SQL from a sidebar replay event into the editor without running", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    const sidebar = wrapper.findComponent({ name: "HistorySidebar" });
+    sidebar.vm.$emit("replay", "SELECT replayed FROM history");
+    await flushPromises();
+
+    const input = wrapper.find<HTMLTextAreaElement>("[data-testid='sql-input']").element;
+    expect(input.value).toBe("SELECT replayed FROM history");
+    expect(mocks.run).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("calls the sidebar's refresh() after a successful Run", async () => {
+    mocks.run.mockResolvedValueOnce(undefined);
+
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='sql-input']").setValue("SELECT 1");
+    await wrapper.find("[data-testid='run-button']").trigger("click");
+    await flushPromises();
+
+    expect(mocks.sidebarRefresh).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("still calls the sidebar's refresh() when Run fails (failures are also history)", async () => {
+    mocks.run.mockResolvedValueOnce(undefined); // useQueryExecution swallows internally
+    lastErrorRef.value = { category: "query", message: "boom", i18nKey: "error.prefix.query" };
+
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='sql-input']").setValue("SELEC bad");
+    await wrapper.find("[data-testid='run-button']").trigger("click");
+    await flushPromises();
+
+    expect(mocks.sidebarRefresh).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 });

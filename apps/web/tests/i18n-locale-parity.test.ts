@@ -63,6 +63,13 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("sql.result.summary");
     expect(enPaths).toContain("sql.link-from-row");
     expect(enPaths).toContain("history.title");
+    expect(enPaths).toContain("history.empty");
+    expect(enPaths).toContain("history.refresh");
+    expect(enPaths).toContain("history.replay");
+    expect(enPaths).toContain("history.status.ok");
+    expect(enPaths).toContain("history.status.error");
+    expect(enPaths).toContain("history.duration");
+    expect(enPaths).toContain("history.error.load");
     expect(enPaths).toContain("result.affected");
     expect(enPaths).toContain("error.prefix.connection");
     expect(enPaths).toContain("error.prefix.query");
@@ -80,6 +87,7 @@ describe("locale parity with en", () => {
     it(`${code} keeps the ICU placeholders of parameterised messages`, () => {
       const flat = bundle as Record<string, Record<string, string>>;
       expect(String(flat.history.title)).toContain("{count}");
+      expect(String(flat.history.duration)).toContain("{ms}");
       expect(String(flat.result.affected)).toContain("{rows}");
     });
 

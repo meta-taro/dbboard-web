@@ -1,9 +1,9 @@
 # 0018 — Phase 5 closeout: desktop `history.jsonl` round-trip cross-check
 
-- **Status:** open (scaffold + brief landing today; fixture awaited from desktop)
+- **Status:** closed (fixture landed 2026-06-23; round-trip live and green)
 - **Phase:** Phase 5 (closeout)
 - **Opened:** 2026-06-23
-- **Closed:** —
+- **Closed:** 2026-06-23
 - **Branch:** none (direct-to-`develop`, per the Phase 4 / Phase 5 slice pattern)
 - **Depends on:** [`0009`](./0009-web-history-schema-mirror.md) (the Zod schema mirror + `GET /history/export.jsonl` egress this ticket cross-checks), [`0015`](./0015-frontend-history-sidebar.md) (the UI consumer that has been parsing the same stream since slice 1).
 - **Blocks:** the Phase 5 closeout brief back to desktop. Schema browser + history sidebar are already on `develop`; what's left of Phase 5 is proving the export endpoint actually round-trips against a _real_ desktop fixture instead of synthesised records.
@@ -56,37 +56,38 @@ If the two ever diverge on canonical bytes (e.g., one side starts sorting keys, 
 ## Tasks
 
 - [x] Receive the maintainer's go-ahead for the "issue + ADR + scaffold + handoff brief today" path (option A, 2026-06-23).
-- [ ] Open this issue (`0018`).
-- [ ] Draft the handoff brief at [`../handoff/2026-06-23-history-fixture-emit-outgoing.md`](../handoff/2026-06-23-history-fixture-emit-outgoing.md) specifying:
+- [x] Open this issue (`0018`).
+- [x] Draft the handoff brief at [`../handoff/2026-06-23-history-fixture-emit-outgoing.md`](../handoff/2026-06-23-history-fixture-emit-outgoing.md) specifying:
   - The set of records the fixture needs to cover (success-with-rows, success-with-rows-affected, success-with-no-result, error envelope per `CategorizedError` category, unknown-field forward-compat).
   - The delivery convention (one line per record, LF terminator, no trailing blank line, no whitespace inside the JSON — exactly what `serde_json::to_string` produces).
   - The desktop helper shape (small `cargo run --example emit-history-fixture` or `cargo test --test fixture_emit -- --include-ignored` that prints to stdout; the maintainer pipes stdout into a file and ships it).
   - Anchors: ADR-0017 §2 / §6 / §8, `RecordWire` declaration order, the ts format invariant, the `rows` vs `rows_affected` mutual exclusion.
-- [ ] Add the ADR entry in `.claude/decisions.md` for fixture provenance + drift policy.
-- [ ] Land the skipped scaffold:
-  - `apps/api/test/desktop-history-roundtrip.spec.ts` as `describe.skip(...)` so vitest stays green until the fixture lands.
+- [x] Add the ADR entry in `.claude/decisions.md` for fixture provenance + drift policy.
+- [x] Land the skipped scaffold:
+  - `apps/api/test/desktop-history-roundtrip.spec.ts` as `describe.skipIf(!existsSync(...))` so vitest stays green until the fixture lands.
   - `apps/api/test/fixtures/README.md` documenting the slot and the drop-in recipe.
   - `apps/api/test/fixtures/.gitignore` to keep `local-history.jsonl` out of version control.
-- [ ] Update [`project-status.md`](../project-status.md) with a "Phase 5 closeout (`0018`) — scaffold + handoff in progress, fixture awaited" paragraph.
-- [ ] Update [`roadmap.md`](../roadmap.md) — refine the "round-trip cross-check against an actual desktop fixture still pending" line to point at this issue.
-- [ ] Two commits to `develop`: (1) docs (issue + handoff + ADR + status + roadmap), (2) scaffold (skipped spec + fixtures README + .gitignore). AI-authored; never `git push`.
-- [ ] **(fixture-arrival step, not in this scaffold pass)** Once the desktop agent delivers `desktop-history.jsonl`:
-  - Drop the file at `apps/api/test/fixtures/desktop-history.jsonl`.
-  - Flip `describe.skip` → `describe`.
-  - Run the full verification chain; expect all assertions to pass.
-  - Update the issue status to closed, this ticket's tasks ticked, and add the closeout entry to `project-status.md` + `roadmap.md`.
+- [x] Update [`project-status.md`](../project-status.md) with a "Phase 5 closeout (`0018`) — scaffold + handoff in progress, fixture awaited" paragraph.
+- [x] Update [`roadmap.md`](../roadmap.md) — refine the "round-trip cross-check against an actual desktop fixture still pending" line to point at this issue.
+- [x] Two commits to `develop`: (1) docs (issue + handoff + ADR + status + roadmap), (2) scaffold (skipped spec + fixtures README + .gitignore). AI-authored; never `git push`.
+- [x] **(fixture-arrival step)** Maintainer dropped `apps/api/test/fixtures/desktop-history.jsonl` (10 lines from desktop's `serde_json::to_string(&RecordWire)` per the brief) on 2026-06-23:
+  - File landed at `apps/api/test/fixtures/desktop-history.jsonl`.
+  - `describe.skipIf(!existsSync(FIXTURE_PATH))` flipped live automatically — no code change needed.
+  - Full verification chain re-run: `pnpm format:check` ✓, `pnpm -r typecheck` ✓, `pnpm -r lint` ✓, `pnpm -r test` ✓ (api **254 passed** + 2 skipped local-fixture, web 272 passed), `pnpm -r build` ✓.
+  - Issue closed; tasks ticked; closeout entry recorded in `project-status.md` + `roadmap.md`.
+  - Also dropped a `README.md` in each of `apps/api/test/` and `apps/api/tests/` documenting the singular/plural directory split (default vitest glob vs. gated `pnpm conformance`).
 
 ## Definition of Done
 
-- [ ] `apps/api/test/fixtures/desktop-history.jsonl` exists and contains bytes produced by desktop's `RecordWire` serialiser, covering at minimum: one success-with-rows record, one success-with-rows-affected record, one success-with-both-null record, one error record per `CategorizedError` category (`query` / `connection` / `schema` / `type_conversion` / `capability`), and one forward-compat record carrying an unknown field.
-- [ ] `apps/api/test/desktop-history-roundtrip.spec.ts` runs against the fixture and asserts:
-  1. Per-line canonical-form invariant `JSON.stringify(JSON.parse(line)) === line.trimEnd()` for every non-forward-compat line.
-  2. `historyRecordSchema.safeParse(parsed).success === true` for every line (forward-compat lines included — Zod strips unknown fields silently per the brief's §"Forward-compat policy").
-  3. Round-trip through `InMemoryHistoryStore.record(parsed)` + `ExportHistory.stream()` produces a line byte-identical to the original _except_ for fixture lines carrying unknown fields, where the unknown field is dropped on re-emit (the spec asserts the strip explicitly).
-- [ ] Forward-compat assertion: the unknown-field fixture line is accepted by the schema, the unknown field is dropped on re-emit, no error is raised.
-- [ ] ADR entry in `.claude/decisions.md` is in place and cross-references desktop ADR-0017 by anchor (`dbboard@62ed834:docs/decisions.md`).
-- [ ] `pnpm format:check`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, `pnpm -r build` all green.
-- [ ] `project-status.md` + `roadmap.md` point at the closed `0018` issue, with the Phase 5 acceptance line ticked.
+- [x] `apps/api/test/fixtures/desktop-history.jsonl` exists and contains bytes produced by desktop's `RecordWire` serialiser, covering at minimum: one success-with-rows record, one success-with-rows-affected record, one success-with-both-null record, one error record per `CategorizedError` category (`query` / `connection` / `schema` / `type_conversion` / `capability`), and one forward-compat record carrying an unknown field. **[done — 10 lines, LF-terminated, no CRLF, no whitespace inside JSON]**
+- [x] `apps/api/test/desktop-history-roundtrip.spec.ts` runs against the fixture and asserts:
+  1. Per-line canonical-form invariant `JSON.stringify(JSON.parse(line)) === line.trimEnd()` for every non-forward-compat line. **[passes]**
+  2. `historyRecordSchema.safeParse(parsed).success === true` for every line (forward-compat lines included — Zod strips unknown fields silently per the brief's §"Forward-compat policy"). **[passes]**
+  3. Round-trip through `InMemoryHistoryStore.record(parsed)` + `ExportHistory.stream()` produces a line byte-identical to the original _except_ for fixture lines carrying unknown fields, where the unknown field is dropped on re-emit (the spec asserts the strip explicitly). **[passes]**
+- [x] Forward-compat assertion: the unknown-field fixture line is accepted by the schema, the unknown field is dropped on re-emit, no error is raised. **[passes]**
+- [x] ADR entry in `.claude/decisions.md` is in place and cross-references desktop ADR-0017 by anchor (`dbboard@62ed834:docs/decisions.md`).
+- [x] `pnpm format:check`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`, `pnpm -r build` all green.
+- [x] `project-status.md` + `roadmap.md` point at the closed `0018` issue, with the Phase 5 acceptance line ticked.
 
 ## Disposition
 

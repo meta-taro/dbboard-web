@@ -1,0 +1,10 @@
+{"v":1,"ts":"2026-06-23T10:00:00.000Z","conn":"prod-pg","actor":null,"sql":"SELECT 1","status":"ok","duration_ms":42,"rows":1,"rows_affected":null,"error":null}
+{"v":1,"ts":"2026-06-23T10:00:01.000Z","conn":"prod-pg","actor":null,"sql":"UPDATE users SET active=true WHERE id=1","status":"ok","duration_ms":0,"rows":null,"rows_affected":1,"error":null}
+{"v":1,"ts":"2026-06-23T10:00:02.000Z","conn":"prod-pg","actor":null,"sql":"BEGIN","status":"ok","duration_ms":1234,"rows":null,"rows_affected":null,"error":null}
+{"v":1,"ts":"2026-06-23T10:00:03.000Z","conn":"prod-pg","actor":null,"sql":"SELCT 1","status":"error","duration_ms":3,"rows":null,"rows_affected":null,"error":{"category":"query","message":"syntax error at or near 'SELCT'"}}
+{"v":1,"ts":"2026-06-23T10:00:04.000Z","conn":"prod-pg","actor":null,"sql":"SELECT 1","status":"error","duration_ms":7,"rows":null,"rows_affected":null,"error":{"category":"connection","message":"connection refused: dial tcp 127.0.0.1:5432"}}
+{"v":1,"ts":"2026-06-23T10:00:05.000Z","conn":"prod-pg","actor":null,"sql":"SELECT * FROM nonexistent","status":"error","duration_ms":4,"rows":null,"rows_affected":null,"error":{"category":"schema","message":"relation \"nonexistent\" does not exist"}}
+{"v":1,"ts":"2026-06-23T10:00:06.000Z","conn":"prod-pg","actor":null,"sql":"SELECT '2026-13-99'::date","status":"error","duration_ms":2,"rows":null,"rows_affected":null,"error":{"category":"type_conversion","message":"invalid input syntax for type date: \"2026-13-99\""}}
+{"v":1,"ts":"2026-06-23T10:00:07.000Z","conn":"prod-pg","actor":null,"sql":"LISTEN channel","status":"error","duration_ms":1,"rows":null,"rows_affected":null,"error":{"category":"capability","message":"LISTEN/NOTIFY not supported by this adapter"}}
+{"v":1,"ts":"2026-06-23T10:00:08.000Z","conn":"prod-pg","actor":null,"sql":"SELECT 2","status":"ok","duration_ms":5,"rows":1,"rows_affected":null,"error":null,"unknown_field":"value-from-the-future"}
+{"v":1,"ts":"2026-06-23T10:00:09.000Z","conn":"prod-pg","actor":"alice@example.com","sql":"SELECT 3","status":"ok","duration_ms":11,"rows":1,"rows_affected":null,"error":null}

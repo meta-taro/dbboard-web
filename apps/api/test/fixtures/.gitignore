@@ -1,0 +1,13 @@
+# Keep ad-hoc interactively-extracted history fixtures out of source
+# control — they may contain SQL bodies from real connections. See
+# README.md in this directory for the opt-in usage convention.
+local-history.jsonl
+
+# The committed fixture is `desktop-history.jsonl`; everything else in
+# this directory is treated as ad-hoc by default. Add fixtures to the
+# allowlist explicitly so a casually-dropped file does not silently
+# enter git.
+*
+!.gitignore
+!README.md
+!desktop-history.jsonl

@@ -163,6 +163,8 @@ Pluggable interface for AI-assisted SQL generation and explanation.
 - At least one adapter (OpenAI or Claude) implemented behind an environment flag.
 - Core flows work with the AI module disabled.
 
+> **No HTTP-contract mirror needed for Stage 1.** Desktop ADR-0023 keeps AI in-process (Decision 3 — same precedent as ADR-0020 `swap_backend` and ADR-0022 `set_language`); there is no `POST /ai/*` route, no `AiResponse` DTO, and no AI error category on the desktop wire. Web Phase 6 ships against the bullets above without coordinating with desktop on the wire. See [`decisions.md`](./decisions.md) "2026-06-24 — AI Phase 6: no HTTP contract mirror needed (desktop ADR-0023 Stage 1)" and the incoming receipt at [`handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md`](./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md). Hard redline: do not record AI calls in `history.jsonl` — that would force a v:1 → v:2 schema bump ahead of cross-repo coordination and break the `0018` round-trip cross-check.
+
 ## Later
 
 - Authentication.
@@ -173,4 +175,4 @@ Pluggable interface for AI-assisted SQL generation and explanation.
 
 ## Relationship with the desktop client
 
-The desktop client `dbboard` is an **independent native Rust application** with its own local Rust API. It does not share code, processes, or runtime calls with `dbboard-web`. The only alignment is at the **API-contract** level (connection shape, query envelope, error codes, AI shapes) and on **user-data interop** (export and import JSON formats). Implementation duplication between the two stacks is permanent and acceptable. See [decisions.md](./decisions.md) for the full policy.
+The desktop client `dbboard` is an **independent native Rust application** with its own local Rust API. It does not share code, processes, or runtime calls with `dbboard-web`. The only alignment is at the **API-contract** level (connection shape, query envelope, error codes) and on **user-data interop** (export and import JSON formats — including the `history.jsonl` per-record schema locked at v:1 across both repos per ADR-0017). AI provider shapes are deliberately **not** part of the contract alignment: desktop ADR-0023 keeps AI in-process and off the HTTP wire, so each repo's AI module is shaped to its own framework idioms. Implementation duplication between the two stacks is permanent and acceptable. See [decisions.md](./decisions.md) for the full policy.

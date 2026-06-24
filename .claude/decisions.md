@@ -253,3 +253,76 @@ The HTTP contract (`docs/api-contract.md`) is shared with desktop. Translating e
 - Desktop Stage 2 closeout: `dbboard@ae86627`.
 - Outgoing brief: [`./handoff/2026-06-23-history-fixture-emit-outgoing.md`](./handoff/2026-06-23-history-fixture-emit-outgoing.md).
 - Web issue: [`./issues/0018-history-export-roundtrip-fixture.md`](./issues/0018-history-export-roundtrip-fixture.md).
+
+---
+
+## 2026-06-24 — Aurora DSQL: no adapter mirror needed (desktop ADR-0021)
+
+**Context.** Desktop shipped ADR-0021 (Aurora DSQL as a flavored kind over `dbboard-postgres`) on 2026-06-04 via PR #13 (`dbboard@cd41641`), and on 2026-06-23 issued an explicit no-op brief to web at `dbboard/.claude/issues/0006-web-aurora-dsql-no-mirror.md` (`dbboard@c35b3b2`, origin/develop tip `dbboard@f4126f1`). Incoming receipt at [`./handoff/2026-06-24-aurora-dsql-no-mirror-incoming.md`](./handoff/2026-06-24-aurora-dsql-no-mirror-incoming.md). Web ticket [`./issues/0010-aurora-dsql-no-mirror.md`](./issues/0010-aurora-dsql-no-mirror.md) is closed-on-arrival as no-op. The web side had been parking "Aurora DSQL adapter" under `project-status.md` § "Ready to start" since 2026-06-04 as "Blocked on a desktop handoff brief"; this ADR retires that flag.
+
+**Decision.**
+
+- **No `AuroraDsqlAdapter` is written.** Aurora DSQL speaks pg-wire byte-identically to vanilla Postgres — wire protocol, SQL surface, TLS, pool config, dynamic decoding, row cap. The `PostgresAdapter` shipped in ticket [`./issues/0004-phase-2-postgres-adapter.md`](./issues/0004-phase-2-postgres-adapter.md) (PR #9, `dbboard-web@0dc1a1b`) handles Aurora DSQL URLs unchanged. Adding a flavored subclass would buy zero technical capability and dilute the test surface (the `PostgresAdapter`'s integration spec is the only Postgres-side coverage).
+- **No HTTP contract change.** `docs/api-contract.md` is untouched. `GET /capabilities` continues to report the adapter id as a free-form string per ADR-0012 — "aurora-dsql" is a valid identifier if a deployment chooses to surface it, but the wire shape is fixed regardless. No new endpoint, no new DTO, no new error category, no new HTTP status code. SemVer impact per ADR-0011: none.
+- **IAM-token UX is documented in `docs/deployment.md`, not the contract.** Aurora DSQL is the only pg-wire flavor (Postgres / Neon / Supabase / Aurora DSQL) that does not accept static passwords — the password segment of the connection URL must carry a short-lived IAM authentication token (~15 min TTL). The user-facing expectation lives in [`../docs/deployment.md`](../docs/deployment.md) § "Connecting to Aurora DSQL (IAM-token URLs)": generate via `aws dsql generate-db-connect-auth-token` (CLI) or `@aws-sdk/dsql-signer` (Node SDK), re-paste the URL when the token expires, expect stale tokens to surface as the existing `connection` error category. AWS-side procedures (IAM policy setup, cluster endpoint discovery) are deliberately not restated — the doc points at AWS docs to avoid drift.
+- **No SDK-driven token auto-refresh in this revision.** Desktop ADR-0021 §"Decision" path 2 deferred the SDK-integrated auto-refresh path; web matches that posture. A future "regenerate token" affordance (a server-side module wrapping `@aws-sdk/dsql-signer`) is a pure web-side decision and not a coordination point with desktop — when it ships, the connection URL stays the surface, only the password segment gets rewritten in-process before each pool acquisition.
+- **No IAM-aware capability flag.** Desktop deferred `has_iam_auth`-style capability flags (ADR-0021 §"Decision" capability section); web does not pre-mirror them. If they ever cross the desktop HTTP contract, a fresh outbound brief will arrive and an additive mirror will be cheap.
+- **The web in-memory `ConnectionRegistry` (`POST /connections`) needs no schema change.** The existing `connectionString` field carries the full `postgres://…` URL — Aurora DSQL hosts (`*.dsql.<region>.on.aws`) work as-is. The auth-mode field rejected for the static-URL case is the user's pre-generated IAM token in the password segment; the registry does not need an `awsRegion` / `awsProfile` / token-source DTO.
+
+**Consequences.**
+
+- Web ticket `0010` closes without any production code change, test suite change, or contract change. The `0010-aurora-dsql-no-mirror.md` issue body is the audit trail; this ADR is the rationale.
+- The `project-status.md` "Aurora DSQL adapter" line under § "Ready to start" is replaced by a closed-out marker citing this ADR.
+- The Postgres adapter's `sslmode` auto-upgrade list (`*.neon.tech`, `*.supabase.co`) does **not** need a third entry for `*.dsql.<region>.on.aws`. Aurora DSQL connection strings must already carry an explicit `sslmode=require` (TLS-only is mandatory on the cluster side, so a URL missing it would fail at connect), and the auto-upgrade only catches missing `sslmode` for Neon / Supabase where TLS is also required but commonly forgotten by users. Aurora DSQL users are typically following AWS docs which already specify the SSL parameter.
+- No new runtime dependency. `@aws-sdk/dsql-signer` is not added — users either run the AWS CLI themselves or, if they want programmatic token refresh, integrate at deployment time (env-var preprocessing, sidecar, cron).
+- The memory record `project-aurora-dsql-planned` is now stale (it described a "stub ticket pending desktop brief" approach that is superseded by this no-op disposition). It is updated/deprecated in the same coordination round.
+
+**Reversibility.** Trivially reversible if a future desktop ADR ships a wire-level Aurora DSQL coordination point (capability flag, new endpoint for token refresh, etc.) — a fresh outbound brief would land in `./handoff/`, a new web ticket would open against it, and this ADR would gain a supersedence pointer (not a deletion — the no-op disposition for the static-URL path remains historically correct).
+
+**Cross-references.**
+
+- Desktop ADR-0021: `dbboard@cd41641:docs/decisions.md` (search `## ADR-0021`).
+- Desktop reference implementation: `crates/dbboard-postgres` `connect_aurora_dsql` + `FLAVOR_AURORA_DSQL` at `dbboard@cd41641` (PR #13 merged 2026-06-04).
+- Desktop brief: `dbboard/.claude/issues/0006-web-aurora-dsql-no-mirror.md` at `dbboard@c35b3b2`.
+- Incoming receipt: [`./handoff/2026-06-24-aurora-dsql-no-mirror-incoming.md`](./handoff/2026-06-24-aurora-dsql-no-mirror-incoming.md).
+- Web closeout ticket: [`./issues/0010-aurora-dsql-no-mirror.md`](./issues/0010-aurora-dsql-no-mirror.md).
+- Web UX note: [`../docs/deployment.md`](../docs/deployment.md) § "Connecting to Aurora DSQL (IAM-token URLs)".
+
+---
+
+## 2026-06-24 — AI Phase 6: no HTTP contract mirror needed (desktop ADR-0023 Stage 1)
+
+**Context.** Desktop shipped ADR-0023 (`dbboard-ai` provider trait + Anthropic provider) Stage 1 across PRs #18 / #20 / #22 / #24 / #27 (closing desktop issue `0005-dbboard-ai-trait-and-anthropic-provider`), and on 2026-06-23 issued an explicit no-op brief to web at `dbboard/.claude/issues/0007-web-ai-phase6-no-contract-mirror.md` (`dbboard@c35b3b2`). Incoming receipt at [`./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md`](./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md). The brief targets the "AI shapes" item in [`./roadmap.md`](./roadmap.md) § "Relationship with the desktop client" (line ~176) and the Phase 6 DoD.
+
+**Decision.**
+
+- **AI is out of the HTTP contract on the desktop side.** ADR-0023 Decision 3 explicitly chose **in-process wiring, not HTTP-mediated** for the AI provider — same precedent as ADR-0020 (`swap_backend`) and ADR-0022 (`set_language`). There is no `POST /ai/explain`, no `POST /ai/suggest`, no `AiResponse` DTO, no AI error category on the desktop's wire. `docs/api-contract.md` (desktop) is untouched by ADR-0023.
+- **Web's roadmap is amended to reflect this.** The "AI shapes" entry in the contract-alignment list on [`./roadmap.md`](./roadmap.md) line ~176 is removed (it was speculative — there was no AI shape on the desktop contract to align with). The Phase 6 DoD on the same file gains a no-mirror note pointing at this ADR. The Phase 6 DoD bullets ("provider port", "at least one adapter", "core flows work with the AI module disabled") are unchanged — they were never contract-mirror bullets to begin with; only the parenthetical list at line ~176 implied a wire-level alignment that did not exist.
+- **Web is free to ship Phase 6 on the Stage 1 footing whenever it lands** — provider port + at least one adapter behind an env flag + graceful degradation when the env var is absent. Web does **not** wait for a desktop Stage 2 ADR (Settings UI, persisted keychain, streaming, multi-provider switcher, DDL extraction, function-calling, AI history records — all queued on desktop, may or may not produce wire-level coordination). When and if desktop Stage 2 surfaces an HTTP-contract change, a fresh brief in the `0NNN-web-*` sequence will arrive.
+- **No web Phase 6 ticket opens in this round.** This ADR records the disposition; the implementation ticket (`.claude/issues/0NNN-*` with a fresh slot number) opens when web actually starts the Phase 6 work, and it cites this ADR + the incoming receipt + desktop ADR-0023 by anchor. Same pattern issue `0009` used for ADR-0017 — no implementation before the green-light.
+- **Pattern recommendations are recorded but not binding.** When web does ship Phase 6, the brief recommends (not requires) mirroring desktop's `AiProvider` trait shape conceptually — `id()` / `capabilities()` / `explain()` / `suggest_sql()` translated into TS-flavored signatures — so cross-repo readers recognise the surfaces. Same for the env-var-only Stage 1 footing (no persisted keychain in v1), the graceful-degradation-by-absence convention (no AI panel rendered when the env var is unset, rather than a greyed-out "unavailable" stub), and capability flags defaulting to `false` (streaming / function-calling off until the UI is wired for them). These are design hints, not contract obligations.
+- **Web's NestJS-native shape will differ from desktop's Rust shape — that is fine.** `@anthropic-ai/sdk` (the official Node SDK) wrapped in a NestJS module under `apps/api/src/modules/ai/` is the natural Node-side equivalent of desktop's `crates/dbboard-anthropic`. Web's request / response DTOs may diverge from desktop's `ExplainRequest` / `SuggestRequest` / `AiResponse` Rust types — they are not on the same wire and there is no breakage. If web ships `/ai/explain` and `/ai/suggest` as web-only endpoints, those are unilateral surfaces (same posture as `/connections/*` shipped in web PR #7), not contract-mirror endpoints.
+- **Env var naming is left open until Phase 6 implementation.** Desktop uses `DBBOARD_ANTHROPIC_API_KEY` and `DBBOARD_ANTHROPIC_MODEL`. Web may reuse those (natural for a maintainer running both clients side-by-side) or pick its own; the `DBBOARD_*` prefix is already a shared convention on both repos (`DBBOARD_API_SECRET`, `DBBOARD_BIND_HOST`, `DBBOARD_PG_URL`, etc.).
+
+**Hard redlines (binding even though the brief is otherwise advisory).**
+
+- **Do not record AI calls in `history.jsonl`.** Desktop deferred AI history records to Stage 2 (ADR-0023 §9). Unilaterally extending web's `historyRecordSchema` (`apps/api/src/domain/history-record.ts`) to capture AI invocations would force a v:1 → v:2 schema bump ahead of any cross-repo coordination — that breaks the byte-equivalence round-trip cross-check shipped in [`./issues/0018-history-export-roundtrip-fixture.md`](./issues/0018-history-export-roundtrip-fixture.md) (the desktop-emitted fixture at `apps/api/test/fixtures/desktop-history.jsonl` is pinned at v:1). A v:2 bump is an ADR-level coordination event on both repos, not a unilateral patch. Web's Phase 6 implementation must leave the history schema untouched.
+- **Do not invent a contract surface to "mirror" the in-process AI wiring.** ADR-0023 Decision 3 rejected this for desktop because inflating the shared contract with AI mirror routes buys zero parity. The same reasoning applies on web: if Phase 6 surfaces `/ai/*`, those routes exist for web's own UI consumption, not as a desktop-bound mirror.
+
+**Consequences.**
+
+- One line removed from `./roadmap.md` line ~176 (the "AI shapes" item in the contract-alignment parenthetical). One short note added to the Phase 6 DoD pointing here. No code change, no test change, no production module touched.
+- Phase 6 implementation work, when it lands, ships against a smaller acceptance surface: the wire-alignment dimension is now explicitly "none required for Stage 1". The remaining DoD bullets (provider port + one adapter + AI-disabled core flows) are the actual definition of done.
+- The desktop Stage 2 future-drift signals listed in the brief (a `POST /ai/*` route, an AI error category, a server-side AI capability flag, an `ai-providers.toml` schema, AI calls in `history.jsonl`) are now the only conditions under which a fresh AI-shaped brief would arrive. Until then, no AI-wire coordination work is queued.
+
+**Reversibility.** Trivially reversible if a future desktop ADR introduces a wire-level AI coordination point. A fresh `0NNN-web-*` brief would land in `./handoff/`, a new web ticket would open against it (or this ADR would gain a supersedence pointer if the change is narrow), and the roadmap entry would be re-added in the form that the new brief actually demands rather than the speculative "AI shapes" placeholder this ADR retires.
+
+**Cross-references.**
+
+- Desktop ADR-0023: `dbboard/docs/decisions.md` (search `## ADR-0023`); Decision 3 ("In-process wiring, not HTTP-mediated") and Decision 9 (Stage 2 deferrals) in particular.
+- Desktop reference implementation: trait crate `crates/dbboard-ai` (PR #20, `dbboard@584348f`), provider crate `crates/dbboard-anthropic` (PR #22, `dbboard@c705918`), env-var wiring `apps/dbboard` (PR #24, `dbboard@6ad670d`), UI panel + worker dispatch + 11-locale Fluent (PR #27, `dbboard@c86424a`).
+- Desktop brief: `dbboard/.claude/issues/0007-web-ai-phase6-no-contract-mirror.md` at `dbboard@c35b3b2`.
+- Incoming receipt: [`./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md`](./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md).
+- Sibling closeout: [`./issues/0010-aurora-dsql-no-mirror.md`](./issues/0010-aurora-dsql-no-mirror.md) (same desktop PR `dbboard@c35b3b2` shipped both no-op briefs).
+- Web roadmap entry: [`./roadmap.md`](./roadmap.md) § "Phase 6 — Optional AI provider interface" + § "Relationship with the desktop client" (line ~176).
+- Hard redline anchor: [`./issues/0018-history-export-roundtrip-fixture.md`](./issues/0018-history-export-roundtrip-fixture.md) (v:1 schema lock).

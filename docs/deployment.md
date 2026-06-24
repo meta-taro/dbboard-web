@@ -119,6 +119,48 @@ your local machine can connect.
    # → no output
    ```
 
+## Connecting to Aurora DSQL (IAM-token URLs)
+
+Aurora DSQL speaks the Postgres wire protocol — registering a cluster
+goes through the same `POST /connections` flow as any Postgres / Neon /
+Supabase URL, and is served by the same `PostgresAdapter`. The only
+deployment-time wrinkle is the password segment: Aurora DSQL does **not**
+accept static passwords. The URL's password segment must carry a
+short-lived **IAM authentication token** (~15 min lifetime).
+
+Generate a token with the AWS CLI:
+
+```sh
+aws dsql generate-db-connect-auth-token \
+  --hostname <cluster-id>.dsql.<region>.on.aws \
+  --region <region>
+```
+
+…or programmatically with `@aws-sdk/dsql-signer` in Node, then build
+the URL:
+
+```
+postgres://admin:<TOKEN>@<cluster-id>.dsql.<region>.on.aws:5432/postgres?sslmode=require
+```
+
+`sslmode=require` is mandatory — Aurora DSQL is TLS-only. Stale tokens
+surface as the existing `connection` error category from
+`POST /connections/:id/query`; the affordance is to regenerate the
+token and re-register the connection (`DELETE /connections/:id` then
+`POST /connections` with the refreshed URL). There is no built-in
+auto-refresh — that is a deliberate Stage-1 deferral matching desktop
+ADR-0021. A future "regenerate token" affordance (a server-side module
+wrapping `@aws-sdk/dsql-signer`) is on the table but not shipped.
+
+IAM setup (policy creation, cluster endpoint discovery, role
+permissions) is out of scope for this doc — follow the AWS Aurora DSQL
+documentation. The pattern of "user pre-generates a token, pastes the
+URL into the app, re-pastes when it expires" is the entire web-side
+contract.
+
+See `.claude/decisions.md` "2026-06-24 — Aurora DSQL: no adapter
+mirror needed (desktop ADR-0021)" for the cross-repo rationale.
+
 ## Secret rotation
 
 1. Generate a new value: `openssl rand -base64 48`.

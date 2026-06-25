@@ -157,11 +157,13 @@ Closes the two CRITICAL findings from the device-loss security audit (LAN-adjace
 
 Pluggable interface for AI-assisted SQL generation and explanation.
 
+> **Slice 1 (API-side AI provider seam, Anthropic) landed on `develop` (2026-06-25).** Issue [`0019`](./issues/0019-ai-provider-anthropic-stage1.md). Adds `apps/api/src/domain/ai/` (`AiProvider` port + `AiCapabilities` + `ExplainRequest` / `SuggestRequest` / `AiResponse` + `AI_PROVIDER` symbol token + `AiError`), `apps/api/src/infrastructure/anthropic-provider.ts` (a single `AnthropicProvider` wrapping `@anthropic-ai/sdk` via a narrow `AnthropicClient` interface for test-stub friendliness, mirroring the `PgQueryRunner` pattern in `postgres-adapter.ts`), env-var gate via `bootstrap/config.ts` (`DBBOARD_ANTHROPIC_API_KEY` / `DBBOARD_ANTHROPIC_MODEL`, default model `claude-sonnet-4-6`), and an `AI_PROVIDER` factory in `app.module.ts` that returns `undefined` when the key is unset. No HTTP route, no Nuxt UI, no history pollution — Slice 2 (web-only `POST /ai/*`) and Slice 3 (Nuxt `useAiAssist()` + `AiPanel.vue` + 11-locale i18n) are deferred.
+
 **DoD**
 
-- `backend/src/modules/ai/` defines a provider port (interface).
-- At least one adapter (OpenAI or Claude) implemented behind an environment flag.
-- Core flows work with the AI module disabled.
+- [x] `apps/api/src/domain/ai/` defines a provider port (interface). **[done, 0019]**
+- [x] At least one adapter (Anthropic) implemented behind an environment flag. **[done, 0019 — `AnthropicProvider`, gated by `DBBOARD_ANTHROPIC_API_KEY`]**
+- [x] Core flows work with the AI module disabled. **[done, 0019 — `app.module.ts` factory returns `undefined`; `AppModule` integration spec confirms both modes boot and core controllers stay wired]**
 
 > **No HTTP-contract mirror needed for Stage 1.** Desktop ADR-0023 keeps AI in-process (Decision 3 — same precedent as ADR-0020 `swap_backend` and ADR-0022 `set_language`); there is no `POST /ai/*` route, no `AiResponse` DTO, and no AI error category on the desktop wire. Web Phase 6 ships against the bullets above without coordinating with desktop on the wire. See [`decisions.md`](./decisions.md) "2026-06-24 — AI Phase 6: no HTTP contract mirror needed (desktop ADR-0023 Stage 1)" and the incoming receipt at [`handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md`](./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md). Hard redline: do not record AI calls in `history.jsonl` — that would force a v:1 → v:2 schema bump ahead of cross-repo coordination and break the `0018` round-trip cross-check.
 

@@ -163,11 +163,11 @@ mirror needed (desktop ADR-0021)" for the cross-repo rationale.
 
 ## Optional: Anthropic AI provider
 
-`dbboard-web` ships an optional AI provider seam (Phase 6 Slice 1, issue
-0019). The defaults keep AI fully disabled — every database flow works
-without a key and no AI surface is exposed on the HTTP contract. Enable
-it only when you want to wire a future SQL-explain or NL→SQL feature
-into the NestJS DI container.
+`dbboard-web` ships an optional AI provider seam (Phase 6 Slices 1–2,
+issues 0019 and 0020). The defaults keep AI fully disabled — every
+database flow works without a key and no AI route is documented on the
+shared HTTP contract. Enable it only when you want SQL-explain or
+NL→SQL features exposed to the Nuxt UI.
 
 Two environment variables drive the seam:
 
@@ -181,20 +181,39 @@ block so a single `.env` covers both clients. The desktop side uses the
 same key for the same purpose — there is no per-client key rotation to
 manage.
 
+HTTP routes (Slice 2):
+
+| Route              | Body                                        | Success               | Disabled          | Upstream failure  |
+| ------------------ | ------------------------------------------- | --------------------- | ----------------- | ----------------- |
+| `POST /ai/explain` | `{ "sql": "...", "dialect"?: "postgres" }`  | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
+| `POST /ai/suggest` | `{ "prompt": "...", "dialect"?: "sqlite" }` | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
+
+Both routes sit behind the same bearer-auth middleware as the rest of
+the API (no per-route exemption — `GET /health` remains the only
+unauthenticated path). The two new error categories (`ai_disabled` and
+`ai_provider`) are web-only and intentionally absent from
+`docs/api-contract.md`; the envelope shape (`{ error: { category,
+message } }`) matches the existing DB-side categories for client
+consistency.
+
 Privacy and contract notes:
 
-- **AI calls never touch the wire contract.** No `/ai/*` route exists in
-  Slice 1; `docs/api-contract.md` stays silent on AI by design (desktop
-  ADR-0023 Decision 3 — in-process wiring only).
-- **AI calls are not recorded in `history.jsonl`.** Query history captures
-  SQL execution only; AI responses bypass `HistoryRecordingInterceptor`
-  and `HistoryStore`.
-- **No persisted key storage.** The key lives in env only — there is no
-  settings UI or OS keychain integration in Slice 1.
+- **The `/ai/*` routes are web-only.** `docs/api-contract.md` (the
+  cross-repo shared subset) stays silent on AI by design (desktop
+  ADR-0023 Decision 3 — in-process wiring only). Web exposes a thin
+  HTTP wrapper so the browser can call into the same provider.
+- **AI calls are not recorded in `history.jsonl`.** `AiController` is
+  intentionally not wrapped in `HistoryRecordingInterceptor`; an
+  integration spec asserts `GET /history/export.jsonl` stays empty
+  after an AI call. Recording would force a `v:1 → v:2` schema bump
+  ahead of cross-repo coordination.
+- **No persisted key storage.** The key lives in env only — there is
+  no settings UI or OS keychain integration.
 
 Toggle disabled at any time by clearing `DBBOARD_ANTHROPIC_API_KEY` and
 restarting the API process; the factory short-circuits to `undefined`
-on the next boot.
+on the next boot and both routes return `404 ai_disabled` until the
+key is restored.
 
 ## Secret rotation
 

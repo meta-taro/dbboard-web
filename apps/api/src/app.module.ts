@@ -1,13 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Module } from "@nestjs/common";
 import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from "./bootstrap/config";
-import { AI_PROVIDER } from "./domain/ai/ai-provider.port";
+import { AI_PROVIDER, type AiProvider } from "./domain/ai/ai-provider.port";
 import { DATABASE_ADAPTER } from "./domain/database-adapter.port";
 import { AnthropicProvider, type AnthropicClient } from "./infrastructure/anthropic-provider";
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
 import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
+import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
@@ -20,6 +21,7 @@ import { ADAPTER_FACTORY } from "./usecase/adapter-factory.port";
 import { CONNECTION_REGISTRY } from "./usecase/connection-registry.port";
 import { DeleteConnection } from "./usecase/delete-connection.use-case";
 import { ExecuteQuery } from "./usecase/execute-query.use-case";
+import { ExplainSql } from "./usecase/explain-sql.use-case";
 import { ExportHistory } from "./usecase/export-history.use-case";
 import { GetCapabilities } from "./usecase/get-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
@@ -29,6 +31,7 @@ import { ListConnections } from "./usecase/list-connections.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
+import { SuggestSql } from "./usecase/suggest-sql.use-case";
 
 // Layered structure (per AI_AGENT_RULES.md §3):
 //   src/domain          — business rules, entities, value objects
@@ -49,6 +52,7 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
     ConnectionsController,
     ConnectionTablesController,
     HistoryController,
+    AiController,
   ],
   providers: [
     { provide: DATABASE_ADAPTER, useClass: NullAdapter },
@@ -107,6 +111,22 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
         const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
         return new AnthropicProvider(client as unknown as AnthropicClient, ANTHROPIC_MODEL);
       },
+    },
+    // ExplainSql / SuggestSql consume the AI_PROVIDER token, which may
+    // resolve to `undefined` when no API key is configured. The use
+    // case translates that absence into AiDisabledError (→ 404) at
+    // call time, so the wiring stays simple here. `optional: true`
+    // belt-and-braces against a future refactor that removes the
+    // AI_PROVIDER registration entirely.
+    {
+      provide: ExplainSql,
+      useFactory: (provider: AiProvider | undefined) => new ExplainSql(provider),
+      inject: [{ token: AI_PROVIDER, optional: true }],
+    },
+    {
+      provide: SuggestSql,
+      useFactory: (provider: AiProvider | undefined) => new SuggestSql(provider),
+      inject: [{ token: AI_PROVIDER, optional: true }],
     },
     {
       provide: RecordHistory,

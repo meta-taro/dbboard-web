@@ -161,6 +161,41 @@ contract.
 See `.claude/decisions.md` "2026-06-24 — Aurora DSQL: no adapter
 mirror needed (desktop ADR-0021)" for the cross-repo rationale.
 
+## Optional: Anthropic AI provider
+
+`dbboard-web` ships an optional AI provider seam (Phase 6 Slice 1, issue
+0019). The defaults keep AI fully disabled — every database flow works
+without a key and no AI surface is exposed on the HTTP contract. Enable
+it only when you want to wire a future SQL-explain or NL→SQL feature
+into the NestJS DI container.
+
+Two environment variables drive the seam:
+
+| Variable                    | Default             | Notes                                                                                                                                                        |
+| --------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DBBOARD_ANTHROPIC_API_KEY` | _(unset)_           | Absence is the disable switch. When unset, the `AI_PROVIDER` DI token resolves to `undefined` and consumers must mark the injection `@Optional()`.           |
+| `DBBOARD_ANTHROPIC_MODEL`   | `claude-sonnet-4-6` | Model id forwarded to `Anthropic#messages.create`. The Anthropic API may resolve an alias (`claude-sonnet-4-6`) to a concrete dated version on the response. |
+
+Variable names mirror the desktop client's `DBBOARD_ANTHROPIC_*` env
+block so a single `.env` covers both clients. The desktop side uses the
+same key for the same purpose — there is no per-client key rotation to
+manage.
+
+Privacy and contract notes:
+
+- **AI calls never touch the wire contract.** No `/ai/*` route exists in
+  Slice 1; `docs/api-contract.md` stays silent on AI by design (desktop
+  ADR-0023 Decision 3 — in-process wiring only).
+- **AI calls are not recorded in `history.jsonl`.** Query history captures
+  SQL execution only; AI responses bypass `HistoryRecordingInterceptor`
+  and `HistoryStore`.
+- **No persisted key storage.** The key lives in env only — there is no
+  settings UI or OS keychain integration in Slice 1.
+
+Toggle disabled at any time by clearing `DBBOARD_ANTHROPIC_API_KEY` and
+restarting the API process; the factory short-circuits to `undefined`
+on the next boot.
+
 ## Secret rotation
 
 1. Generate a new value: `openssl rand -base64 48`.

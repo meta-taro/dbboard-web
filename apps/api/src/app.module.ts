@@ -1,5 +1,9 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { Module } from "@nestjs/common";
+import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from "./bootstrap/config";
+import { AI_PROVIDER } from "./domain/ai/ai-provider.port";
 import { DATABASE_ADAPTER } from "./domain/database-adapter.port";
+import { AnthropicProvider, type AnthropicClient } from "./infrastructure/anthropic-provider";
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
 import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
@@ -90,6 +94,20 @@ import { RegisterConnection } from "./usecase/register-connection.use-case";
       inject: [CONNECTION_REGISTRY],
     },
     { provide: HISTORY_STORE, useClass: InMemoryHistoryStore },
+    // AI provider (Phase 6 Slice 1). Returns `undefined` when no API
+    // key is configured — consumers MUST mark the injection
+    // `@Optional()`. The `as unknown as AnthropicClient` cast adapts
+    // the SDK's overloaded `messages.create` to the narrow non-
+    // streaming slice the provider depends on (see anthropic-provider.ts
+    // for why the structural assertion lives at the wiring seam).
+    {
+      provide: AI_PROVIDER,
+      useFactory: (): AnthropicProvider | undefined => {
+        if (ANTHROPIC_API_KEY === undefined) return undefined;
+        const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+        return new AnthropicProvider(client as unknown as AnthropicClient, ANTHROPIC_MODEL);
+      },
+    },
     {
       provide: RecordHistory,
       useFactory: (store: HistoryStore) => new RecordHistory(store),

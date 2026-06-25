@@ -22,6 +22,24 @@ const rawApiSecret = process.env.DBBOARD_API_SECRET;
 export const API_SECRET: string | undefined =
   rawApiSecret !== undefined && rawApiSecret.length > 0 ? rawApiSecret : undefined;
 
+// Optional AI provider config — Phase 6 Slice 1. Absence of the key is
+// the disable switch: `app.module.ts` returns `undefined` for the
+// `AI_PROVIDER` token and consumers mark the injection `@Optional()`.
+// Variable names mirror desktop's `DBBOARD_ANTHROPIC_*` so an operator
+// running both clients shares a single env block.
+const rawAnthropicApiKey = process.env.DBBOARD_ANTHROPIC_API_KEY;
+export const ANTHROPIC_API_KEY: string | undefined =
+  rawAnthropicApiKey !== undefined && rawAnthropicApiKey.length > 0
+    ? rawAnthropicApiKey
+    : undefined;
+
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
+const rawAnthropicModel = process.env.DBBOARD_ANTHROPIC_MODEL;
+export const ANTHROPIC_MODEL: string =
+  rawAnthropicModel !== undefined && rawAnthropicModel.length > 0
+    ? rawAnthropicModel
+    : DEFAULT_ANTHROPIC_MODEL;
+
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"]);
 
 export function isLoopbackHost(host: string): boolean {

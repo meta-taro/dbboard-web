@@ -95,4 +95,44 @@ describe("bootstrap/config", () => {
       expect(() => assertSafeBindConfig({ bindHost: "0.0.0.0", apiSecret: "s" })).not.toThrow();
     });
   });
+
+  describe("ANTHROPIC_API_KEY", () => {
+    it("is undefined when DBBOARD_ANTHROPIC_API_KEY is unset", async () => {
+      delete process.env.DBBOARD_ANTHROPIC_API_KEY;
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_API_KEY).toBeUndefined();
+    });
+
+    it("normalises an empty DBBOARD_ANTHROPIC_API_KEY to undefined", async () => {
+      process.env.DBBOARD_ANTHROPIC_API_KEY = "";
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_API_KEY).toBeUndefined();
+    });
+
+    it("returns the env value when DBBOARD_ANTHROPIC_API_KEY is non-empty", async () => {
+      process.env.DBBOARD_ANTHROPIC_API_KEY = "sk-ant-test";
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_API_KEY).toBe("sk-ant-test");
+    });
+  });
+
+  describe("ANTHROPIC_MODEL", () => {
+    it("defaults to 'claude-sonnet-4-6' when DBBOARD_ANTHROPIC_MODEL is unset", async () => {
+      delete process.env.DBBOARD_ANTHROPIC_MODEL;
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    });
+
+    it("falls back to the default when DBBOARD_ANTHROPIC_MODEL is empty", async () => {
+      process.env.DBBOARD_ANTHROPIC_MODEL = "";
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    });
+
+    it("honours DBBOARD_ANTHROPIC_MODEL when set to a non-empty value", async () => {
+      process.env.DBBOARD_ANTHROPIC_MODEL = "claude-opus-4-8";
+      const mod = await import("./config");
+      expect(mod.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
+    });
+  });
 });

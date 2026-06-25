@@ -1,5 +1,6 @@
 import type { ArgumentsHost } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
+import { AiDisabledError, AiUpstreamError } from "../../domain/ai/ai-error";
 import {
   CapabilityError,
   ConnectionError,
@@ -33,6 +34,8 @@ describe("ContractErrorFilter", () => {
     [new ConnectionError("bad"), 502, "connection"],
     [new SchemaError("bad"), 502, "schema"],
     [new CapabilityError("bad"), 404, "capability"],
+    [new AiDisabledError("bad"), 404, "ai_disabled"],
+    [new AiUpstreamError("bad"), 502, "ai_provider"],
   ])("maps %s to the contract envelope", (err, code, category) => {
     const { host: h, status, json } = host();
     new ContractErrorFilter().catch(err, h);

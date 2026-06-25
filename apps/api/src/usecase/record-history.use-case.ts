@@ -90,9 +90,28 @@ function mapRowsFields(result: QueryResult): { rows: number | null; rows_affecte
   return { rows: null, rows_affected: null };
 }
 
+// history-record.ts deliberately freezes the wire category enum at the
+// five DB categories (ADR-0017 §2). The runtime ErrorCategory union is
+// wider — it includes the web-only AI categories — so anything that
+// isn't one of the five is normalised to "query" here. Belt-and-braces:
+// AI calls don't go through the history interceptor today (AiController
+// has no @UseInterceptors), but if a future code path accidentally
+// routes one in, the recorded category stays inside the contract
+// instead of silently widening it.
+const HISTORY_CATEGORIES = new Set<HistoryErrorEnvelope["category"]>([
+  "query",
+  "type_conversion",
+  "connection",
+  "schema",
+  "capability",
+]);
+
 function mapError(err: unknown): HistoryErrorEnvelope {
   if (err instanceof CategorizedError) {
-    return { category: err.category, message: err.message };
+    const category = HISTORY_CATEGORIES.has(err.category as HistoryErrorEnvelope["category"])
+      ? (err.category as HistoryErrorEnvelope["category"])
+      : "query";
+    return { category, message: err.message };
   }
   if (err instanceof Error) {
     return { category: "query", message: err.message };

@@ -12,6 +12,11 @@ const CATEGORY_STATUS: Record<ErrorCategory, number> = {
   connection: 502,
   schema: 502,
   capability: 404,
+  // Web-only AI categories (not in docs/api-contract.md). 404 mirrors
+  // `capability` (route gated off this deployment); 502 mirrors
+  // `connection` (upstream third-party service failed).
+  ai_disabled: 404,
+  ai_provider: 502,
 };
 
 @Catch(CategorizedError)

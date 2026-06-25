@@ -11,6 +11,13 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/*.{test,spec}.ts", "test/**/*.{test,spec}.ts"],
+    // Integration specs that boot a full Nest AppModule occasionally
+    // exceed the vitest default 5s when several spec files compile +
+    // cold-start in parallel (pnpm -r test races the apps/api and
+    // apps/web workspaces; the pre-push hook stacks more load on top).
+    // 15s leaves enough headroom for cold-start contention without
+    // hiding genuinely slow tests.
+    testTimeout: 15_000,
     coverage: {
       reporter: ["text", "html"],
       include: ["src/**/*.ts"],

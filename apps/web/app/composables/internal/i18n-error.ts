@@ -9,7 +9,14 @@
  * exactly one source of truth.
  */
 
-export type ErrorCategory = "connection" | "query" | "schema" | "type_conversion" | "capability";
+export type ErrorCategory =
+  | "connection"
+  | "query"
+  | "schema"
+  | "type_conversion"
+  | "capability"
+  | "ai_disabled"
+  | "ai_provider";
 
 export interface CategorisedError {
   category: ErrorCategory;
@@ -21,8 +28,18 @@ interface BackendErrorShape {
   data?: { error?: { category?: string; message?: string } };
 }
 
+// Wire emits underscore (`type_conversion`, `ai_disabled`, `ai_provider`);
+// every locale uses the desktop ADR-0015 hyphen convention. New categories
+// added to the API ErrorCategory union must be mirrored here AND given
+// matching `error.prefix.*` keys in every locale bundle.
+const UNDERSCORE_TO_HYPHEN: Record<string, string> = {
+  type_conversion: "type-conversion",
+  ai_disabled: "ai-disabled",
+  ai_provider: "ai-provider",
+};
+
 export function toI18nKey(category: ErrorCategory): `error.prefix.${string}` {
-  const suffix = category === "type_conversion" ? "type-conversion" : category;
+  const suffix = UNDERSCORE_TO_HYPHEN[category] ?? category;
   return `error.prefix.${suffix}`;
 }
 

@@ -85,6 +85,24 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("error.prefix.schema");
     expect(enPaths).toContain("error.prefix.type-conversion");
     expect(enPaths).toContain("error.prefix.capability");
+    expect(enPaths).toContain("error.prefix.ai-disabled");
+    expect(enPaths).toContain("error.prefix.ai-provider");
+    expect(enPaths).toContain("ai.heading");
+    expect(enPaths).toContain("ai.section.explain");
+    expect(enPaths).toContain("ai.section.suggest");
+    expect(enPaths).toContain("ai.dialect.label");
+    expect(enPaths).toContain("ai.dialect.placeholder");
+    expect(enPaths).toContain("ai.explain.button");
+    expect(enPaths).toContain("ai.explain.empty");
+    expect(enPaths).toContain("ai.suggest.button");
+    expect(enPaths).toContain("ai.suggest.empty");
+    expect(enPaths).toContain("ai.suggest.prompt-label");
+    expect(enPaths).toContain("ai.suggest.prompt-placeholder");
+    expect(enPaths).toContain("ai.suggest.insert");
+    expect(enPaths).toContain("ai.response.model");
+    expect(enPaths).toContain("ai.state.loading");
+    expect(enPaths).toContain("ai.disabled.heading");
+    expect(enPaths).toContain("ai.disabled.body");
     expect(enPaths).toContain("locale-switcher.label");
   });
 
@@ -98,6 +116,7 @@ describe("locale parity with en", () => {
       expect(String(flat.history.title)).toContain("{count}");
       expect(String(flat.history.duration)).toContain("{ms}");
       expect(String(flat.result.affected)).toContain("{rows}");
+      expect(String(flat.ai.response.model)).toContain("{model}");
     });
 
     it(`${code} fills every leaf with a non-empty string`, () => {

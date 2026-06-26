@@ -66,13 +66,47 @@
     "empty": "(Abfrage ausführen)",
     "affected": "OK ({rows} Zeilen betroffen)"
   },
+  "ai": {
+    "heading": "KI-Assistent",
+    "section": {
+      "explain": "Diese Abfrage erklären",
+      "suggest": "SQL generieren"
+    },
+    "dialect": {
+      "label": "Dialekt (optional)",
+      "placeholder": "z. B. postgres"
+    },
+    "explain": {
+      "button": "Erklären",
+      "empty": "Führe „Erklären“ aus, um Claudes Interpretation deines SQL zu sehen."
+    },
+    "suggest": {
+      "button": "Generieren",
+      "empty": "Beschreibe die gewünschte Abfrage, und Claude erstellt einen Entwurf.",
+      "prompt-label": "Beschreibe, was du möchtest",
+      "prompt-placeholder": "z. B. aktive Nutzer pro Monat zählen",
+      "insert": "In den Editor einfügen"
+    },
+    "response": {
+      "model": "Modell: {model}"
+    },
+    "state": {
+      "loading": "Wird verarbeitet…"
+    },
+    "disabled": {
+      "heading": "KI-Assistent ist nicht konfiguriert",
+      "body": "Setze die Umgebungsvariable des KI-Anbieters auf dem API-Server, um Erklären und Generieren zu aktivieren."
+    }
+  },
   "error": {
     "prefix": {
       "connection": "Verbindungsfehler",
       "query": "Abfragefehler",
       "schema": "Schemafehler",
       "type-conversion": "Typkonvertierungsfehler",
-      "capability": "Funktion nicht verfügbar"
+      "capability": "Funktion nicht verfügbar",
+      "ai-disabled": "KI-Assistent nicht verfügbar",
+      "ai-provider": "Fehler des KI-Anbieters"
     }
   },
   "locale-switcher": {

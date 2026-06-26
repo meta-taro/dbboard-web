@@ -66,13 +66,47 @@
     "empty": "(exécutez une requête)",
     "affected": "OK ({rows} lignes affectées)"
   },
+  "ai": {
+    "heading": "Assistant IA",
+    "section": {
+      "explain": "Expliquer cette requête",
+      "suggest": "Générer du SQL"
+    },
+    "dialect": {
+      "label": "Dialecte (facultatif)",
+      "placeholder": "par ex. postgres"
+    },
+    "explain": {
+      "button": "Expliquer",
+      "empty": "Lancez l'explication pour voir l'interprétation de votre SQL par Claude."
+    },
+    "suggest": {
+      "button": "Générer",
+      "empty": "Décrivez la requête souhaitée et Claude en rédigera un brouillon.",
+      "prompt-label": "Décrivez ce que vous voulez",
+      "prompt-placeholder": "par ex. compter les utilisateurs actifs par mois",
+      "insert": "Insérer dans l'éditeur"
+    },
+    "response": {
+      "model": "Modèle : {model}"
+    },
+    "state": {
+      "loading": "Traitement…"
+    },
+    "disabled": {
+      "heading": "L'assistant IA n'est pas configuré",
+      "body": "Définissez la variable d'environnement du fournisseur IA sur le serveur API pour activer l'explication et la génération."
+    }
+  },
   "error": {
     "prefix": {
       "connection": "Erreur de connexion",
       "query": "Erreur de requête",
       "schema": "Erreur de schéma",
       "type-conversion": "Erreur de conversion de type",
-      "capability": "Fonctionnalité indisponible"
+      "capability": "Fonctionnalité indisponible",
+      "ai-disabled": "Assistant IA indisponible",
+      "ai-provider": "Erreur du fournisseur IA"
     }
   },
   "locale-switcher": {

@@ -66,13 +66,47 @@
     "empty": "(run a query)",
     "affected": "OK ({rows} rows affected)"
   },
+  "ai": {
+    "heading": "AI assist",
+    "section": {
+      "explain": "Explain this query",
+      "suggest": "Generate SQL"
+    },
+    "dialect": {
+      "label": "Dialect (optional)",
+      "placeholder": "e.g. postgres"
+    },
+    "explain": {
+      "button": "Explain",
+      "empty": "Run explain to see Claude's interpretation of your SQL."
+    },
+    "suggest": {
+      "button": "Generate",
+      "empty": "Describe the query you want and Claude will draft it.",
+      "prompt-label": "Describe what you want",
+      "prompt-placeholder": "e.g. count active users by month",
+      "insert": "Insert into editor"
+    },
+    "response": {
+      "model": "Model: {model}"
+    },
+    "state": {
+      "loading": "Working…"
+    },
+    "disabled": {
+      "heading": "AI assist is not configured",
+      "body": "Set the AI provider environment variable on the API server to enable explain and generate."
+    }
+  },
   "error": {
     "prefix": {
       "connection": "Connection error",
       "query": "Query error",
       "schema": "Schema error",
       "type-conversion": "Type conversion error",
-      "capability": "Capability unavailable"
+      "capability": "Capability unavailable",
+      "ai-disabled": "AI assist unavailable",
+      "ai-provider": "AI provider error"
     }
   },
   "locale-switcher": {

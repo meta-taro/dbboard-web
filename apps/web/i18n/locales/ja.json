@@ -66,13 +66,47 @@
     "empty": "（クエリを実行してください）",
     "affected": "OK ({rows} 行に影響)"
   },
+  "ai": {
+    "heading": "AI アシスト",
+    "section": {
+      "explain": "このクエリを解説",
+      "suggest": "SQL を生成"
+    },
+    "dialect": {
+      "label": "方言（任意）",
+      "placeholder": "例: postgres"
+    },
+    "explain": {
+      "button": "解説",
+      "empty": "解説を実行すると、Claude による SQL の解釈が表示されます。"
+    },
+    "suggest": {
+      "button": "生成",
+      "empty": "実行したい内容を記述すると、Claude が下書きを作成します。",
+      "prompt-label": "実行したい内容を記述",
+      "prompt-placeholder": "例: 月ごとのアクティブユーザー数を集計",
+      "insert": "エディタに挿入"
+    },
+    "response": {
+      "model": "モデル: {model}"
+    },
+    "state": {
+      "loading": "処理中…"
+    },
+    "disabled": {
+      "heading": "AI アシストは未設定です",
+      "body": "API サーバーで AI プロバイダの環境変数を設定すると、解説と生成が利用できるようになります。"
+    }
+  },
   "error": {
     "prefix": {
       "connection": "接続エラー",
       "query": "クエリエラー",
       "schema": "スキーマ取得エラー",
       "type-conversion": "型変換エラー",
-      "capability": "機能非対応"
+      "capability": "機能非対応",
+      "ai-disabled": "AI アシストは利用できません",
+      "ai-provider": "AI プロバイダエラー"
     }
   },
   "locale-switcher": {

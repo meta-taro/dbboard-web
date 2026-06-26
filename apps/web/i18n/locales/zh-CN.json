@@ -66,13 +66,47 @@
     "empty": "(请运行查询)",
     "affected": "OK (受影响行数: {rows})"
   },
+  "ai": {
+    "heading": "AI 助手",
+    "section": {
+      "explain": "解释此查询",
+      "suggest": "生成 SQL"
+    },
+    "dialect": {
+      "label": "方言（可选）",
+      "placeholder": "例如：postgres"
+    },
+    "explain": {
+      "button": "解释",
+      "empty": "运行解释以查看 Claude 对您 SQL 的理解。"
+    },
+    "suggest": {
+      "button": "生成",
+      "empty": "描述您想要的查询，Claude 将为您起草。",
+      "prompt-label": "描述您想要的内容",
+      "prompt-placeholder": "例如：按月统计活跃用户数",
+      "insert": "插入编辑器"
+    },
+    "response": {
+      "model": "模型：{model}"
+    },
+    "state": {
+      "loading": "处理中…"
+    },
+    "disabled": {
+      "heading": "AI 助手未配置",
+      "body": "在 API 服务器上设置 AI 提供商环境变量以启用解释和生成。"
+    }
+  },
   "error": {
     "prefix": {
       "connection": "连接错误",
       "query": "查询错误",
       "schema": "模式错误",
       "type-conversion": "类型转换错误",
-      "capability": "不支持此功能"
+      "capability": "不支持此功能",
+      "ai-disabled": "AI 助手不可用",
+      "ai-provider": "AI 提供商错误"
     }
   },
   "locale-switcher": {

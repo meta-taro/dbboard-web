@@ -66,13 +66,47 @@
     "empty": "(execute uma consulta)",
     "affected": "OK ({rows} linhas afetadas)"
   },
+  "ai": {
+    "heading": "Assistente de IA",
+    "section": {
+      "explain": "Explicar esta consulta",
+      "suggest": "Gerar SQL"
+    },
+    "dialect": {
+      "label": "Dialeto (opcional)",
+      "placeholder": "ex.: postgres"
+    },
+    "explain": {
+      "button": "Explicar",
+      "empty": "Execute a explicação para ver a interpretação do seu SQL pelo Claude."
+    },
+    "suggest": {
+      "button": "Gerar",
+      "empty": "Descreva a consulta desejada e o Claude redigirá um rascunho.",
+      "prompt-label": "Descreva o que deseja",
+      "prompt-placeholder": "ex.: contar usuários ativos por mês",
+      "insert": "Inserir no editor"
+    },
+    "response": {
+      "model": "Modelo: {model}"
+    },
+    "state": {
+      "loading": "Processando…"
+    },
+    "disabled": {
+      "heading": "O assistente de IA não está configurado",
+      "body": "Defina a variável de ambiente do provedor de IA no servidor da API para habilitar explicar e gerar."
+    }
+  },
   "error": {
     "prefix": {
       "connection": "Erro de conexão",
       "query": "Erro de consulta",
       "schema": "Erro de esquema",
       "type-conversion": "Erro de conversão de tipo",
-      "capability": "Recurso indisponível"
+      "capability": "Recurso indisponível",
+      "ai-disabled": "Assistente de IA indisponível",
+      "ai-provider": "Erro do provedor de IA"
     }
   },
   "locale-switcher": {

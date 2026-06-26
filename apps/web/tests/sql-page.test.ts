@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   sidebarRefresh: vi.fn(),
   sidebarConstructed: vi.fn(),
   schemaConstructed: vi.fn(),
+  aiPanelConstructed: vi.fn(),
 }));
 
 let resultRef: Ref<{
@@ -79,6 +80,23 @@ vi.mock("../app/components/SchemaBrowser.vue", () => ({
   }),
 }));
 
+// AiPanel stub. Page-level coverage just verifies the mount and that
+// the panel receives the current SQL text and that its `insert` event
+// reuses the schema browser's caret-aware splicer. Composable surface
+// and panel behaviour are covered by use-ai-assist.test.ts and
+// ai-panel.test.ts.
+vi.mock("../app/components/AiPanel.vue", () => ({
+  default: defineComponent({
+    name: "AiPanel",
+    props: ["currentSql"],
+    emits: ["insert"],
+    setup() {
+      mocks.aiPanelConstructed();
+      return () => h("aside", { "data-testid": "ai-panel" });
+    },
+  }),
+}));
+
 const mountOptions = {
   global: {
     stubs: {
@@ -101,6 +119,7 @@ describe("SqlPage", () => {
     mocks.sidebarRefresh.mockReset();
     mocks.sidebarConstructed.mockReset();
     mocks.schemaConstructed.mockReset();
+    mocks.aiPanelConstructed.mockReset();
   });
 
   afterEach(() => {
@@ -355,6 +374,39 @@ describe("SqlPage", () => {
 
     expect(wrapper.find("[data-testid='schema-browser']").exists()).toBe(true);
     expect(mocks.schemaConstructed).toHaveBeenCalledWith("route-id");
+    wrapper.unmount();
+  });
+
+  it("mounts the AI panel and forwards the current SQL editor value to it", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='ai-panel']").exists()).toBe(true);
+    expect(mocks.aiPanelConstructed).toHaveBeenCalled();
+
+    const panel = wrapper.findComponent({ name: "AiPanel" });
+    // The panel mounts before the user has typed anything.
+    expect(panel.props("currentSql")).toBe("");
+
+    await wrapper.find("[data-testid='sql-input']").setValue("SELECT 99");
+    await flushPromises();
+    expect(panel.props("currentSql")).toBe("SELECT 99");
+    wrapper.unmount();
+  });
+
+  it("splices an AI panel insert into the textarea via the same caret-aware path as the schema browser", async () => {
+    const wrapper = mount(SqlPage, { ...mountOptions, attachTo: document.body });
+    await flushPromises();
+
+    const textarea = wrapper.find<HTMLTextAreaElement>("[data-testid='sql-input']");
+    await textarea.setValue("-- prompt result\n");
+    textarea.element.selectionStart = textarea.element.selectionEnd = textarea.element.value.length;
+
+    const panel = wrapper.findComponent({ name: "AiPanel" });
+    panel.vm.$emit("insert", "SELECT COUNT(*) FROM users;");
+    await flushPromises();
+
+    expect(textarea.element.value).toBe("-- prompt result\nSELECT COUNT(*) FROM users;");
     wrapper.unmount();
   });
 

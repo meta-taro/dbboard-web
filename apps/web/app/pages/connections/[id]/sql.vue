@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { useRoute } from "vue-router";
+import AiPanel from "../../../components/AiPanel.vue";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
@@ -128,6 +129,8 @@ function onEditorKeydown(event: KeyboardEvent) {
             <ResultGrid v-if="hasRows" :result="result" />
           </template>
         </section>
+
+        <AiPanel :current-sql="sqlInput" @insert="onInsertIdentifier" />
       </div>
 
       <div class="sidebar-column">

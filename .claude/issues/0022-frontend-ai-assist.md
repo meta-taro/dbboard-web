@@ -1,8 +1,9 @@
 # 0022 — Frontend AI assist panel (Phase 6 Slice 3)
 
-- **Status:** in progress
+- **Status:** done (2026-06-26)
 - **Phase:** web-side Phase 6 Slice 3 (UI layer on top of the Slice 2 `POST /ai/explain` + `POST /ai/suggest` routes)
 - **Opened:** 2026-06-26
+- **Closed:** 2026-06-26
 - **Branch:** none (direct-to-`develop`, per the Phase 4/5/6 slice pattern)
 - **Depends on:** [`0019`](./0019-ai-provider-anthropic-stage1.md) (provider seam), [`0020`](./0020-ai-explain-suggest-http-routes.md) (HTTP routes + `ai_disabled` / `ai_provider` envelope categories).
 - **Anchors:**
@@ -76,12 +77,34 @@ Expected after Slice 3:
 
 ## DoD
 
-- [ ] `useAiAssist()` composable lives at `apps/web/app/composables/useAiAssist.ts` with the documented surface.
-- [ ] `AiPanel.vue` component lives at `apps/web/app/components/AiPanel.vue` and renders explain + suggest sections.
-- [ ] `i18n-error.ts` recognises `ai_disabled` and `ai_provider` and routes both to hyphen i18n keys.
-- [ ] All 11 locale files include the 18 new leaves (16 `ai.*` + 2 `error.prefix.ai-*`); parity test re-pinned.
-- [ ] `sql.vue` mounts `<AiPanel>` with the current editor SQL as a prop and wires `@insert` into the existing caret-aware splicer.
-- [ ] `ai_disabled` envelope (HTTP 404) renders a neutral "AI not configured" panel state rather than a generic error.
-- [ ] No HTTP contract change; no API code touched; no E2E suite touched.
-- [ ] Full verification chain green.
-- [ ] Phase 6 DoD bullet for Nuxt UI ticked in `roadmap.md`; `project-status.md` records the closeout. **Phase 6 fully closed.**
+- [x] `useAiAssist()` composable lives at `apps/web/app/composables/useAiAssist.ts` with the documented surface.
+- [x] `AiPanel.vue` component lives at `apps/web/app/components/AiPanel.vue` and renders explain + suggest sections.
+- [x] `i18n-error.ts` recognises `ai_disabled` and `ai_provider` and routes both to hyphen i18n keys.
+- [x] All 11 locale files include the 18 new leaves (16 `ai.*` + 2 `error.prefix.ai-*`); parity test re-pinned.
+- [x] `sql.vue` mounts `<AiPanel>` with the current editor SQL as a prop and wires `@insert` into the existing caret-aware splicer.
+- [x] `ai_disabled` envelope (HTTP 404) renders a neutral "AI not configured" panel state rather than a generic error.
+- [x] No HTTP contract change; no API code touched; no E2E suite touched.
+- [x] Full verification chain green.
+- [x] Phase 6 DoD bullet for Nuxt UI ticked in `roadmap.md`; `project-status.md` records the closeout. **Phase 6 fully closed.**
+
+## Closeout (2026-06-26)
+
+Landed on `develop` via the per-slice commit sequence (no PR; matches the Phase 4/5/6 direct-to-`develop` cadence):
+
+1. **Issue open** — this file.
+2. **i18n-error bridge** — `apps/web/app/composables/internal/i18n-error.ts` widens `ErrorCategory` to include `ai_disabled | ai_provider`; `toI18nKey` maps both to the underscore→hyphen i18n key namespace (`error.prefix.ai-disabled` / `error.prefix.ai-provider`). Test scaffold at `apps/web/tests/i18n-error.test.ts` pins all category mappings (5 prior + 2 new).
+3. **`useAiAssist` composable** — `apps/web/app/composables/useAiAssist.ts` exposes the documented `{lastResponse, state, lastError, explain, suggestSql}` surface; readonly refs; `apiBase` test seam; single shared state across both methods so the panel can disable both buttons during any in-flight call. Test at `apps/web/tests/use-ai-assist.test.ts` (10 specs) covers idle / loading / done (both methods) / error (`ai_disabled` + `ai_provider` + generic) / `dialect` passthrough / response-replacement / error-clear.
+4. **`AiPanel.vue` component** — `apps/web/app/components/AiPanel.vue` renders two stacked sections (explain on top, suggest below) sharing a `dialect` input + spinner + error banner. `isDisabledMode` latches on `lastError?.category === "ai_disabled"`, swaps the error banner for a neutral "AI is not configured" notice, and disables both action buttons (no eager probe — the first 404 is the disabled-state signal per Slice 2). Suggest output exposes an "Insert into editor" button that emits the wire `text`. Test at `apps/web/tests/ai-panel.test.ts` (9 specs).
+5. **11-locale `ai.*` keys + parity re-pin** — 16 `ai.*` keys + 2 `error.prefix.ai-*` keys translated across `en` / `ja` / `ko` / `zh-CN` / `zh-TW` / `de` / `fr` / `es` / `pt-BR` / `ru` / `it`. Parity test (`apps/web/tests/i18n-locale-parity.test.ts`) re-pinned with the new key set; ICU `{model}` placeholder check added for `ai.response.model`.
+6. **`sql.vue` wiring** — `<AiPanel :current-sql="sqlInput" @insert="onInsertIdentifier" />` mounted in the existing `.editor-column` below `.result-area`; the existing caret-aware `onInsertIdentifier` handler is reused as-is for suggest-insert. Tests in `apps/web/tests/sql-page.test.ts` extended with 2 specs: panel-mounts + `currentSql` prop tracks editor value; insert event reuses the same splicer path as the schema browser. (Reactivity gotcha: read live props via `wrapper.findComponent({name}).props()`, not a setup-time spy that fires once.)
+7. **Status + roadmap + issue closeout** — this commit.
+
+**Verification chain (all green):**
+
+- `pnpm format` (write mode, clean)
+- `pnpm -r typecheck`
+- `pnpm -r lint` — 0 errors; 3 pre-existing warnings (one `<input/>` self-closing in `AiPanel.vue` matches the established pattern in `connections/index.vue`, not a regression)
+- `pnpm -r test` — **API 323 + 2 skipped; Web 332** (was 272; +60 from the new specs + the 30 locale parity entries that fan out across the 10 non-English locales)
+- `pnpm -r build` — Nuxt 2.91 MB / 727 kB gzip; Nest clean
+
+**Untouched (verified by `git diff --stat develop` before the slice opened):** `docs/api-contract.md` (web-only AI per ADR-0023), `apps/api/**` (no API change in this slice), `apps/web/e2e/**` (no E2E added — would require a real Anthropic key or stub the same wire unit tests already cover).

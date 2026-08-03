@@ -39,7 +39,10 @@ them — it is full of synthetic connection strings and example emails.
   - **aws-access-key-id** — a real-looking `AKIA…` key id.
   - **identity** — an author/committer address that is not a GitHub noreply
     address. Blocking rather than advisory because, unlike a string in a file,
-    it cannot be corrected by a later commit (see below).
+    it cannot be corrected by a later commit (see below). Three shapes pass:
+    `<id>+<login>@users.noreply.github.com`, the older `<login>@` variant, and
+    the bare `noreply@github.com` that GitHub stamps as the committer of
+    web-UI commits.
 - **ADVISORY** (printed in the `--tree` / `--range` scan, never fails):
   - **passworded-db-url**, **personal-email**, **windows-home-path**.
 
@@ -143,6 +146,17 @@ still publishes a personal address on every merge. The desktop repo hit exactly
 this on 2026-07-31: the branch commits of its PR #127 were noreply, the squash
 commit they produced on `develop` was not, and CI went red on a range that clone
 did not write.
+
+Turning the setting on fixed the author, and the identity check stayed red — on
+the **committer**. GitHub's web-flow stamps every web-UI commit with the bare
+`noreply@github.com`, which is not under `users.` and which an allowlist written
+for the per-account forms alone rejects. So a false positive had been firing on
+every web merge, and it looked exactly like the real leak underneath it. Three
+shapes pass now: `<id>+<login>@users.noreply.github.com`, the older `<login>@`
+variant, and `noreply@github.com`. Admitted as a whole-string alternative, so
+`evil-noreply@github.com` and `noreply@github.com.example.com` are still
+rejected — both asserted in `--selftest`. **If you see an identity failure now,
+it is a finding.**
 
 The pre-commit hook refuses to commit when `user.email` is not a noreply
 address, and CI re-checks the commits each push or PR introduced. Neither

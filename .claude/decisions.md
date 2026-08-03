@@ -378,3 +378,39 @@ A third fact was found while checking: all 129 commits from the root commit to `
 - Desktop: ADR-0055 and ADR-0084 in `dbboard/docs/decisions.md`; the runbook at `dbboard/docs/maintainer/history-sanitize-runbook.md`; the workflow this one was ported from at `dbboard/.github/workflows/pii-scan.yml`.
 - Web operator guide: [`../docs/maintainer/pii-scanning.md`](../docs/maintainer/pii-scanning.md).
 - Baseline anchors: §6 (push is the human's), §15 (secrets are the human's), §23 (CI self-check), §32 (no personal identity in a public repo).
+
+---
+
+## 2026-08-03 — Admit GitHub's web-flow committer address in the identity check (mirrors desktop ADR-0085)
+
+**Context.** The scanner ported earlier the same day allowed only the per-account noreply forms as a publishable identity: `<id>+<login>@users.noreply.github.com` and the older `<login>@` variant. That is the address `git config user.email` produces, so every commit written from a clone passes.
+
+It is not the only address GitHub writes. Commits created through the web UI — "Squash and merge" included — are stamped by GitHub's web-flow with the bare `noreply@github.com` as the **committer**. That address is not under `users.`, so the allowlist rejected it.
+
+The desktop repo found this the hard way. Its PR #127 squash leaked a personal author address; turning on the account's email-privacy setting fixed the author, and the identity step stayed red anyway on the committer. A genuine finding and a false positive that had been firing on every web merge were indistinguishable from the job status. Desktop fixed it as ADR-0085 (`dbboard@27824b0`).
+
+The same defect was live here. This repository merges through the GitHub web UI — twelve commits in its history already carry `noreply@github.com` as the committer — so the next squash merge would have gone red on a check no configuration could satisfy.
+
+**Alternatives.** (a) Leave it and let maintainers learn to ignore identity failures on merge commits — rejected, and the reason is the whole point of the desktop incident: a check that is red for a known-benign reason cannot report the unknown malignant one. (b) Skip the identity scan on merge commits — rejected: the merge commit is exactly where the author leak appeared, so exempting it removes the coverage that mattered. (c) Broaden the pattern to any `@github.com` address — rejected as too loose; `evil-noreply@github.com` and `noreply@github.com.example.com` would both slip through.
+
+**Decision.** Widen `IDENTITY_ALLOW_RE` to admit `noreply@github.com` as a whole-string alternative alongside the two account forms, and pin all three in `--selftest` together with the two near-miss rejections.
+
+**Rationale.**
+
+- _Why it is safe to admit._ The address belongs to GitHub rather than to any account, so it identifies nobody. Admitting it leaks nothing; the personal address it might otherwise mask is caught on the author field, which is unchanged.
+- _Why a whole-string alternative rather than a relaxed pattern._ The regex is anchored at both ends and the new branch is a literal. `evil-noreply@github.com` fails the left anchor and `noreply@github.com.example.com` fails the right one. Both are asserted in the selftest, so a future edit that loosens the anchors fails the first CI step rather than silently widening what counts as publishable.
+- _Why TDD on a one-line regex._ The RED step is what proved the defect was live here and not merely inherited from desktop's history: adding `noreply@github.com` to the selftest's accept list failed against web's own copy before the regex changed. The two near-miss cases passed at RED already, which is the useful half of the result — it shows the fix widened exactly one thing.
+
+**Consequences.**
+
+- Web-UI merges no longer fail the identity step. An identity failure from here is a finding.
+- Twelve existing web-flow commits stay out of scope regardless: the CI identity scan is event-scoped, so it only ever sees the commits a push or PR introduced.
+- The two repositories' scanners are back in sync. They are separate files by design (no shared submodule), so drift is a standing risk — this entry is the second data point, after the initial port, that desktop is the upstream of record for scanner rules.
+
+**Reversibility.** One line and five selftest fixtures; fully reversible.
+
+**Cross-references.**
+
+- Desktop: ADR-0085 in `dbboard/docs/decisions.md`, landed by `dbboard@27824b0`. The incident behind it is the squash merge of PR #127 (`dbboard@e15dcff`); its write-up is `dbboard@d7ed16b`.
+- Prior entry: "2026-08-03 — Port the desktop PII scanner; add the CI this repo never had" above.
+- Operator guide: [`../docs/maintainer/pii-scanning.md`](../docs/maintainer/pii-scanning.md) § Commit identity.

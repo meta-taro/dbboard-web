@@ -1,1 +1,8 @@
+set -e
+
 pnpm exec lint-staged
+
+# After lint-staged, so the scan sees exactly the bytes that will be committed
+# (lint-staged rewrites and re-stages formatted files). --reveal is local-only:
+# the developer needs to see what tripped; a public CI log must not.
+sh scripts/pii-scan.sh --staged --reveal

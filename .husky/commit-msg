@@ -1,0 +1,5 @@
+set -e
+
+# Commit messages are as public as the tree and cannot be edited after a push
+# without rewriting history, so they get the same blocking rules.
+sh scripts/pii-scan.sh --message "$1" --reveal

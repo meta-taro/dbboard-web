@@ -66,7 +66,13 @@ Creating both is a **maintainer action** — per baseline §15 no AI agent touch
 secrets. Until they exist the scan degrades to generic rules only: it does not
 fail, it just loses literal-name detection.
 
-Keep the two in sync.
+**It is one list, not two.** The desktop repo keeps its own `.pii-denylist` at
+its repo root, and the same real names threaten both repositories, so the two
+files should be byte-identical — copy rather than re-type, and when a new name
+is added, add it in both. That makes four places to keep in sync: each repo's
+local file and each repo's `PII_DENYLIST` secret. A name present in one and
+missing from the other produces the worst outcome the scanner has: a green run
+that proves nothing.
 
 ## False positives — the allowlist
 

@@ -326,3 +326,55 @@ The HTTP contract (`docs/api-contract.md`) is shared with desktop. Translating e
 - Sibling closeout: [`./issues/0010-aurora-dsql-no-mirror.md`](./issues/0010-aurora-dsql-no-mirror.md) (same desktop PR `dbboard@c35b3b2` shipped both no-op briefs).
 - Web roadmap entry: [`./roadmap.md`](./roadmap.md) § "Phase 6 — Optional AI provider interface" + § "Relationship with the desktop client" (line ~176).
 - Hard redline anchor: [`./issues/0018-history-export-roundtrip-fixture.md`](./issues/0018-history-export-roundtrip-fixture.md) (v:1 schema lock).
+
+---
+
+## 2026-08-03 — Port the desktop PII scanner; add the CI this repo never had
+
+**Context.** Reviewing the desktop client's progress surfaced two of its recent ADRs that are not database-behaviour mirrors and therefore had no incoming brief, but that describe an exposure this repository shares one-for-one:
+
+- **ADR-0055** (`dbboard`): a public repo developed against real, business-identifying databases needs a preventive leak scanner, not just a one-time cleanup.
+- **ADR-0084** (`dbboard`): commit **identity** is asymmetric with commit **content**. A leaked string in a file is fixable by a later commit; an address in the author/committer field is part of the commit object, so removing it rewrites that hash and every descendant. `git grep` reads trees, so it structurally cannot see this class of leak.
+
+Two facts made this urgent rather than aspirational. First, `dbboard-web` is public and its fixtures are full of connection strings. Second — verified, not assumed — **this repository had no `.github/` directory at all**: no CI, no scanner, nothing. The husky hooks were the only gate, and a hook is skippable and absent entirely for a reviewer working from a fork. Baseline §23 ("check CI after every commit") had been silently unsatisfiable since the repo was created.
+
+A third fact was found while checking: all 129 commits from the root commit to `develop` carried the maintainer's personal email in the author and committer fields, on a public repo. The desktop repo had already fixed its going-forward half; this one had not.
+
+**Alternatives.** (a) Write a web-native scanner in TypeScript as a pnpm script — rejected: it would drift from the desktop's rules, and the rule set is the valuable part, not the language. (b) Adopt an off-the-shelf secret scanner (gitleaks, trufflehog) — rejected: none of them scan commit _identity_, which is the half that cannot be fixed after the fact, and a third-party action in a `contents: read` workflow is new supply-chain surface for a repo whose own `pnpm-workspace.yaml` quarantines dependencies for 24h. (c) Enable GitHub's push protection only — rejected as insufficient: it catches provider-issued credentials, not customer names or a personal email in a commit header.
+
+**Decision.** Port `scripts/pii-scan.sh` and its allowlist from the desktop, adapt only what is repo-specific, and add the two workflows this repo was missing.
+
+- **Scanner**, ported with four changes: the lockfile exclusion (`Cargo.lock` to `pnpm-lock.yaml`), the runbook pointer, the header provenance note, and two web-specific lines in the selftest's clean fixture.
+- **Allowlist** gained one advisory-tier section for the two DSN shapes web's fixtures actually use — the testcontainers template with an unresolved host/port, and the single-letter controller placeholder. Both under the advisory marker, which is load-bearing: entries there cannot silence a blocking finding.
+- **Hooks**: `pre-commit` runs the scanner _after_ `lint-staged`, so it sees the bytes that will actually be committed; `commit-msg` scans the message. Both pass `--reveal` — a local terminal is private, a public Actions log is not.
+- **`.github/workflows/pii-scan.yml`**: selftest, tree, commit messages, and identity, on push/PR to the integration branches plus a daily cron. `contents: read`, first-party actions only, denylist materialized from the `PII_DENYLIST` secret and shredded afterwards, never `--reveal`.
+- **`.github/workflows/ci.yml`**: the verification chain CLAUDE.md already documents — `format:check`, `lint`, `typecheck`, `test`, `build` — on pnpm via corepack.
+- **Git identity**: the repo-local `user.email` is now the GitHub noreply address. Nothing new joins the leaked set.
+
+**Rationale.**
+
+- _Why port rather than reimplement._ The scanner's value is the calibration: which rules block and which only advise, and why. A database client's test suite is full of synthetic connection strings, so a scanner that blocks on every passworded URL gets disabled within a week. The two-tier split (denylist literals + private keys + AWS key ids block; URL/email/path _shapes_ advise) is the outcome of that pressure on the desktop side, and it transfers unchanged because both repos have the same fixture problem.
+- _Why the identity check is blocking while shape rules are not._ This is the ADR-0084 asymmetry. Everything else the scanner finds can be fixed by the next commit. An author address cannot, so it has to be stopped before the commit object exists.
+- _Why the identity scan is event-scoped and the message scan is not._ Measured, not guessed: scanning all 129 commit messages from the root commit comes back clean, so scanning the full message history is free and stays green. Identity over the same range is red on every single commit, pending the rewrite. Scanning it would be permanently red and would bury the live signal — the check exists to stop new ones.
+- _Why `origin/main..HEAD` for messages._ Inherited from the desktop template, but it means something different here: `main` **is** the root commit (`develop` is 129 ahead, `main` is 0 ahead), so the desktop's "new commits" range is web's "all commits" range. Kept as-is because on this repo it happens to be the strictly better scan, and noted in the workflow header so the next reader is not misled by the familiar-looking expression.
+- _Why TDD applied to a shell script._ It caught a real bug on the desktop side (a mode that parsed but never dispatched, so it reported "clean" without scanning anything — the worst possible failure for a scanner). Here the RED step had to be made honest twice: the first attempt seeded the selftest fixture with a _resolved_ URL, which only tripped one of the two expected rules because an existing allow entry already covered the loopback address. Using the literal tracked text — the unresolved host/port template — produced a genuine two-rule failure before the allow entries were added.
+
+**Hard boundaries (not AI work).**
+
+- **The `.pii-denylist` file and the `PII_DENYLIST` secret must be created by the maintainer** (baseline §15). Until they exist, literal-name detection is OFF and the scan runs on generic rules only. It degrades quietly rather than failing, which is the right default but is also easy to forget — the workflow logs `denylist: PII_DENYLIST secret absent` on every run.
+- **The 129 published commits are left alone.** Rewriting them means a force-push on a public repository, which baseline §6 and §32 both put on the human side, and it is the same decision as the desktop's own pending 428-commit rewrite. Doing one repo and not the other buys nothing. The shape of the work is written up in `docs/maintainer/pii-scanning.md` § History rewrite so the decision can be made from the facts rather than re-derived.
+
+**Consequences.**
+
+- Every commit from here is scanned twice locally and up to four ways in CI; no commit can be authored under a non-noreply address without the hook refusing.
+- CI exists for the first time, which means baseline §23 is now actually satisfiable and a fork's PR gets checked by something other than trust.
+- The conformance battery stays out of CI deliberately — it spawns the desktop loopback binary, which does not exist on a GitHub runner. It remains a maintainer-invoked `pnpm conformance`.
+- The Postgres integration spec _does_ run in CI: `ubuntu-latest` has a Docker daemon, so the testcontainers path is exercised rather than skipped.
+
+**Reversibility.** Fully reversible — the scanner is one self-contained script plus a data file, and the workflows are additive. The one irreversible part is deliberately not being done in this change: the history rewrite.
+
+**Cross-references.**
+
+- Desktop: ADR-0055 and ADR-0084 in `dbboard/docs/decisions.md`; the runbook at `dbboard/docs/maintainer/history-sanitize-runbook.md`; the workflow this one was ported from at `dbboard/.github/workflows/pii-scan.yml`.
+- Web operator guide: [`../docs/maintainer/pii-scanning.md`](../docs/maintainer/pii-scanning.md).
+- Baseline anchors: §6 (push is the human's), §15 (secrets are the human's), §23 (CI self-check), §32 (no personal identity in a public repo).

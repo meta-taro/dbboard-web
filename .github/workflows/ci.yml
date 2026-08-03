@@ -1,0 +1,87 @@
+# Base verification chain.
+#
+# Runs the exact gate documented in CLAUDE.md ("Run before committing: format,
+# lint, typecheck, unit tests") plus a build, on the same commands a maintainer
+# runs locally. Until this landed the repository had no CI at all: the husky
+# hooks were the only gate, and a hook is skippable (`--no-verify`) and absent
+# entirely for anyone reviewing a fork.
+#
+# Ordering mirrors the local chain, cheapest first. The three static checks use
+# `!cancelled()` so one run reports every static failure instead of making the
+# maintainer fix them one push at a time; `test` and `build` keep the default
+# `success()` condition so a red static check does not pay for a full build.
+#
+# `pnpm test` includes `apps/api/test/postgres-integration.spec.ts`, which boots
+# a real `postgres:16-alpine` through testcontainers. The runner has a Docker
+# daemon so it genuinely executes here; the spec's own skip gate covers hosts
+# without one. The conformance battery (`pnpm conformance`) is deliberately NOT
+# run — it spawns the desktop loopback binary, which does not exist on this
+# runner (see apps/api/vitest.conformance.config.ts).
+#
+# Least privilege: `contents: read`, no write scope, first-party actions only.
+name: ci
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep husky out of the `pnpm install` prepare step; hooks are for humans.
+  HUSKY: "0"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          # engines.node is ">=22"; pin the major so a runner-image bump to 24
+          # cannot change what CI validates without a commit here.
+          node-version: 22
+
+      - name: Enable corepack (pins pnpm to packageManager)
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: pnpm lint
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm typecheck
+
+      - name: Unit / integration tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

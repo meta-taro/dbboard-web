@@ -62,6 +62,11 @@ storybook-static/
 # ローカル秘密控え（🟡 識別子のみ・🔴 token/key は置かない）— commit 禁止
 SECRETS.local.md
 
+# pii-scan の denylist（実名・実アドレスそのもの）。これを commit したら
+# スキャナが隠している当の文字列を tracked file に戻すことになる。
+# 雛形は .pii-denylist.example、CI では PII_DENYLIST secret から生成する。
+.pii-denylist
+
 # 司令塔のベースルール正本と共通雛形（個人名を含むため OSS 上流に出さない）。
 # 実体は司令塔リポから配布される。
 /.claude/rules/

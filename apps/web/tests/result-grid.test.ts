@@ -2,6 +2,13 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import ResultGrid from "../app/components/ResultGrid.vue";
 
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) =>
+      params ? `${key}|${JSON.stringify(params)}` : key,
+  }),
+}));
+
 // We trust @tanstack/vue-virtual itself and only test our component's
 // rendering. The mock returns every row as a visible virtual item so the
 // assertions can target real cells without juggling getBoundingClientRect
@@ -125,6 +132,106 @@ describe("ResultGrid", () => {
 
     const numberCells = wrapper.findAll(".cell--number");
     expect(numberCells.map((c) => c.text())).toEqual(["1", "2", "3"]);
+    wrapper.unmount();
+  });
+
+  it("sorts the display on a header click, leaving the result untouched", async () => {
+    const before = JSON.stringify(SAMPLE_RESULT.rows);
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    const headers = wrapper.findAll("[data-testid='result-grid__sort-button']");
+    expect(headers).toHaveLength(SAMPLE_RESULT.columns.length);
+    // ids are already 1, 2, 3 — the second click (descending) is the one
+    // that proves the display actually reorders.
+    await headers[0]!.trigger("click");
+    await headers[0]!.trigger("click");
+
+    expect(wrapper.findAll(".cell--number").map((c) => c.text())).toEqual(["3", "2", "1"]);
+    expect(JSON.stringify(SAMPLE_RESULT.rows)).toBe(before);
+    wrapper.unmount();
+  });
+
+  it("keeps each row addressable by its real index while sorted", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    const byLabel = wrapper.findAll("[data-testid='result-grid__sort-button']")[1]!;
+    await byLabel.trigger("click"); // Dev, Prod, Staging
+
+    const rows = wrapper.findAll("[data-testid='result-grid__row']");
+    expect(rows.map((r) => r.attributes("data-row-index"))).toEqual(["2", "0", "1"]);
+    wrapper.unmount();
+  });
+
+  it("cycles a column ascending, descending, then back to natural order", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    const byLabel = wrapper.findAll("[data-testid='result-grid__sort-button']")[1]!;
+    const labels = () =>
+      wrapper
+        .findAll("[data-testid='result-grid__row']")
+        .map((r) => r.attributes("data-row-index"));
+
+    await byLabel.trigger("click");
+    expect(labels()).toEqual(["2", "0", "1"]);
+    await byLabel.trigger("click");
+    expect(labels()).toEqual(["1", "0", "2"]);
+    await byLabel.trigger("click");
+    expect(labels()).toEqual(["0", "1", "2"]);
+    wrapper.unmount();
+  });
+
+  it("reports the sort state on the header cell, not just as a glyph", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    const sortState = () =>
+      wrapper
+        .findAll("[data-testid='result-grid__column-header']")
+        .map((h) => h.attributes("aria-sort"));
+    expect(sortState()).toEqual(["none", "none", "none", "none"]);
+
+    await wrapper.findAll("[data-testid='result-grid__sort-button']")[1]!.trigger("click");
+    expect(sortState()).toEqual(["none", "ascending", "none", "none"]);
+    await wrapper.findAll("[data-testid='result-grid__sort-button']")[1]!.trigger("click");
+    expect(sortState()).toEqual(["none", "descending", "none", "none"]);
+    wrapper.unmount();
+  });
+
+  it("numbers the levels only once more than one column sorts", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    const buttons = wrapper.findAll("[data-testid='result-grid__sort-button']");
+    const glyphs = () =>
+      wrapper.findAll("[data-testid='result-grid__sort-indicator']").map((g) => g.text());
+
+    await buttons[0]!.trigger("click");
+    // A lone sort level needs no number — the arrow says everything.
+    expect(glyphs()).toEqual(["▲"]);
+
+    await buttons[1]!.trigger("click", { ctrlKey: true });
+    expect(glyphs()).toEqual(["▲1", "▲2"]);
+    wrapper.unmount();
+  });
+
+  it("drops the sort when a different result is rendered", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: SAMPLE_RESULT } });
+
+    await wrapper.findAll("[data-testid='result-grid__sort-button']")[0]!.trigger("click");
+    await wrapper.findAll("[data-testid='result-grid__sort-button']")[0]!.trigger("click");
+    expect(wrapper.findAll(".cell--number").map((c) => c.text())).toEqual(["3", "2", "1"]);
+
+    await wrapper.setProps({
+      result: {
+        columns: [{ name: "n", declared_type: "INTEGER" }],
+        rows: [[7], [4]],
+        rows_affected: 0,
+      },
+    });
+    expect(wrapper.findAll(".cell--number").map((c) => c.text())).toEqual(["7", "4"]);
+    expect(
+      wrapper
+        .findAll("[data-testid='result-grid__column-header']")
+        .map((h) => h.attributes("aria-sort")),
+    ).toEqual(["none"]);
     wrapper.unmount();
   });
 

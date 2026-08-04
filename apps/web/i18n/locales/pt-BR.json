@@ -71,6 +71,10 @@
       "download": "Salvar como CSV",
       "copied": "Copiado",
       "failed": "Falha ao copiar"
+    },
+    "sort": {
+      "button": "Ordenar por {column} (Ctrl+clique para adicionar um nível)",
+      "level": "Nível de ordenação {level}"
     }
   },
   "ai": {

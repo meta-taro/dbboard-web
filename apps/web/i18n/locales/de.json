@@ -71,6 +71,10 @@
       "download": "Als CSV speichern",
       "copied": "Kopiert",
       "failed": "Kopieren fehlgeschlagen"
+    },
+    "sort": {
+      "button": "Nach {column} sortieren (Strg-Klick fügt eine Ebene hinzu)",
+      "level": "Sortierebene {level}"
     }
   },
   "ai": {

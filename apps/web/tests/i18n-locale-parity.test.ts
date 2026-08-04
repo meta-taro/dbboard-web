@@ -108,6 +108,8 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("result.export.download");
     expect(enPaths).toContain("result.export.copied");
     expect(enPaths).toContain("result.export.failed");
+    expect(enPaths).toContain("result.sort.button");
+    expect(enPaths).toContain("result.sort.level");
     expect(enPaths).toContain("locale-switcher.label");
     expect(enPaths).toContain("theme-switcher.label");
     expect(enPaths).toContain("theme-switcher.option.auto");
@@ -126,6 +128,9 @@ describe("locale parity with en", () => {
       expect(String(flat.history.duration)).toContain("{ms}");
       expect(String(flat.result.affected)).toContain("{rows}");
       expect(String(flat.ai.response.model)).toContain("{model}");
+      const result = flat.result as unknown as { sort: Record<string, string> };
+      expect(String(result.sort.button)).toContain("{column}");
+      expect(String(result.sort.level)).toContain("{level}");
     });
 
     it(`${code} fills every leaf with a non-empty string`, () => {

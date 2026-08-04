@@ -71,6 +71,10 @@
       "download": "CSV로 저장",
       "copied": "복사했습니다",
       "failed": "복사하지 못했습니다"
+    },
+    "sort": {
+      "button": "{column} 기준 정렬(Ctrl+클릭으로 단계 추가)",
+      "level": "정렬 단계 {level}"
     }
   },
   "ai": {

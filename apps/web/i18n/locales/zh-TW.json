@@ -71,6 +71,10 @@
       "download": "儲存為 CSV",
       "copied": "已複製",
       "failed": "複製失敗"
+    },
+    "sort": {
+      "button": "依 {column} 排序（Ctrl+點擊可新增層級）",
+      "level": "排序層級 {level}"
     }
   },
   "ai": {

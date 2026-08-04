@@ -111,6 +111,14 @@ to block startup.
 - Copy leaves nothing on screen to notice, so both actions share one live
   region (`role="status"`), rendered from the start and empty. A region that
   appears at the same moment it gains text is not reliably announced.
+- The whole header cell is the sort button, not an arrow beside the name — a
+  glyph-sized target is a miss on touch, and the column name is what the eye
+  aims at. The cell's padding moves onto the button so the hit area matches
+  what is drawn.
+- Sort direction lives in `aria-sort` on the `<th>`; the ▲ / ▼ glyph is
+  `aria-hidden`, because a screen reader announcing both would say it twice.
+  The level number appears only once more than one column sorts, and is
+  spelled out for screen readers separately (`Sort level 2`).
 
 ### Editors
 

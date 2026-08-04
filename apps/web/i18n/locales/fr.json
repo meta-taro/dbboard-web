@@ -71,6 +71,10 @@
       "download": "Enregistrer en CSV",
       "copied": "Copié",
       "failed": "Échec de la copie"
+    },
+    "sort": {
+      "button": "Trier par {column} (Ctrl-clic pour ajouter un niveau)",
+      "level": "Niveau de tri {level}"
     }
   },
   "ai": {

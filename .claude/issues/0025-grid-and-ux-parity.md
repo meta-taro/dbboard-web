@@ -79,7 +79,7 @@ introduced later must read from the active theme, not hard-coded RGB.**
       malformed stored value, and every surface reads theme tokens.
 - [x] Slice B — `to_csv` / `to_tsv` equivalents are pure and unit-tested; copy
       and download wired to the grid.
-- [ ] Slice C — `sortedRowOrder` is pure; header clicks cycle asc → desc → off;
+- [x] Slice C — `sortedRowOrder` is pure; header clicks cycle asc → desc → off;
       up to three levels; a new result resets the sort.
 - [ ] Slice D — `displayWidth` / `needsViewer` are pure and unit-tested at the
       boundary; a value containing a newline always opens the viewer.
@@ -143,3 +143,40 @@ pnpm -r test
     strict sense (module followed test within the same cycle), so both were
     mutation-checked instead of trusted: swapping `toTsv` for `toCsvWithBom`,
     then the filename and `aria-live`, each produced the expected failures.
+- 2026-08-04 — Slice C done, from desktop ADR-0048 plus the shipped
+  `dbboard-core/src/sort.rs` and `SortState` in `dbboard-ui`:
+  `utils/sort.ts` (pure order), `useResultSort` (keys, permutation,
+  indicator), header buttons in `ResultGrid.vue`, `result.sort.*` in eleven
+  locales. The desktop suite ported case for case.
+  - Sorting reorders display only. `sortedRowOrder` returns a permutation of
+    indices, the grid resolves each virtual slot through it, and every row
+    carries `data-row-index` with its real index — which is what rung 6 will
+    key staged edits on. A test pins that `result.rows` is byte-identical
+    after a sort.
+  - Rust's `f64::total_cmp` has no JS equivalent. `<` leaves NaN incomparable
+    and calls `-0 < 0` false, so a comparator built on it returns 0 for those
+    pairs and the sort may place them anywhere. Reinterpreting the double's
+    bits as a sign-magnitude integer and folding the negative half reproduces
+    the total order; NaN and `-0` are pinned by test.
+  - Two places where the web shape differs from the desktop one. Rust's
+    `Value` splits Integer and Real, which JS does not have, so `rank` has
+    three buckets after NULL instead of four and mixed int/real comparison
+    disappears. And a ragged row is `column >= row.length` rather than
+    `Option`, with the same rule: a missing cell sorts ahead of a present one.
+  - Strings compare by code unit, deliberately not `localeCompare` — the same
+    result must not sort two ways on two machines.
+  - Desktop caches the permutation behind a `dirty` flag; a Vue `computed` is
+    that cache, so the flag has no counterpart. The reset-on-new-result rule
+    survives as a `watch` on the result's identity, not its row count: a
+    re-run returning the same number of rows still gets a fresh sort, because
+    the columns may mean something else entirely.
+  - `aria-sort` on the `<th>` carries the direction and the ▲/▼ glyph is
+    `aria-hidden`, so a screen reader does not say it twice. The level number
+    renders only once more than one column sorts, with a translated
+    `Sort level N` for screen readers beside it.
+  - `ResultGrid` had no vue-i18n mock in its test because it had no strings;
+    adding the header button's title needed one.
+  - The component and composable followed their tests within the same cycle
+    rather than strictly before, so both were mutation-checked: collapsing
+    `rowIndexFor` to the identity and dropping the level number produced ten
+    failures across the two environments.

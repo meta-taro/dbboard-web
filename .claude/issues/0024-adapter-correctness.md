@@ -282,3 +282,31 @@ was up for that run; the same is required here.
   `postgres-integration.spec.ts` 25/25 with **exit 0** — the exit code is the
   assertion that matters here, since the failure mode was a passing run that
   still exited 1.
+
+- **2026-08-04, follow-up** — the 57014 assertion turned out to be flaky at
+  roughly 1 run in 3, failing with `expected [Function] to throw error
+matching /statement timeout|canceling statement/i but got 'Query read
+timeout'`. Found during the rung 3 slice C gate run, not by CI.
+
+  The cause was in the config this ticket wrote. `query_timeout` and
+  `statement_timeout` were being set to the same number, and they are not the
+  same kind of deadline: the client timer is a local `setTimeout` that fires
+  with no I/O, while the server's abort has to travel back over the wire.
+  Given one budget they start together and the one with no round trip to make
+  wins about as often as not — so a third of the time the user was told
+  "Query read timeout" and lost both the explanation and the SQLSTATE.
+
+  Fixed by making the client timer a backstop rather than a competitor:
+  `query_timeout = statementTimeoutMs + 2 000 ms`. The server now finishes
+  first by construction. The integration assertion completes in ~309 ms
+  against its 300 ms budget and ran green 7 consecutive times.
+
+  The invariant this ticket recorded — "two timeouts, different failure
+  sites, neither subsumes the other" — was right, and it is the reason both
+  settings exist. What it did not say is that the two must be _ordered_. A
+  backstop that can fire first is not a backstop. That sentence is now in the
+  interface comment, next to the numbers it constrains.
+
+  Worth noting for rung 6: nothing here changes the write-path question. The
+  startup-packet `statement_timeout` still applies to writes, and that is
+  still unexamined.

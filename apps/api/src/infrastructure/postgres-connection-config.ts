@@ -11,6 +11,13 @@ const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_POOL_SIZE = 4;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 
+// How long the client timer waits past the server's own deadline. Sized to
+// cover a cancellation round trip on a slow link — generous, because the
+// cost of being too generous is a few seconds on a query that has already
+// blown its budget, while the cost of being too tight is the user losing
+// the server's explanation of what happened.
+const CLIENT_TIMEOUT_GRACE_MS = 2_000;
+
 export interface PostgresConnectionConfig {
   // Caller picks one path or the other. connectionString wins when both
   // are supplied (mirrors libpq behavior).
@@ -54,6 +61,15 @@ export interface ResolvedPostgresPoolOptions {
   // ADR-0081, minus the MySQL/MariaDB variable probe — desktop states the
   // Postgres name and unit have no such divergence, so there is nothing to
   // probe. See .claude/issues/0024-adapter-correctness.md.
+  //
+  // The two budgets are deliberately NOT equal. The server's abort is the
+  // one we want the user to see — it names the cause and carries SQLSTATE
+  // 57014 — and it needs a round trip to arrive, while the client timer
+  // needs none. Given the same deadline the client wins often enough to be
+  // a coin toss, and the user gets a bare "Query read timeout" instead.
+  // `query_timeout` is therefore the deadline plus one grace period: still
+  // a backstop for a connection that has stopped answering, no longer a
+  // competitor to the server's own timeout.
   query_timeout: number;
   statement_timeout: number;
 }
@@ -91,7 +107,7 @@ export function resolvePostgresPoolOptions(
       sslmode,
       max: DEFAULT_POOL_SIZE,
       idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
-      query_timeout: statementTimeoutMs,
+      query_timeout: statementTimeoutMs + CLIENT_TIMEOUT_GRACE_MS,
       statement_timeout: statementTimeoutMs,
     };
   }
@@ -111,7 +127,7 @@ export function resolvePostgresPoolOptions(
     sslmode: hostNeedsSsl(input.host) ? "require" : "prefer",
     max: DEFAULT_POOL_SIZE,
     idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
-    query_timeout: statementTimeoutMs,
+    query_timeout: statementTimeoutMs + CLIENT_TIMEOUT_GRACE_MS,
     statement_timeout: statementTimeoutMs,
   };
 }

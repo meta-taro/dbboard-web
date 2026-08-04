@@ -1,8 +1,10 @@
 # 0025 — Grid and UX parity (rung 3)
 
-- **Status:** in progress (opened 2026-08-04)
+- **Status:** closed 2026-08-04 (opened 2026-08-04) — six slices, six commits,
+  `a30e499` … `9ad14df`
 - **Rung:** 3 of [`parity-ledger.md`](../parity-ledger.md)
 - **Mirrors:** desktop ADR-0041, ADR-0035, ADR-0048, ADR-0082, ADR-0039, ADR-0083
+- **ADR:** [`decisions.md`](../decisions.md) — "2026-08-04 — Grid and UX parity"
 
 ## Purpose
 

@@ -537,3 +537,49 @@ Both are now recorded with reasoning in the ledger rather than deleted, for the 
 - Desktop: ADR-0070, ADR-0081, ADR-0071, ADR-0024 in `dbboard/docs/decisions.md`.
 - pg internals cited from the shipped source at `node_modules/pg@8.21.0` — `lib/client.js` (543, ~654), `lib/result.js:99`, `pg-protocol/dist/parser.js:216`.
 - Ticket: [`issues/0024-adapter-correctness.md`](./issues/0024-adapter-correctness.md). Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 2.
+
+## 2026-08-04 — Grid and UX parity: enforce the theme rule mechanically, sort as a permutation, show both halves of an error
+
+**Context.** Ticket [`0025`](./issues/0025-grid-and-ux-parity.md), rung 3 of [`parity-ledger.md`](./parity-ledger.md) — six desktop ADRs in six slices: ADR-0041 (theme), ADR-0035 (CSV/TSV export), ADR-0048 (multi-column sort), ADR-0082 (wide-cell viewer), ADR-0039 (localized + original error), ADR-0083 (sidebar divider). Re-deriving all six against `apps/web/app/` before writing code corrected three rows, and the corrections are recorded in the ticket. What follows is the subset that constrains work after this rung.
+
+**Decision 1 — the theme carry-forward rule is enforced by a test that reads source off disk, not by review.**
+
+ADR-0041 leaves one obligation on everything built after it: colours introduced later must read from the active theme. On the web that decays silently — a hard-coded literal renders correctly in whichever theme the author happened to be using, and looks wrong only to somebody else. `theme-tokens.test.ts` therefore reads `.vue` files from the filesystem rather than inspecting a rendered page: happy-dom does not apply stylesheets, and the point is to catch the literal where it was written. It bans colour literals outside the shell's palette, bans `var(--x, fallback)` (a fallback pins one theme's colour in place and nothing looks broken enough to notice), and requires every token used anywhere to be defined by the shell.
+
+**That test first shipped vacuous, and the way it was caught is the part worth keeping.** A plain `indexOf(':root[data-theme="dark"]')` matched the _prose_ in the comment above the selectors and then walked to the next `{`, so all three palette sets read the light block and "dark matches light" was comparing the light block with itself. It could never fail. It was found by deleting a token and watching the suite stay green — not by reading the test. **A check that can pass by reading the wrong bytes is worse than no check: it spends the reader's trust without earning it.** Every rule this test added since is pinned by a deliberate mutation for the same reason.
+
+One relaxation was made under pressure and is worth naming so it is not widened casually: slice F's `--sidebar-width` is a layout value the page sets on itself, and declaring it in the shell's three theme blocks would assert it varies with the theme when it does not. The rule now accepts a custom property the same file also defines. That is looser than a CSS parse, but it can only ever excuse a token the file names on the left of a colon, and a typo'd token still fails.
+
+**Decision 2 — sorting is a display permutation; the real row index travels with the row.**
+
+`sortedRowOrder` returns a permutation of indices, the grid resolves each virtual slot through it, and `result.rows` is asserted byte-identical after a sort. Every rendered row carries `data-row-index` with its **real** index, and every consumer takes `rowIndexFor(virtualIndex)` rather than the display position — the cell viewer already does.
+
+This is a standing constraint on rung 6, not just a slice detail. **Inline cell editing (ADR-0042) must key staged edits on the real index**, or an edit made while sorted will land on a different row than the one clicked. The same class of bug was found and fixed inside this rung: the viewer's sorted-case test was written against a descending sort, which for that fixture is the identity permutation, so the case was vacuous and a mutation to the display index survived it.
+
+Two ordering choices are pinned because they are the kind that get "simplified" later. Numeric order reproduces Rust's `f64::total_cmp` by reinterpreting the double's bits as a sign-magnitude integer — `<` leaves NaN incomparable and calls `-0 < 0` false, so a comparator built on it returns 0 for those pairs and the sort may place them anywhere. Strings compare by UTF-16 code unit and deliberately **not** `localeCompare`: the same result must not sort two ways on two machines.
+
+**Decision 3 — an error shows both halves, and the English half is a static `?raw` import.**
+
+ADR-0039's pair is the message the reader can read and the English one they can search. Before this slice, five surfaces each assembled `prefix: message` by hand with their own copy of the banner CSS, and the English half existed nowhere: an error a user could not read was also an error they could not look up.
+
+The English half is a static import of `en.json`, not `t(key, { locale: "en" })`, because `i18n.lazy` is on and on a Japanese session the English bundle may not be in memory — a half that is sometimes the sentence and sometimes the raw key is worse than no half. That import must be `?raw`: @nuxtjs/i18n compiles locale files into vue-i18n message AST nodes, so a plain JSON import yields objects and interpolating one gives `[object Object]`. The first version shipped exactly that. Only the prefix is translated; the body is the engine's own wording, and translating it would mean inventing wording for someone else's error.
+
+**Decision 4 — ADR-0083 is mirrored in half, and the other half is dropped rather than ported.**
+
+ADR-0083 bundles two unrelated things: a draggable sidebar divider (decisions 1-5) and a DOM-free popover placer, `placePopover`, re-run on resize (decisions 6-7). **Web has no toolbar-anchored popover to place.** `CellViewer` is a centered modal, `ResultGrid`'s only absolute positioning is a `.visually-hidden` utility, and the history is a docked column. Porting `placePopover` would have produced a tested module with no consumer, which reads as parity while proving nothing.
+
+The divider half is mirrored whole, including the two decisions that look like details and are not: the _chosen_ width is stored unclamped and the _applied_ width derived from it, so a window that shrinks and grows again returns to what the user asked for; and the minimum width wins over the viewport cap, because a sidebar clamped to nothing on a narrow window is worse than one that overflows.
+
+**Consequences.**
+
+- Any new `.vue` file with a colour literal, a `var()` fallback, or an undefined token fails the suite. That is intended to be annoying at the moment it happens rather than discovered by a user on the other theme.
+- Rung 6's write paths inherit a constraint (real row index) and, from rung 2, a second one (a startup-packet `statement_timeout` applies to writes too).
+- `ErrorBanner.vue` is the only place an error renders. New surfaces get both halves by using it and lose them by hand-rolling.
+- One row of the ledger is marked done with half of it deliberately absent. **Re-deriving a rung can shrink it, not only grow it** — the row records why, so the next session does not re-derive the same drop.
+
+**Reversibility.** All six slices are additive and self-contained. The one with a standing implication is Decision 2: nothing fails if a future consumer takes the display index, which is precisely why `rowIndexFor` is the only accessor and why the viewer's case is pinned against an ascending sort, where the two indices disagree.
+
+**Cross-references.**
+
+- Desktop: ADR-0041, ADR-0035, ADR-0048, ADR-0082, ADR-0039, ADR-0083 in `dbboard/docs/decisions.md`; ported source read directly from `dbboard-core/src/sort.rs`, `dbboard-ui` `SortState`, and `apps/desktop/src/lib/grid/edit.ts`.
+- Ticket: [`issues/0025-grid-and-ux-parity.md`](./issues/0025-grid-and-ux-parity.md) — per-slice log, including the mutations each slice was checked with. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 3.

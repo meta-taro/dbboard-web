@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConnectionError, QueryError } from "../domain/errors";
 import { NULL_CAPABILITIES } from "../domain/values";
-import { PostgresAdapter, type PgQueryRunner } from "./postgres-adapter";
+import {
+  attachIdleClientErrorHandler,
+  PostgresAdapter,
+  type PgQueryRunner,
+} from "./postgres-adapter";
 
 // The adapter takes a narrow `PgQueryRunner` instead of `pg.Pool` so
 // these tests can inject a stub without any network involved. Production
@@ -132,6 +136,99 @@ describe("PostgresAdapter", () => {
       const e08 = Object.assign(new Error("connection failure"), { code: "08006" });
       const adapter = new PostgresAdapter(stubPool({ query: vi.fn().mockRejectedValue(e08) }));
       await expect(adapter.executeQuery("SELECT 1")).rejects.toBeInstanceOf(ConnectionError);
+    });
+  });
+
+  // Desktop ADR-0070. `pgOidToValue` decodes text-format bytes; handed
+  // binary ones it does not throw, it produces garbage. The dangerous case
+  // is quiet: a binary int4 of 1 is `00 00 00 01`, which is valid UTF-8 and
+  // renders as four invisible control characters. Desktop shipped that in
+  // v0.4.0. So the invariant is enforced at runtime rather than left to a
+  // code comment about not passing `values`.
+  describe("wire-format guard (desktop ADR-0070)", () => {
+    it("rejects a binary-format column with a QueryError naming the format", async () => {
+      const query = vi.fn().mockResolvedValue({
+        fields: [{ name: "id", dataTypeID: 23, format: "binary" }],
+        rows: [[Buffer.from([0, 0, 0, 1])]],
+        rowCount: 1,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.executeQuery("SELECT id FROM users")).rejects.toBeInstanceOf(QueryError);
+      await expect(adapter.executeQuery("SELECT id FROM users")).rejects.toThrow(/binary/i);
+    });
+
+    it("names the offending column so the report is actionable", async () => {
+      const query = vi.fn().mockResolvedValue({
+        fields: [
+          { name: "id", dataTypeID: 23, format: "text" },
+          { name: "payload", dataTypeID: 17, format: "binary" },
+        ],
+        rows: [["1", Buffer.from([1])]],
+        rowCount: 1,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.executeQuery("SELECT id, payload FROM t")).rejects.toThrow(/payload/);
+    });
+
+    it("accepts an explicit text format", async () => {
+      const query = vi.fn().mockResolvedValue({
+        fields: [{ name: "id", dataTypeID: 23, format: "text" }],
+        rows: [["1"]],
+        rowCount: 1,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.executeQuery("SELECT id FROM users")).resolves.toMatchObject({
+        rows: [[1]],
+      });
+    });
+
+    // Absence is not evidence. pg's own result.js defaults the property
+    // (`desc.format || 'text'`), and every hand-built stub in this suite
+    // omits it. Rejecting on `format !== "text"` would fail ~30 specs while
+    // asserting something the data does not say — see 0024 § invariant 1.
+    it("accepts a field object that omits `format` entirely", async () => {
+      const query = vi.fn().mockResolvedValue({
+        fields: [{ name: "id", dataTypeID: 23 }],
+        rows: [["1"]],
+        rowCount: 1,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.executeQuery("SELECT id FROM users")).resolves.toMatchObject({
+        rows: [[1]],
+      });
+    });
+  });
+
+  // An idle pooled client that errors emits on the Pool, not on any
+  // caller's promise — there is no in-flight query to reject. pg's own
+  // docs are explicit that an unhandled 'error' there takes the process
+  // down, and the trigger is routine: a server restart, an admin
+  // terminate, a pooler recycling the connection (Neon and Supabase both
+  // do), or an idle TCP reset.
+  //
+  // Found by this ticket's integration tests: they shifted the teardown
+  // timing enough that the container's shutdown FATAL (SQLSTATE 57P01)
+  // landed on an idle client, and vitest reported an unhandled error. The
+  // suite exposed it; the defect is in production code.
+  describe("attachIdleClientErrorHandler", () => {
+    it("registers an 'error' listener on the pool", () => {
+      const on = vi.fn();
+      attachIdleClientErrorHandler({ on });
+      expect(on).toHaveBeenCalledWith("error", expect.any(Function));
+    });
+
+    it("swallows the error rather than rethrowing it", () => {
+      let listener: ((e: Error) => void) | undefined;
+      attachIdleClientErrorHandler({
+        on: (_event, fn) => {
+          listener = fn;
+        },
+      });
+      expect(listener).toBeDefined();
+      // Rethrowing here would be indistinguishable from not listening at
+      // all: the emit happens on pg's socket callback, outside any
+      // try/catch of ours.
+      expect(() => listener?.(new Error("terminating connection"))).not.toThrow();
     });
   });
 

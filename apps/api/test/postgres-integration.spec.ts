@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createPostgresAdapter } from "../src/infrastructure/postgres-adapter";
 import { createApp } from "../src/main";
 
 // Integration test for the Postgres adapter (ticket 0004 § Tests).
@@ -276,4 +277,52 @@ describe("Postgres adapter integration (testcontainers)", () => {
     expect(status).toBe(400);
     expect((body as { error: { category: string } }).error.category).toBe("query");
   });
+
+  // ---- ticket 0024: wire format and server-side timeout --------------
+
+  // The stub-level guard proves we reject binary; this proves the server
+  // is not sending it in the first place. Worth a live assertion because
+  // the failure it protects against is silent: a binary int4 of 1 is
+  // `00 00 00 01`, valid UTF-8, rendering as four invisible control
+  // characters (desktop ADR-0070, shipped broken in desktop v0.4.0). The
+  // three types below are the ones desktop names — a small int, a wide
+  // int, and a fixed-width non-numeric.
+  it("row-producing paths come back in text format, not binary (ADR-0070)", async (ctx) => {
+    if (skipReason) return ctx.skip();
+    const { status, body } = await runQuery(
+      "SELECT 1::int4 AS a, 9223372036854775807::int8 AS b, " +
+        "'0b3ff9a4-2f6e-4d1b-9f2a-1c4f7e8d5a60'::uuid AS c",
+    );
+    // A binary reply would now surface as 400 from the guard rather than
+    // as mojibake in the cells, so the status assertion carries weight.
+    expect(status).toBe(200);
+    const row = (body as { rows: unknown[][] }).rows[0];
+    expect(row?.[0]).toBe(1);
+    expect(row?.[1]).toBe("9223372036854775807");
+    expect(row?.[2]).toBe("0b3ff9a4-2f6e-4d1b-9f2a-1c4f7e8d5a60");
+  });
+
+  // The distinction this test exists for: pg's `query_timeout` alone
+  // makes the *client* stop waiting while the statement keeps running on
+  // the server. Asserting "the call rejected" would pass either way. So
+  // assert the server's own abort — SQLSTATE 57014,
+  // `query_canceled` — which only `statement_timeout` produces.
+  it("an over-budget statement is aborted by the server, SQLSTATE 57014 (ADR-0081)", async (ctx) => {
+    if (skipReason || !container) return ctx.skip();
+    const host = container.getHost();
+    const port = container.getMappedPort(5432);
+    // A dedicated adapter with a short budget. The registered connection
+    // carries the 30 s default, which is not a practical test duration.
+    const adapter = createPostgresAdapter({
+      connectionString: `postgresql://test:test@${host}:${port}/test`,
+      statementTimeoutMs: 300,
+    });
+    try {
+      await expect(adapter.executeQuery("SELECT pg_sleep(5)")).rejects.toThrow(
+        /statement timeout|canceling statement/i,
+      );
+    } finally {
+      await adapter.close();
+    }
+  }, 30_000);
 });

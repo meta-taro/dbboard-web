@@ -34,6 +34,40 @@ describe("resolvePostgresPoolOptions — defaults", () => {
     });
     expect(opts.query_timeout).toBe(5_000);
   });
+
+  // pg's `query_timeout` is a client-side setTimeout (pg@8.21.0
+  // lib/client.js:654) — it stops the caller waiting but sends nothing to
+  // the server, so an over-budget statement keeps running and, outside an
+  // explicit transaction, still commits. `statement_timeout` goes into the
+  // startup packet (lib/client.js:543) and makes the server abort. We keep
+  // both: they fail in different places and neither subsumes the other.
+  // Mirrors desktop ADR-0081; see 0024 § invariant 3.
+  it("also sets the server-side statement_timeout to the same budget", () => {
+    const opts = resolvePostgresPoolOptions({
+      connectionString: "postgresql://u:p@host.example.com:5432/db",
+    });
+    expect(opts.statement_timeout).toBe(30_000);
+  });
+
+  it("honours statementTimeoutMs for the server-side timeout too", () => {
+    const opts = resolvePostgresPoolOptions({
+      connectionString: "postgresql://u:p@host.example.com:5432/db",
+      statementTimeoutMs: 5_000,
+    });
+    expect(opts.statement_timeout).toBe(5_000);
+  });
+
+  it("sets statement_timeout on the split-fields path as well", () => {
+    const opts = resolvePostgresPoolOptions({
+      host: "plain.example.com",
+      database: "app",
+      user: "u",
+      password: "p",
+      statementTimeoutMs: 7_500,
+    });
+    expect(opts.statement_timeout).toBe(7_500);
+    expect(opts.query_timeout).toBe(7_500);
+  });
 });
 
 describe("resolvePostgresPoolOptions — connectionString path", () => {

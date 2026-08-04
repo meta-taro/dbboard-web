@@ -479,3 +479,61 @@ A non-`AiError` exception is deliberately **not** recorded at all: it is a bug i
 - Desktop: ADR-0027 (Decisions 5, 8, 9, 10) and ADR-0026 Decision 12 in `dbboard/docs/decisions.md`; the reference implementation at `dbboard/crates/dbboard-ui/src/history.rs`; the brief at `dbboard/.claude/issues/0008-web-history-v2-mirror.md`.
 - Prior web entries: "2026-06-05 — Query-history persistence mirrors desktop ADR-0017 (web Stage 2)" and "2026-06-23 — Desktop `history.jsonl` fixture provenance + drift policy" above; the latter's provenance rules are what this fixture was generated under.
 - Ticket: [`issues/0023-history-v2-mirror.md`](./issues/0023-history-v2-mirror.md). Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 1.
+
+## 2026-08-04 — Adapter correctness: enforce the text wire format, add a server-side timeout, survive idle-client errors
+
+**Context.** Ticket [`0024`](./issues/0024-adapter-correctness.md), rung 2 of [`parity-ledger.md`](./parity-ledger.md). Desktop shipped three adapter-level corrections web had never mirrored: ADR-0070 (row-producing paths must use the text wire protocol, enforced at runtime), ADR-0081 (send a statement timeout to the server), ADR-0071 (a listed table nobody can read must degrade, not abort the sweep). ADR-0024 (`0o600` at-rest permissions) was on the same rung.
+
+Rung 1's lesson was "read the shipped code, not the prose." This rung found it cuts the other way as well: **the ledger was wrong about _web_ three times in one rung.** Two of the four rows turned out to be no-ops, and a third was already satisfied by a different mechanism than the row assumed. What follows records both what changed and what did not, because the rows that did not change cost the same reading time and would otherwise be re-derived from the same wrong text.
+
+**Decision 1 — reject binary-format columns at decode, and trigger on `=== "binary"`.**
+
+`pgOidToValue` decodes text-format bytes. Handed binary ones it does not fail: a binary `int4` of `1` is `00 00 00 01`, which passes a UTF-8 check and renders as four invisible control characters. Desktop shipped exactly that in v0.4.0, which is why its ADR-0070 Decision 4 insists the check survive a release build rather than living in a `debug_assert`.
+
+Web reaches the text path by omitting `values` from `pool.query` (keeping pg on the simple protocol) plus a `getTypeParser` override. Both are conventions, not guarantees — adding a `values` array, the obvious shape of a future parameterisation change, flips the protocol with no other visible symptom. So the guard sits at decode and inspects `result.fields`, i.e. **what the server actually replied**, not our own call site.
+
+The trigger is `format === "binary"`, deliberately not `format !== "text"`. `Field.format` is `'text' | 'binary'` on the wire (`pg-protocol/dist/parser.js:216`, `int16() === 0 ? 'text' : 'binary'`) but pg defaults it downstream (`lib/result.js:99`, `desc.format || 'text'`), and roughly thirty hand-built stubs in the unit suite omit the property entirely. Rejecting on `!== "text"` would fail all of them while asserting something the data does not say. **Absence is not evidence**; two positive tests pin it (explicit `"text"` accepted, omitted `format` accepted) so the next reader does not "tighten" it back.
+
+This required one non-obvious change elsewhere: `translateError` gained a pass-through for our own domain errors. The guard throws from inside the same `try`, carries no `code`, and a codeless error is deliberately read as connection-level — without the pass-through a corrupt-decode report would have surfaced to the caller as a 502 "database unreachable".
+
+**Decision 2 — keep both timeouts; they fail in different places and neither subsumes the other.**
+
+The ledger row said web sent no statement timeout. It did — as `query_timeout`. But pg's `query_timeout` is a **client-side `setTimeout`** (pg@8.21.0 `lib/client.js` ~654): nothing is sent to the server, no CancelRequest is issued, the socket is not destroyed. It calls `query.handleError`, invokes the callback, clears the query and pulses the queue. The caller is told the statement failed **while it is still running**, and outside an explicit transaction the write still commits.
+
+`statement_timeout` is a real startup-packet parameter (`lib/client.js:543`, `getStartupConf`), so the server aborts the statement itself with SQLSTATE 57014. Set once at connect — no per-query `SET`, no extra round trip.
+
+Both are kept at the same budget. Client-side alone leaks server work; server-side alone leaves the caller hanging if the connection itself wedges. Desktop's ADR-0081 concerns MySQL's probed timeout variable and states the Postgres path "has no such divergence" — true of desktop's Postgres adapter, not of web's, which is why this row read as satisfied and was not.
+
+**Carry-forward for rung 6.** A startup-packet `statement_timeout` applies to every statement on the connection, writes included. When write paths land (ADR-0042/0049/0050/0051/0045), a long `UPDATE` will be aborted server-side at the same 30 s budget. That is the correct default, but it is a behavioural constraint on rung 6 rather than a discovery to be made there — recorded here and in ticket 0024 invariant 4.
+
+**Decision 3 — log idle pooled-client errors instead of letting them kill the process.**
+
+Not in the ticket's survey. The integration suite reported **25/25 passing with exit code 1** and an uncaught `FATAL: terminating connection due to administrator command` (SQLSTATE 57P01).
+
+The temptation was to read that as harness noise. It was settled by isolation instead: stash everything → HEAD exit 0; stash only the new tests, keep the production change → exit 0; a **pre-existing** test (`-t "int4 → Integer"`) run with the production change → exit 1, and with the production files stashed as well → **also exit 1**. So the defect predates the ticket entirely; the new tests merely shifted teardown timing enough to expose it.
+
+A pooled client that errors while idle has no in-flight query to reject, so pg emits `'error'` on the Pool. With no listener there Node treats it as unhandled and the process exits — from something entirely routine: a database restart, an admin terminate, a pooler recycling an idle connection (Neon and Supabase both do), or an idle TCP reset. **A Neon connection left idle overnight could have taken the API process down.** Nothing needs recovering — pg removes the broken client itself and the next query opens a fresh one — so `attachIdleClientErrorHandler` logs and stays up.
+
+Fixed in production code rather than in the test, because the test was reporting the truth. **A green test count with a non-zero exit code is a finding, not a formatting problem.**
+
+**Two rows that were already satisfied, and why they read as open.**
+
+- **ADR-0024 (`0o600` at-rest) — `n/a`.** Desktop's concern is a local credential file. Web holds no such file: connection config arrives per request and lives in memory. There is nothing on disk to chmod. The row's `todo` was a category error, not a gap.
+- **ADR-0071 (an unreadable table must not abort the sweep) — `done`.** `listTables` reads `pg_catalog.pg_tables`, which lists what the role can see and does not attempt to read any of them. Desktop's sweep touched each table and therefore needed per-table degradation; web's single catalog query cannot partially fail in that way.
+
+Both are now recorded with reasoning in the ledger rather than deleted, for the same reason this section exists.
+
+**Consequences.**
+
+- A binary-format column now produces an actionable `QueryError` naming the column instead of invisible control characters in the grid.
+- Over-budget statements are aborted by the server, not merely abandoned by the client. Callers may now see SQLSTATE 57014 (`canceling statement due to statement timeout`) where they previously saw only pg's client-side timeout message.
+- The API no longer exits when an idle pooled connection is dropped.
+- Integration suite is 25/25 with exit 0 and no uncaught exceptions.
+
+**Reversibility.** All three are small and self-contained. The one with a standing implication is Decision 2: removing `statement_timeout` later would silently restore the leak-server-work behaviour, and nothing would fail — which is the argument for the tests that pin it.
+
+**Cross-references.**
+
+- Desktop: ADR-0070, ADR-0081, ADR-0071, ADR-0024 in `dbboard/docs/decisions.md`.
+- pg internals cited from the shipped source at `node_modules/pg@8.21.0` — `lib/client.js` (543, ~654), `lib/result.js:99`, `pg-protocol/dist/parser.js:216`.
+- Ticket: [`issues/0024-adapter-correctness.md`](./issues/0024-adapter-correctness.md). Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 2.

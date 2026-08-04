@@ -37,7 +37,25 @@ export interface ResolvedPostgresPoolOptions {
   sslmode?: "prefer" | "require" | "disable";
   max: number;
   idleTimeoutMillis: number;
+  // Two timeouts, same budget, different failure sites — keep both.
+  //
+  // `query_timeout` is a client-side setTimeout inside pg
+  // (pg@8.21.0 lib/client.js:654). It stops the caller waiting; it sends
+  // nothing to the server, issues no CancelRequest, and does not destroy
+  // the socket. On its own it produces a specific correctness bug: the
+  // caller is told the statement failed while it is still running and —
+  // outside an explicit transaction — the write still commits.
+  //
+  // `statement_timeout` goes into the startup packet (lib/client.js:543,
+  // `getStartupConf`), so the *server* aborts the statement with SQLSTATE
+  // 57014. Set once at connect: no per-query `SET`, no extra round trip.
+  //
+  // Postgres reads a bare integer as milliseconds. Mirrors desktop
+  // ADR-0081, minus the MySQL/MariaDB variable probe — desktop states the
+  // Postgres name and unit have no such divergence, so there is nothing to
+  // probe. See .claude/issues/0024-adapter-correctness.md.
   query_timeout: number;
+  statement_timeout: number;
 }
 
 function hostNeedsSsl(host: string | null | undefined): boolean {
@@ -74,6 +92,7 @@ export function resolvePostgresPoolOptions(
       max: DEFAULT_POOL_SIZE,
       idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
       query_timeout: statementTimeoutMs,
+      statement_timeout: statementTimeoutMs,
     };
   }
 
@@ -93,5 +112,6 @@ export function resolvePostgresPoolOptions(
     max: DEFAULT_POOL_SIZE,
     idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
     query_timeout: statementTimeoutMs,
+    statement_timeout: statementTimeoutMs,
   };
 }

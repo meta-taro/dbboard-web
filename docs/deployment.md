@@ -202,11 +202,26 @@ Privacy and contract notes:
   cross-repo shared subset) stays silent on AI by design (desktop
   ADR-0023 Decision 3 — in-process wiring only). Web exposes a thin
   HTTP wrapper so the browser can call into the same provider.
-- **AI calls are not recorded in `history.jsonl`.** `AiController` is
-  intentionally not wrapped in `HistoryRecordingInterceptor`; an
-  integration spec asserts `GET /history/export.jsonl` stays empty
-  after an AI call. Recording would force a `v:1 → v:2` schema bump
-  ahead of cross-repo coordination.
+- **AI calls _are_ recorded in the history log, as of 2026-08-04.**
+  This reverses the earlier posture. Until the v:2 schema bump they
+  were not, because recording them would have forced a `v:1 → v:2`
+  bump ahead of cross-repo coordination; that coordination happened
+  (desktop ADR-0027, brief 0008) and web mirrored it in ticket
+  [`0023`](../.claude/issues/0023-history-v2-mirror.md).
+
+  An AI record carries `kind: "ai"` and holds the prompt and the
+  response **verbatim in content** — no redaction (desktop ADR-0027
+  Decision 8). Both fields are capped at 64 KiB of UTF-8 at the write
+  boundary (Decision 10), which is a size limit, not a privacy one.
+  `GET /history/export.jsonl` therefore returns prompt text to any
+  caller holding the bearer token. Treat the export route as carrying
+  the same sensitivity as the AI conversation itself.
+
+  Recording happens in the use cases (`explain-sql` / `suggest-sql`,
+  through the shared `record-ai-call.ts`), not in an interceptor:
+  `HistoryRecordingInterceptor` reads `req.body.sql` and maps a
+  `QueryResult`, neither of which an AI call has.
+
 - **No persisted key storage.** The key lives in env only — there is
   no settings UI or OS keychain integration.
 

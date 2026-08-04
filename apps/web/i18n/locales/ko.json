@@ -75,6 +75,13 @@
     "sort": {
       "button": "{column} 기준 정렬(Ctrl+클릭으로 단계 추가)",
       "level": "정렬 단계 {level}"
+    },
+    "viewer": {
+      "label": "셀 값",
+      "copy": "복사",
+      "close": "닫기",
+      "copied": "복사했습니다",
+      "failed": "복사하지 못했습니다"
     }
   },
   "ai": {

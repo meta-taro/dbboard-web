@@ -75,6 +75,13 @@
     "sort": {
       "button": "Nach {column} sortieren (Strg-Klick fügt eine Ebene hinzu)",
       "level": "Sortierebene {level}"
+    },
+    "viewer": {
+      "label": "Zellenwert",
+      "copy": "Kopieren",
+      "close": "Schließen",
+      "copied": "Kopiert",
+      "failed": "Kopieren fehlgeschlagen"
     }
   },
   "ai": {

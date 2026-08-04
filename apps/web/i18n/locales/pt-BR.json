@@ -75,6 +75,13 @@
     "sort": {
       "button": "Ordenar por {column} (Ctrl+clique para adicionar um nível)",
       "level": "Nível de ordenação {level}"
+    },
+    "viewer": {
+      "label": "Valor da célula",
+      "copy": "Copiar",
+      "close": "Fechar",
+      "copied": "Copiado",
+      "failed": "Falha ao copiar"
     }
   },
   "ai": {

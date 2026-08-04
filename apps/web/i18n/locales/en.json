@@ -75,6 +75,13 @@
     "sort": {
       "button": "Sort by {column} (Ctrl-click to add a level)",
       "level": "Sort level {level}"
+    },
+    "viewer": {
+      "label": "Cell value",
+      "copy": "Copy",
+      "close": "Close",
+      "copied": "Copied",
+      "failed": "Copy failed"
     }
   },
   "ai": {

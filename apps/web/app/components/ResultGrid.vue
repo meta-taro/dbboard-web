@@ -13,13 +13,19 @@
 // Sorting (desktop ADR-0048) is display-only: the virtualizer walks display
 // slots, and every slot resolves to a real row index through the
 // permutation. Nothing here reorders `props.result.rows`.
+//
+// Double-clicking a cell whose value the column could not show in full opens
+// it in a viewer (desktop ADR-0082 decision 5). The decision of what counts
+// as "in full" lives in app/utils/display-width.ts.
 
 import { computed, ref } from "vue";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { useI18n } from "vue-i18n";
 import type { QueryResult } from "../composables/useQueryExecution";
 import { useResultSort } from "../composables/useResultSort";
+import { needsViewer } from "../utils/display-width";
 import { formatValue } from "../utils/format-value";
+import CellViewer from "./CellViewer.vue";
 
 const props = defineProps<{ result: QueryResult }>();
 
@@ -64,6 +70,24 @@ function sortGlyph(columnIndex: number): string {
   const arrow = state.ascending ? "▲" : "▼";
   // A lone level needs no number; the arrow already says everything.
   return keys.value.length > 1 ? `${arrow}${state.level}` : arrow;
+}
+
+const viewer = ref<{ column: string; value: string } | null>(null);
+
+function openViewer(rowIndex: number, columnIndex: number) {
+  const cell = props.result.rows[rowIndex]?.[columnIndex] ?? null;
+  // NULL and blobs reach the screen as placeholders — "NULL", "<blob: N
+  // chars>" — rather than as their value, so a viewer would show exactly
+  // what the cell already shows. Mirrors desktop's `openCell`.
+  //
+  // The width test below happens to reject both today, because those two
+  // placeholders are short. That is a fact about format-value, not about
+  // what may be opened, and it would stop being true the day a blob renders
+  // its bytes. The rule is stated here, on the value.
+  if (cell === null || typeof cell === "object") return;
+  const text = formatValue(cell).text;
+  if (!needsViewer(text)) return;
+  viewer.value = { column: props.result.columns[columnIndex]?.name ?? "", value: text };
 }
 
 function onHeaderClick(columnIndex: number, event: MouseEvent) {
@@ -133,12 +157,19 @@ function onHeaderClick(columnIndex: number, event: MouseEvent) {
             data-testid="result-grid__cell"
             class="cell"
             :class="`cell--${cellFor(rowIndexFor(vRow.index), columnIndex).kind}`"
+            @dblclick="openViewer(rowIndexFor(vRow.index), columnIndex)"
           >
             {{ cellFor(rowIndexFor(vRow.index), columnIndex).text }}
           </td>
         </tr>
       </tbody>
     </table>
+    <CellViewer
+      v-if="viewer"
+      :column="viewer.column"
+      :value="viewer.value"
+      @close="viewer = null"
+    />
   </div>
 </template>
 

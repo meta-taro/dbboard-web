@@ -81,7 +81,7 @@ introduced later must read from the active theme, not hard-coded RGB.**
       and download wired to the grid.
 - [x] Slice C — `sortedRowOrder` is pure; header clicks cycle asc → desc → off;
       up to three levels; a new result resets the sort.
-- [ ] Slice D — `displayWidth` / `needsViewer` are pure and unit-tested at the
+- [x] Slice D — `displayWidth` / `needsViewer` are pure and unit-tested at the
       boundary; a value containing a newline always opens the viewer.
 - [ ] Slice E — one error primitive carrying both halves, with a copy button,
       used by every surface that renders an error.
@@ -180,3 +180,46 @@ pnpm -r test
     rather than strictly before, so both were mutation-checked: collapsing
     `rowIndexFor` to the identity and dropping the level number produced ten
     failures across the two environments.
+
+### 2026-08-04, slice D
+
+Read-only cell viewer, desktop ADR-0082 decisions 3-5. `displayWidth` and
+`needsViewer` in `app/utils/display-width.ts` are a byte-for-byte port of the
+thirteen full-width ranges in `apps/desktop/src/lib/grid/edit.ts`;
+`CellViewer.vue` renders, and `ResultGrid.vue` decides.
+
+- The threshold is exported as `VIEWER_COLUMN_THRESHOLD`, not
+  `INLINE_EDITOR_COLUMNS`. Desktop's constant gates two consumers — the
+  read-only popup and the inline editor — and web has only the first until
+  rung 6. Naming it for the editor that does not exist yet would be naming it
+  for the wrong thing; the editor can justify sharing it when it arrives.
+- Both halves of "display width" earn their place. Counting UTF-16 units
+  scores an emoji double, and counting characters scores Japanese half. Only
+  code points weighted by width get both right, and the fixtures pin both
+  directions: `🎉` is 2 wide while its `.length` is 2, and `日本` is 2 wide
+  per character against a `.length` of 1.
+- Two web-specific additions to desktop's popup, both recorded in the
+  component header. A copy acknowledgement in a live region, for the same
+  reason slice B gave: a copy leaves nothing on screen to notice. And a
+  visible close button, because Escape does not exist on a phone and a
+  backdrop nobody knows to tap is not a way out.
+- The grid passes `rowIndexFor(vRow.index)`, never the display index. A viewer
+  showing a value that belongs to a different row than the one clicked would
+  be worse than not opening at all.
+- The sorted case in `result-grid.test.ts` was written against a descending
+  sort, which for that fixture is the identity permutation — the case was
+  vacuous and a mutation to the display index survived it. Ascending is the
+  ordering where the two indices disagree; rewritten against it, and it now
+  asserts both rows, not one.
+- The NULL and blob guards survive mutation because `formatValue` renders both
+  as placeholders short enough for the width test to reject anyway. That is a
+  fact about `format-value`, not about what may be opened, and it stops being
+  true the day a blob renders its bytes. The guard now tests the raw value
+  rather than its text, and both the module and the test say plainly that
+  those two cases pin the behaviour and not the branch.
+- The viewer needed a modal backdrop, and slice A's own rule refused the
+  literal that would have been the obvious way to write it. The palette had no
+  scrim, so one was added to all three theme blocks. It is black in both
+  themes rather than a wash of the canvas colour — over a dark canvas a
+  dark-grey wash does not read as a scrim at all — with more of it in the
+  light theme, where there is more page to push back.

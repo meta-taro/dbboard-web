@@ -75,6 +75,13 @@
     "sort": {
       "button": "{column} で並べ替え（Ctrl+クリックで優先順位を追加）",
       "level": "並べ替え優先順位 {level}"
+    },
+    "viewer": {
+      "label": "セルの値",
+      "copy": "コピー",
+      "close": "閉じる",
+      "copied": "コピーしました",
+      "failed": "コピーできませんでした"
     }
   },
   "ai": {

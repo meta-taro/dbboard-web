@@ -117,6 +117,11 @@ async function onInstallClick() {
   --success-tint: rgba(34, 197, 94, 0.15);
   --muted-tint: rgba(120, 113, 108, 0.1);
   --muted-tint-border: rgba(120, 113, 108, 0.3);
+  /* Scrim behind a modal. Black in both themes rather than a wash of the
+     canvas colour: what it has to do is push the page back, and over a dark
+     canvas a dark-grey wash is invisible. The light theme needs more of it,
+     because there is more to push back. */
+  --scrim: rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -143,6 +148,7 @@ async function onInstallClick() {
     --success-tint: rgba(34, 197, 94, 0.2);
     --muted-tint: rgba(138, 150, 163, 0.12);
     --muted-tint-border: rgba(138, 150, 163, 0.32);
+    --scrim: rgba(0, 0, 0, 0.6);
   }
 }
 
@@ -169,6 +175,7 @@ async function onInstallClick() {
   --success-tint: rgba(34, 197, 94, 0.2);
   --muted-tint: rgba(138, 150, 163, 0.12);
   --muted-tint-border: rgba(138, 150, 163, 0.32);
+  --scrim: rgba(0, 0, 0, 0.6);
 }
 
 body {

@@ -75,6 +75,13 @@
     "sort": {
       "button": "Trier par {column} (Ctrl-clic pour ajouter un niveau)",
       "level": "Niveau de tri {level}"
+    },
+    "viewer": {
+      "label": "Valeur de la cellule",
+      "copy": "Copier",
+      "close": "Fermer",
+      "copied": "Copié",
+      "failed": "Échec de la copie"
     }
   },
   "ai": {

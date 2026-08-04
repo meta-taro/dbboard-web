@@ -249,3 +249,120 @@ describe("ResultGrid", () => {
     wrapper.unmount();
   });
 });
+
+// Desktop ADR-0082 decision 5: a value the cell could not show in full opens
+// a viewer, and "in full" is measured in display columns.
+const LONG = "x".repeat(200);
+const VIEWER_RESULT = {
+  columns: [
+    { name: "note", declared_type: "TEXT" },
+    { name: "short", declared_type: "TEXT" },
+    { name: "empty", declared_type: "TEXT" },
+    { name: "bytes", declared_type: "BYTEA" },
+  ],
+  rows: [
+    [LONG, "ok", null, { $blob: "A".repeat(500) }],
+    ["one\ntwo", "ok", null, { $blob: "" }],
+  ],
+  rows_affected: 0,
+} as const;
+
+function cellAt(wrapper: ReturnType<typeof mount>, row: number, column: number) {
+  const cells = wrapper.findAll("[data-testid='result-grid__cell']");
+  return cells[row * VIEWER_RESULT.columns.length + column]!;
+}
+
+describe("ResultGrid — cell viewer", () => {
+  it("opens the viewer on a value too wide for its cell", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+
+    await cellAt(wrapper, 0, 0).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='cell-viewer__column']").text()).toBe("note");
+    expect(wrapper.find("[data-testid='cell-viewer__body']").text()).toBe(LONG);
+    wrapper.unmount();
+  });
+
+  it("leaves a value that fits alone", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 0, 1).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // Short, but the cell renders it on one line — the second line is not
+  // visible anywhere until the value is opened.
+  it("opens the viewer on a multi-line value however short", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 1, 0).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer__body']").text()).toContain("one\ntwo");
+    wrapper.unmount();
+  });
+
+  it("never opens the viewer on NULL", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 0, 2).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // A blob cell shows `<blob: N chars>`, and that placeholder is all the
+  // viewer would have to show — the bytes are not in the result.
+  //
+  // Worth knowing about this case and the NULL one above: both would also
+  // pass with the value guard removed, because those two placeholders are
+  // short enough that the width test rejects them anyway. They pin the
+  // behaviour, not the branch. The branch is still worth having — see the
+  // comment on `openViewer`.
+  it("never opens the viewer on a blob, however large", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 0, 3).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("closes the viewer when it asks to be closed", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+    await cellAt(wrapper, 0, 0).trigger("dblclick");
+
+    await wrapper.find("[data-testid='cell-viewer__close']").trigger("click");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // The viewer is keyed on the row it was opened from, and sorting moves
+  // rows. Reading a value that belongs to a different row than the one
+  // clicked would be worse than not opening at all.
+  it("opens the value of the row actually clicked while sorted", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    // Ascending on `note` sorts "one\ntwo" before "xxx…", so display row 0
+    // is real row 1 — the one ordering where the two indices disagree.
+    const byNote = wrapper.findAll("[data-testid='result-grid__sort-button']")[0]!;
+    await byNote.trigger("click");
+    expect(
+      wrapper
+        .findAll("[data-testid='result-grid__row']")
+        .map((r) => r.attributes("data-row-index")),
+    ).toEqual(["1", "0"]);
+
+    await cellAt(wrapper, 0, 0).trigger("dblclick");
+    expect(wrapper.find("[data-testid='cell-viewer__body']").text()).toContain("one\ntwo");
+
+    await wrapper.find("[data-testid='cell-viewer__close']").trigger("click");
+    await cellAt(wrapper, 1, 0).trigger("dblclick");
+    expect(wrapper.find("[data-testid='cell-viewer__body']").text()).toBe(LONG);
+    wrapper.unmount();
+  });
+});

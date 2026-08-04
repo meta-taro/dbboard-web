@@ -75,6 +75,13 @@
     "sort": {
       "button": "依 {column} 排序（Ctrl+點擊可新增層級）",
       "level": "排序層級 {level}"
+    },
+    "viewer": {
+      "label": "儲存格內容",
+      "copy": "複製",
+      "close": "關閉",
+      "copied": "已複製",
+      "failed": "複製失敗"
     }
   },
   "ai": {

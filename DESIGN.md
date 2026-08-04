@@ -43,10 +43,15 @@ enforced by `apps/web/tests/theme-tokens.test.ts`.
 | `muted-tint`         | `rgba(120,113,108,.1)` | `rgba(138,150,163,.12)` | Neutral chip background                      |
 | `muted-tint-border`  | `rgba(120,113,108,.3)` | `rgba(138,150,163,.32)` | Neutral chip border                          |
 | `code-bg`            | `rgba(15,17,21,.06)`   | `rgba(230,233,238,.1)`  | Inline `code`                                |
+| `scrim`              | `rgba(0,0,0,.45)`      | `rgba(0,0,0,.6)`        | Backdrop behind a modal                      |
 
 The `*-text` pairs exist because the fill colours are tuned for solid blocks and
 only just clear AA as body text. The tints carry a different alpha per theme —
 the same alpha over a dark canvas disappears.
+
+`scrim` is black in both themes rather than a wash of the canvas colour: its job
+is to push the page back, and over a dark canvas a dark-grey wash is invisible.
+The light theme takes more of it, because there is more to push back.
 
 ### Light / Dark / Auto
 
@@ -119,6 +124,20 @@ to block startup.
   `aria-hidden`, because a screen reader announcing both would say it twice.
   The level number appears only once more than one column sorts, and is
   spelled out for screen readers separately (`Sort level 2`).
+- Double-clicking a cell the column could not show in full opens it in a
+  read-only viewer. "In full" is measured in display columns, not characters:
+  Japanese prose is twice as wide as its length suggests, and an emoji is half
+  as wide. The threshold is `40`, matching the desktop client so a value opens
+  at the same point on both.
+- A value containing a newline always opens, however short. A cell renders on
+  one line whatever it holds, so the second line is not visible anywhere until
+  the value is opened — this is about not losing data on screen, not comfort.
+- NULL and blob cells never open. Both reach the screen as placeholders rather
+  than as their value, so the viewer would show what the cell already shows.
+- The viewer keeps the value's line breaks and wraps rather than scrolling
+  sideways. It carries a copy button with the same live-region acknowledgement
+  as the export toolbar, and a visible close button — Escape does not exist on
+  a phone, and a backdrop nobody knows to tap is not a way out.
 
 ### Editors
 

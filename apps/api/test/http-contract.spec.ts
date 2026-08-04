@@ -40,6 +40,10 @@ describe("HTTP contract surface (0003)", () => {
         has_auth: false,
         has_storage: false,
         has_realtime: false,
+        has_describe_table: false,
+        has_table_ddl: false,
+        has_execute: false,
+        has_atomic_restore: false,
       },
     });
   });

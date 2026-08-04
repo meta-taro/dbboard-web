@@ -36,9 +36,36 @@ All database access flows through the backend API layer. AI integration is optio
 3. **Layered architecture.** Keep business logic out of controllers and API routes. Layers: `domain` / `usecase` / `infrastructure` / `presentation` / `tests`.
 4. **AI is optional.** Core database features must work with the AI module disabled.
 5. **Commits are AI-authored, pushes are human-authored.** Commit per phase in small steps. Never run `git push` from an AI agent.
-6. **Run before committing**: format, lint, typecheck, unit tests.
+6. **Run before committing**: format, lint, typecheck, unit tests — see [Verification commands](#verification-commands) below for the exact invocations.
 7. **Keep docs in sync with code.** README, DESIGN.md, and `.claude/*` must not drift from the implementation.
 8. **No hardcoded secrets.** Use environment variables; provide a `.env.example`.
+
+## Verification commands
+
+Run from the repository root. These four are the pre-commit gate (rule 6); the
+build is the pre-push gate.
+
+```sh
+pnpm format:check   # Prettier, --check
+pnpm -r lint        # ESLint across both workspaces
+pnpm -r typecheck   # tsc / vue-tsc
+pnpm -r test        # Vitest, both workspaces
+pnpm -r build       # pre-push
+```
+
+Two things worth knowing before you read the output:
+
+- `pnpm -r typecheck` prints `[Vue] Failed to create plugin` from
+  `@vue/language-core`. It is cosmetic and pre-existing — **check the exit
+  code**, not the log.
+- `apps/api/test/postgres-integration.spec.ts` needs a Docker daemon
+  (testcontainers). Without one it **skips rather than fails**, so a green
+  local run does not by itself prove those 23 tests passed. CI has the daemon.
+
+If a hook cannot run for an environmental reason (no Docker socket, missing
+toolchain), baseline §35 permits `--no-verify` — then check CI with
+`gh run list --limit 3`, fix immediately if red, and say `--no-verify used
+(reason)` in the commit message.
 
 ## Language convention
 

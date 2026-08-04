@@ -43,10 +43,26 @@ export interface AiResponse {
   // for downstream observability when an alias resolves to a concrete
   // version (e.g. `claude-sonnet-4-6` → `claude-sonnet-4-6-20260120`).
   model: string;
+  // Cumulative token counts at terminal time, or null when the provider
+  // surfaced none. Adapters must not synthesise an estimate: null means
+  // "not reported", and a fabricated number would be indistinguishable
+  // from a measured one in the history log.
+  tokensIn: number | null;
+  tokensOut: number | null;
+  // Terminal reason, normalised to the history v:2 vocabulary
+  // (`end_turn` | `max_tokens` | `stop_sequence` | `tool_use` |
+  // `refusal` | `other:<text>`), or null when unreported. Informational
+  // only — never branch on it.
+  stopReason: string | null;
 }
 
 export interface AiProvider {
   getId(): string;
+  // The model this provider is configured to call. Separate from
+  // `AiResponse.model` (which reports what actually answered) because
+  // history v:2 requires a non-empty `model` on the *error* path too,
+  // where there is no response to read one from.
+  getModel(): string;
   getCapabilities(): AiCapabilities;
   explain(request: ExplainRequest): Promise<AiResponse>;
   suggestSql(request: SuggestRequest): Promise<AiResponse>;

@@ -1,4 +1,4 @@
-import { AiError } from "../domain/ai/ai-error";
+import { AiError, type AiErrorCategory } from "../domain/ai/ai-error";
 import {
   NO_AI_CAPABILITIES,
   type AiCapabilities,
@@ -25,6 +25,11 @@ export interface AnthropicMessageRequest {
 export interface AnthropicMessageResponse {
   content: { type: string; text?: string }[];
   model: string;
+  // Both optional: the slice must keep accepting the older stub shape,
+  // and a provider that reports neither is a legitimate case the
+  // history record represents as null rather than zero.
+  stop_reason?: string | null;
+  usage?: { input_tokens?: number | null; output_tokens?: number | null };
 }
 
 export interface AnthropicClient {
@@ -60,7 +65,49 @@ function extractText(response: AnthropicMessageResponse): string {
       return block.text;
     }
   }
-  throw new AiError("Anthropic response contained no text block");
+  // Transport succeeded; the body was unusable. That is the provider's
+  // output, not the network.
+  throw new AiError("Anthropic response contained no text block", { category: "provider" });
+}
+
+// The history v:2 vocabulary (desktop brief 0008 § stop_reason).
+// Anything outside it goes through the `other:<text>` escape hatch so
+// the raw value stays legible instead of collapsing to null — Anthropic
+// adds terminal reasons over time and this field is informational.
+const CANONICAL_STOP_REASONS = new Set([
+  "end_turn",
+  "max_tokens",
+  "stop_sequence",
+  "tool_use",
+  "refusal",
+]);
+
+function normaliseStopReason(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || raw === "") {
+    return null;
+  }
+  return CANONICAL_STOP_REASONS.has(raw) ? raw : `other:${raw}`;
+}
+
+// Null means "not reported". Never substitute a zero: in the history
+// log a fabricated count is indistinguishable from a measured one.
+function tokenCount(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// The SDK's typed errors carry an HTTP `status`; a transport failure
+// carries none. 401/403 is the deployment's key being wrong or
+// unentitled — filing that under `provider` would point an operator at
+// Anthropic's status page for a problem in their own environment.
+function categoriseUpstream(cause: unknown): AiErrorCategory {
+  const status =
+    typeof cause === "object" && cause !== null && "status" in cause
+      ? (cause as { status: unknown }).status
+      : undefined;
+  if (typeof status !== "number") {
+    return "network";
+  }
+  return status === 401 || status === 403 ? "configuration" : "provider";
 }
 
 export class AnthropicProvider implements AiProvider {
@@ -71,6 +118,10 @@ export class AnthropicProvider implements AiProvider {
 
   getId(): string {
     return "anthropic";
+  }
+
+  getModel(): string {
+    return this.model;
   }
 
   getCapabilities(): AiCapabilities {
@@ -95,8 +146,17 @@ export class AnthropicProvider implements AiProvider {
         messages: [{ role: "user", content: userContent }],
       });
     } catch (cause: unknown) {
-      throw new AiError("Anthropic provider request failed", { cause });
+      throw new AiError("Anthropic provider request failed", {
+        cause,
+        category: categoriseUpstream(cause),
+      });
     }
-    return { text: extractText(response), model: response.model };
+    return {
+      text: extractText(response),
+      model: response.model,
+      tokensIn: tokenCount(response.usage?.input_tokens),
+      tokensOut: tokenCount(response.usage?.output_tokens),
+      stopReason: normaliseStopReason(response.stop_reason),
+    };
   }
 }

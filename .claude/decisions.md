@@ -414,3 +414,68 @@ The same defect was live here. This repository merges through the GitHub web UI 
 - Desktop: ADR-0085 in `dbboard/docs/decisions.md`, landed by `dbboard@27824b0`. The incident behind it is the squash merge of PR #127 (`dbboard@e15dcff`); its write-up is `dbboard@d7ed16b`.
 - Prior entry: "2026-08-03 — Port the desktop PII scanner; add the CI this repo never had" above.
 - Operator guide: [`../docs/maintainer/pii-scanning.md`](../docs/maintainer/pii-scanning.md) § Commit identity.
+
+---
+
+## 2026-08-04 — History schema v:2: mirror desktop ADR-0027, and upgrade v:1 on read
+
+**Context.** Ticket [`0023`](./issues/0023-history-v2-mirror.md), rung 1 of [`parity-ledger.md`](./parity-ledger.md). Desktop bumped the per-record history schema from v:1 to v:2 on 2026-06-30 (its ADR-0027) so AI calls could be logged alongside SQL, adding a top-level `kind: "query" | "ai"` discriminator. Brief `0008` was handed to this repo the same day. It was found 35 days later by the parity survey, not by the handoff — the receipt in [`handoff/2026-08-04-history-v2-mirror-incoming.md`](./handoff/2026-08-04-history-v2-mirror-incoming.md) is dated accordingly.
+
+The per-record JSON is one of exactly two things the two repos share (ADR-0004: the HTTP contract and the user-data formats; no code). So this entry mirrors a design rather than making one. What follows is only the places where web had to decide something desktop's ADR does not answer.
+
+**Decision 1 — v:1 upgrades on read; byte-identical v:1 round-trip is given up.**
+
+Brief 0008 requires v:1 records to load as the equivalent v:2 `kind: "query"` record. Ticket [`0018`](./issues/0018-history-export-roundtrip-fixture.md) asserts a desktop-emitted v:1 fixture re-exports byte-identically. Both cannot hold: upgrade on read means re-emitting produces v:2 bytes.
+
+The brief wins and the byte-identity assertion narrows to "v:1 in, canonical v:2 out". This is safe _here specifically_ because web's history store is in memory — **there is no v:1 data in this system to preserve.** The v:1 reader exists solely to ingest desktop-emitted files, and for that purpose representing them correctly is the requirement; round-tripping them back to disk unchanged is not something any caller does.
+
+That would be a different judgement against a persisted v:1 corpus, and it is worth stating because the next bump will face the same fork with a store that may by then not be in-memory.
+
+**Decision 2 — mirror the writer-side 64 KiB cap (desktop Decision 10), keep the reader unbounded.**
+
+`prompt` and `response` are capped at 64 KiB of **UTF-8** each at the write boundary, backing off to the code-point boundary at-or-below the cap and appending a marker. The schema keeps a bare `z.string()`, matching desktop, so a record written under a different cap — an older build, another tool, a future value — still reads.
+
+This was missed on the first pass. The ticket's invariant list originally said prompts were stored with "no trimming", which conflated Decision 8 (no redaction, which is true) with Decision 10 (a length cap, which the ADR summary does not surface). It came to light while checking a type name against desktop's source rather than asserting it from memory. **The reusable finding is that the gap was invisible in the decision record and visible only in the reference implementation** — the remaining parity rungs should read desktop's shipped code, not its prose.
+
+Two details carry the byte-equivalence and are pinned by tests because either is easy to "fix" wrongly:
+
+- The cap counts UTF-8 bytes; JS string length is UTF-16 code units. A naive `slice(0, CAP)` keeps roughly 3x too much CJK.
+- ADR-0027's prose renders the marker with a leading ellipsis. The shipped constant has a leading space and no ellipsis. The bytes have to match a running program, so the implementation is the authority — noted at the constant, in the spec header, and in the ticket, because the prose is what a future reader is most likely to find first.
+
+**Decision 3 — no `recordAiCancelled` writer.**
+
+The schema accepts `status: "cancelled"` because desktop emits it and web must read it. Web does not write it: its AI surface is non-streaming request/response with no abort path, so the writer would be unreachable code. Add it when Stage 2 wires streaming.
+
+The cost is stated plainly rather than filed away: web's read support for `cancelled` is exercised only against objects web itself constructed. That is the circular validation a desktop fixture is supposed to break, and the fixture does not yet cover it — see "Known gap" below.
+
+**Decision 4 — `AiProvider.getModel()` exists because the error path needs it.**
+
+v:2 requires a non-empty `model` on an AI record whether or not the call succeeded. On the error path there is no response to read one from, so the port exposes the configured model separately from `AiResponse.model` (what actually answered). When both are available the served id wins — it is the more precise answer to "what produced this?".
+
+This is a divergence in port shape from desktop, not in the record: the record ends up identical either way.
+
+**Decision 5 — 401/403 map to `configuration`, everything unproven to `provider`.**
+
+The AI envelope's three categories are `network | provider | configuration`, disjoint from the query record's five DB categories. Only the adapter can tell a transport failure from an upstream rejection, so only `AiError` carries a category we trust; an authentication rejection is a deployment fault rather than an Anthropic fault, hence `configuration`. Everything else — including a DB `CategorizedError` that reached the AI path by mistake — records as `provider`, on the grounds that the call failed past our boundary and nothing has proven otherwise.
+
+A non-`AiError` exception is deliberately **not** recorded at all: it is a bug in our own code, not an AI outcome, and filing it under `provider` would blame the upstream for our crash.
+
+**Decision 6 — the `{ text, model }` wire body is frozen.**
+
+`AiResponse` widened to carry `tokensIn` / `tokensOut` / `stopReason` for the record. The HTTP body did not: the controller projects back down to the documented `{ text, model }`. Token counts are history-log material, not something the UI asked for, and widening a response body is not reversible once a client depends on it.
+
+**Consequences.**
+
+- Byte-compatibility is now demonstrated rather than argued. Before the desktop-emitted v:2 fixture landed, key-order equivalence rested on reasoning about Zod v4 normalising to schema-declaration order on parse; the fixture now re-exports byte-for-byte, AI record included.
+- The Phase 6 redline ("do not record AI calls in `history.jsonl`") is spent. It is struck through in [`roadmap.md`](./roadmap.md) rather than deleted, because the rule it encoded — a schema shared with another repo does not get bumped from one side — outlives this instance.
+- `GET /ai-history` still does not exist. History remains off the wire.
+
+**Known gap (owed by desktop).** The fixture was generated from desktop's own emitter via the command brief 0008 prescribes, so the bytes are genuinely desktop's serialiser. But the emitter constructs exactly one AI record, `status: "ok"`. The `error` and `cancelled` AI cases are unwritten, and `cancelled` is the one that matters per Decision 3. Raised back to desktop per brief 0008 § Notes ("file it back as a desktop-side ticket rather than diverging silently") rather than being papered over with a hand-written fixture, which would prove only that web agrees with web. Outgoing brief: [`handoff/2026-08-04-ai-fixture-cases-outgoing.md`](./handoff/2026-08-04-ai-fixture-cases-outgoing.md).
+
+**Reversibility.** The schema is additive and the v:1 reader stays. The one thing not reversible for free is Decision 1 — once callers rely on reads returning v:2, restoring v:1 passthrough is a second migration.
+
+**Cross-references.**
+
+- Desktop: ADR-0027 (Decisions 5, 8, 9, 10) and ADR-0026 Decision 12 in `dbboard/docs/decisions.md`; the reference implementation at `dbboard/crates/dbboard-ui/src/history.rs`; the brief at `dbboard/.claude/issues/0008-web-history-v2-mirror.md`.
+- Prior web entries: "2026-06-05 — Query-history persistence mirrors desktop ADR-0017 (web Stage 2)" and "2026-06-23 — Desktop `history.jsonl` fixture provenance + drift policy" above; the latter's provenance rules are what this fixture was generated under.
+- Ticket: [`issues/0023-history-v2-mirror.md`](./issues/0023-history-v2-mirror.md). Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 1.

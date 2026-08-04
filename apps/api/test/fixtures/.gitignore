@@ -3,11 +3,13 @@
 # README.md in this directory for the opt-in usage convention.
 local-history.jsonl
 
-# The committed fixture is `desktop-history.jsonl`; everything else in
-# this directory is treated as ad-hoc by default. Add fixtures to the
+# The committed fixtures are `desktop-history.jsonl` (v:1, kept for the
+# back-compat read path) and `desktop-history-v2.jsonl`; everything else
+# in this directory is treated as ad-hoc by default. Add fixtures to the
 # allowlist explicitly so a casually-dropped file does not silently
 # enter git.
 *
 !.gitignore
 !README.md
 !desktop-history.jsonl
+!desktop-history-v2.jsonl

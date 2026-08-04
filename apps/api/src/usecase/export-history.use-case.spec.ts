@@ -3,9 +3,14 @@ import type { HistoryRecord } from "../domain/history-record";
 import { InMemoryHistoryStore } from "../infrastructure/in-memory-history-store";
 import { ExportHistory } from "./export-history.use-case";
 
-function record(overrides: Partial<HistoryRecord> = {}): HistoryRecord {
+// Export is a pass-through serialiser, so a query record exercises it as
+// well as an ai one would.
+type QueryRecord = Extract<HistoryRecord, { kind: "query" }>;
+
+function record(overrides: Partial<QueryRecord> = {}): QueryRecord {
   return {
-    v: 1,
+    v: 2,
+    kind: "query",
     ts: "2026-06-04T14:22:01.123Z",
     conn: "prod-pg",
     actor: null,

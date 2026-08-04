@@ -7,10 +7,26 @@ import { CategorizedError, type ErrorCategory } from "../errors/categorized-erro
 // translates AiError into AiUpstreamError (below) so the wire
 // mapping stays at the presentation seam.
 
+// The three AI failure categories recorded in history v:2 (desktop
+// ADR-0023 §5, mirrored in `history-record.ts`). Deliberately distinct
+// from the DB `ErrorCategory`: an AI call cannot fail with `schema`, and
+// a query cannot fail with `provider`. `cancelled` is absent because
+// cancel is a top-level status, not a failure (ADR-0026 Decision 12).
+export type AiErrorCategory = "network" | "provider" | "configuration";
+
 export class AiError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  // Set by the adapter, which is the only layer that can tell a
+  // transport failure from an upstream rejection. Without it every
+  // recorded AI error would carry the same constant category, which is
+  // the same as recording nothing.
+  readonly category: AiErrorCategory;
+
+  constructor(message: string, options?: { cause?: unknown; category?: AiErrorCategory }) {
     super(message, options);
     this.name = new.target.name;
+    // "provider" is the honest default: the call reached the adapter and
+    // failed, and nothing has proven the fault lies elsewhere.
+    this.category = options?.category ?? "provider";
   }
 }
 

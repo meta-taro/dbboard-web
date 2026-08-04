@@ -118,15 +118,22 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
     // call time, so the wiring stays simple here. `optional: true`
     // belt-and-braces against a future refactor that removes the
     // AI_PROVIDER registration entirely.
+    //
+    // `RecordHistory` is injected, not optional: since history v:2
+    // (ticket 0023) AI calls are recorded alongside SQL calls, and a
+    // provider-less deployment still resolves this fine because the
+    // recorder is only reached once a provider has answered.
     {
       provide: ExplainSql,
-      useFactory: (provider: AiProvider | undefined) => new ExplainSql(provider),
-      inject: [{ token: AI_PROVIDER, optional: true }],
+      useFactory: (provider: AiProvider | undefined, history: RecordHistory) =>
+        new ExplainSql(provider, history),
+      inject: [{ token: AI_PROVIDER, optional: true }, RecordHistory],
     },
     {
       provide: SuggestSql,
-      useFactory: (provider: AiProvider | undefined) => new SuggestSql(provider),
-      inject: [{ token: AI_PROVIDER, optional: true }],
+      useFactory: (provider: AiProvider | undefined, history: RecordHistory) =>
+        new SuggestSql(provider, history),
+      inject: [{ token: AI_PROVIDER, optional: true }, RecordHistory],
     },
     {
       provide: RecordHistory,

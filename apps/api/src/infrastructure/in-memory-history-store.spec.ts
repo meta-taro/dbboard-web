@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { HistoryRecord } from "../domain/history-record";
 import { InMemoryHistoryStore } from "./in-memory-history-store";
 
-function makeRecord(overrides: Partial<HistoryRecord> = {}): HistoryRecord {
+// The store is kind-agnostic — it persists whatever the schema accepts —
+// so a query record stands in for both v:2 kinds here.
+type QueryRecord = Extract<HistoryRecord, { kind: "query" }>;
+
+function makeRecord(overrides: Partial<QueryRecord> = {}): QueryRecord {
   return {
-    v: 1,
+    v: 2,
+    kind: "query",
     ts: "2026-06-04T14:22:01.123Z",
     conn: "prod-pg",
     actor: null,

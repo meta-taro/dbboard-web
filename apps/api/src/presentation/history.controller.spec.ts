@@ -5,9 +5,14 @@ import { InMemoryHistoryStore } from "../infrastructure/in-memory-history-store"
 import { ExportHistory } from "../usecase/export-history.use-case";
 import { HistoryController } from "./history.controller";
 
-function record(overrides: Partial<HistoryRecord> = {}): HistoryRecord {
+// The export route streams whatever the store holds, kind included, so a
+// query record is a sufficient stand-in for the streaming assertions.
+type QueryRecord = Extract<HistoryRecord, { kind: "query" }>;
+
+function record(overrides: Partial<QueryRecord> = {}): QueryRecord {
   return {
-    v: 1,
+    v: 2,
+    kind: "query",
     ts: "2026-06-04T14:22:01.123Z",
     conn: "prod-pg",
     actor: null,

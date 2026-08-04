@@ -85,10 +85,17 @@ introduced later must read from the active theme, not hard-coded RGB.**
       boundary; a value containing a newline always opens the viewer.
 - [x] Slice E — one error primitive carrying both halves, with a copy button,
       used by every surface that renders an error.
-- [ ] Slice F — divider is a real `role="separator"` with keyboard support;
-      `placePopover` is DOM-free and unit-tested for the flip and clamp cases.
-- [ ] `DESIGN.md` no longer promises anything the code does not do.
-- [ ] `pnpm format:check && pnpm -r lint && pnpm -r typecheck && pnpm -r test`
+- [x] Slice F — divider is a real `role="separator"` with keyboard support, and
+      the stored width survives a window too narrow to honour it. **The
+      `placePopover` half was re-derived and dropped: web has nothing to place.**
+      The only `position: fixed` element is `CellViewer`'s centered modal
+      backdrop, `ResultGrid`'s only `position: absolute` is a `.visually-hidden`
+      utility, and the history is a docked sidebar column rather than a
+      toolbar-anchored popover. Shipping the module with no consumer would have
+      been dead code and a test suite guarding nothing; ADR-0083 decisions 6–7
+      come back with the first popover that needs them.
+- [x] `DESIGN.md` no longer promises anything the code does not do.
+- [x] `pnpm format:check && pnpm -r lint && pnpm -r typecheck && pnpm -r test`
       all exit 0.
 
 ## Verification
@@ -273,3 +280,51 @@ thirteen full-width ranges in `apps/desktop/src/lib/grid/edit.ts`;
   stubbed to echo keys in both suites, so the English wording can only have
   come from the bundle — that is what makes them wiring tests rather than
   restatements of the unit tests.
+
+### 2026-08-04, slice F
+
+- Re-derived against both codebases before writing anything, as the ledger's
+  method note requires — and the derivation removed half the slice.
+  `placePopover` (ADR-0083 decisions 6–7) has no consumer on web: the only
+  `position: fixed` element is `CellViewer`'s centered modal backdrop, the only
+  `position: absolute` in `ResultGrid` is a `.visually-hidden` utility, and the
+  history is a docked sidebar column, not a toolbar-anchored popover. Porting
+  it would have added a pure module nothing calls plus a test suite guarding
+  nothing. Recorded in the acceptance line so the omission is a decision rather
+  than a gap.
+- Split three ways, along the same seam as `utils/theme.ts` / `useTheme`:
+  `utils/splitter.ts` owns what widths are legal, `useSidebarWidth` owns
+  storage and the window, and `SidebarSplitter.vue` owns pointers and keys.
+  Only the middle one needs a DOM, and only the last one needs a component.
+- ADR-0083 decision 3 is the whole reason `chosen` and `width` are separate
+  refs. What is stored is the width the user asked for; what is applied is
+  that clamped against the window as it is now. Clamping on write would
+  destroy the preference at the moment it is least noticeable — drag the window
+  narrow, and the sidebar you set to 600 is silently 450 forever.
+- The minimum beats the viewport cap (decision 4). On a 200px window the
+  sidebar is 160px and the grid scrolls, rather than both panes being
+  unreadable.
+- `parseSidebarWidth` refuses `Number()`'s helpfulness: `Number("")` and
+  `Number(null)` are both `0`, so a plain conversion reads an absent key as a
+  width and hands back the minimum. Only a string that actually spells a finite
+  number is accepted.
+- `nudge` steps from the width on screen, not the remembered one. On a squeezed
+  sidebar the two differ, and stepping from storage makes the first arrow press
+  appear to do nothing while the remembered width catches up. That is what
+  justifies the composable owning `nudge` at all — the component emits a delta
+  and never computes a width.
+- Every pointermove is measured from where the press landed, not from the last
+  move. Accumulating deltas drifts, and the divider lags the pointer by however
+  many events the browser coalesced. Pointer capture is called defensively:
+  some embedded WebViews ship pointer events without it, and a lost capture is
+  a degraded drag rather than a broken page.
+- The divider is hidden below `768px`. The panes stack there, so a vertical
+  divider would resize nothing.
+- RED-first throughout, correcting slice E's one ordering break. Mutation-
+  checked at all three levels: 4 on the composable (derived width ignores the
+  viewport, nudge steps from `chosen`, reset persists the default, listener
+  never removed), 7 on the component (drag direction flipped, accumulate from
+  last move, any button starts a drag, move without a press, capture never
+  released, arrows swapped, pointercancel unhandled), 4 on the page wiring
+  (width never reaches the layout, drag wired to nudge, reset never wired,
+  splitter not mounted). All 15 caught, all restored green.

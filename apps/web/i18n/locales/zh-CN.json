@@ -61,6 +61,9 @@
     "insert-table": "插入表标识符",
     "insert-column": "插入列标识符"
   },
+  "sidebar": {
+    "resize": "调整侧边栏宽度"
+  },
   "result": {
     "heading": "结果",
     "empty": "(请运行查询)",

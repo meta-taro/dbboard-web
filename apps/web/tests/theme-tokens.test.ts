@@ -83,6 +83,25 @@ function declaredIn(source: string, selector: string): Set<string> {
   return new Set([...body.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
 }
 
+/**
+ * The custom properties a file sets on itself, wherever it sets them.
+ *
+ * Not every custom property is a theme token. `sql.vue` publishes its sidebar
+ * width as `--sidebar-width` so the column can be sized from CSS, and that is
+ * a layout value the page owns — declaring it in the shell's palette, in all
+ * three theme blocks, would say it varies with the theme when it does not.
+ *
+ * The whole file is scanned rather than the style blocks alone, because a
+ * property can just as well be set from the template (`:style="{ '--x': … }"`).
+ * That is looser than a CSS parse, but it errs in the safe direction: it can
+ * only ever excuse a token this file also names on the left of a colon.
+ */
+function setsItself(source: string): Set<string> {
+  return new Set(
+    [...stripComments(source).matchAll(/["']?(--[a-z0-9-]+)["']?\s*:/g)].map((m) => m[1]!),
+  );
+}
+
 const shell = readFileSync(shellFile, "utf8");
 const light = declaredIn(shell, ":root");
 const dark = declaredIn(shell, ':root[data-theme="dark"]');
@@ -107,13 +126,17 @@ describe("theme tokens", () => {
     expect([...autoDark].sort()).toEqual([...dark].sort());
   });
 
-  it("every token used anywhere is defined by the shell", () => {
+  it("every theme token used anywhere is defined by the shell", () => {
     const unknown: string[] = [];
     for (const file of vueFiles(appDir)) {
-      const css = styleBlocks(readFileSync(file, "utf8"));
+      const source = readFileSync(file, "utf8");
+      const css = styleBlocks(source);
+      const own = setsItself(source);
       for (const match of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
         const token = match[1]!;
-        if (!light.has(token)) unknown.push(`${relative(appDir, file)}: ${token}`);
+        if (!light.has(token) && !own.has(token)) {
+          unknown.push(`${relative(appDir, file)}: ${token}`);
+        }
       }
     }
     expect(unknown).toEqual([]);

@@ -61,6 +61,9 @@
     "insert-table": "Insérer l'identifiant de la table",
     "insert-column": "Insérer l'identifiant de la colonne"
   },
+  "sidebar": {
+    "resize": "Redimensionner la barre latérale"
+  },
   "result": {
     "heading": "Résultat",
     "empty": "(exécutez une requête)",

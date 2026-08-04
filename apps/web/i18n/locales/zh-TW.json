@@ -61,6 +61,9 @@
     "insert-table": "插入資料表識別碼",
     "insert-column": "插入欄位識別碼"
   },
+  "sidebar": {
+    "resize": "調整側邊欄寬度"
+  },
   "result": {
     "heading": "結果",
     "empty": "(請執行查詢)",

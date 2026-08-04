@@ -61,6 +61,9 @@
     "insert-table": "테이블 식별자 삽입",
     "insert-column": "컬럼 식별자 삽입"
   },
+  "sidebar": {
+    "resize": "사이드바 크기 조절"
+  },
   "result": {
     "heading": "결과",
     "empty": "(쿼리를 실행하세요)",

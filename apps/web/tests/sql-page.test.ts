@@ -2,6 +2,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, ref, type Ref } from "vue";
 import SqlPage from "../app/pages/connections/[id]/sql.vue";
+import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_NUDGE } from "../app/utils/splitter";
 
 // vi.hoisted lets the mock factories below close over the spies safely.
 // useQueryExecutionFactory is the constructor mock — it records the
@@ -120,9 +121,20 @@ describe("SqlPage", () => {
     mocks.sidebarConstructed.mockReset();
     mocks.schemaConstructed.mockReset();
     mocks.aiPanelConstructed.mockReset();
+    // The sidebar remembers its width, so without a storage of its own per
+    // test the first drag would decide the starting width of every test
+    // after it. See use-theme.test.ts: the environment's own `localStorage`
+    // is inert here, so it has to be stubbed rather than cleared.
+    const map = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+    });
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -431,6 +443,62 @@ describe("SqlPage", () => {
 
     expect(textarea.element.value).toBe("-- prompt result\nSELECT COUNT(*) FROM users;");
     wrapper.unmount();
+  });
+
+  // Desktop ADR-0083. The page owns the layout, so it is the only place the
+  // divider's width can actually be seen to do something; the divider itself
+  // is covered by sidebar-splitter.test.ts and the sizing rules by
+  // splitter.test.ts.
+  describe("the resizable sidebar", () => {
+    function sidebarWidth(wrapper: ReturnType<typeof mount>): string | undefined {
+      return (wrapper.find(".columns").element as HTMLElement).style.getPropertyValue(
+        "--sidebar-width",
+      );
+    }
+
+    it("mounts a divider between the editor and the sidebar", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(wrapper.find("[role='separator']").exists()).toBe(true);
+      expect(sidebarWidth(wrapper)).toBe(`${SIDEBAR_DEFAULT_WIDTH}px`);
+      wrapper.unmount();
+    });
+
+    it("widens the sidebar when the divider is dragged", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      wrapper.findComponent({ name: "SidebarSplitter" }).vm.$emit("resize", 360);
+      await flushPromises();
+
+      expect(sidebarWidth(wrapper)).toBe("360px");
+      wrapper.unmount();
+    });
+
+    it("moves the sidebar one step at a time from the keyboard", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      await wrapper.find("[role='separator']").trigger("keydown", { key: "ArrowLeft" });
+      await flushPromises();
+
+      expect(sidebarWidth(wrapper)).toBe(`${SIDEBAR_DEFAULT_WIDTH + SIDEBAR_NUDGE}px`);
+      wrapper.unmount();
+    });
+
+    it("puts the sidebar back on a double-click", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      wrapper.findComponent({ name: "SidebarSplitter" }).vm.$emit("resize", 420);
+      await flushPromises();
+      await wrapper.find("[role='separator']").trigger("dblclick");
+      await flushPromises();
+
+      expect(sidebarWidth(wrapper)).toBe(`${SIDEBAR_DEFAULT_WIDTH}px`);
+      wrapper.unmount();
+    });
   });
 
   it("splices an emitted insert identifier into the textarea at the caret position", async () => {

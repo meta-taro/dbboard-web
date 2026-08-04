@@ -61,6 +61,9 @@
     "insert-table": "Tabellenbezeichner einfügen",
     "insert-column": "Spaltenbezeichner einfügen"
   },
+  "sidebar": {
+    "resize": "Seitenleiste in der Breite anpassen"
+  },
   "result": {
     "heading": "Ergebnis",
     "empty": "(Abfrage ausführen)",

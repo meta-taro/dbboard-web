@@ -81,7 +81,8 @@ to block startup.
 
 - Base spacing unit: `4px`. Use multiples (`4 / 8 / 12 / 16 / 24 / 32`).
 - Border radius: `4px` for inputs and small chips, `8px` for panels. No radius on table cells.
-- Sidebar default width: `280px`, resizable. Result pane fills the remainder.
+- Sidebar default width: `280px`, resizable — see [Sidebar divider](#sidebar-divider).
+  Result pane fills the remainder.
 - Single primary scroll container per pane.
 
 ## Typography
@@ -159,6 +160,32 @@ desktop ADR-0039). Nothing else assembles an error line.
   would hear the error again on every press.
 - `dense` tightens the padding and type for a banner inside a sidebar or a
   panel. Pages use the default.
+
+### Sidebar divider
+
+The editor and the sidebar are separated by a draggable divider
+(`SidebarSplitter.vue`, mirroring desktop ADR-0083). The page publishes the
+resulting width as a `--sidebar-width` custom property; nothing else sizes the
+sidebar.
+
+- Drawn as a hairline in `--border`, `--accent` on hover and while dragging,
+  but padded out to a 44px grab target. A 7px handle is a mouse-only control.
+- A real `role="separator"` with `tabindex="0"`: `←` / `→` move it `16px` at a
+  time and `Home` resets it. Reachable-only-by-drag is not reachable.
+- Default `280px`, floor `160px`, ceiling `640px`, and never more than half the
+  window. On a window too narrow for both, the floor wins — a cramped sidebar
+  beats an unreadable one, and the grid can scroll.
+- The width the user chose is stored; the width applied is derived from it and
+  the window as it is now. Narrowing the window squeezes the sidebar and
+  widening it restores the choice, so what is stored is never clamped.
+- Double-click, or `Home`, returns to the default **and forgets** the stored
+  width. Restoring the position while keeping the preference would be a lie the
+  next reload exposes.
+- Persisted under `localStorage["dbboard.sidebarWidth"]`, non-fatally: as with
+  the theme (ADR-0041), a storage that throws falls back to the default rather
+  than failing the render.
+- Hidden below `768px`, where the two panes stack and a vertical divider would
+  resize nothing.
 
 ### Editors
 

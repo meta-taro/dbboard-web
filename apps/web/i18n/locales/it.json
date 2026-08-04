@@ -61,6 +61,9 @@
     "insert-table": "Inserisci identificatore di tabella",
     "insert-column": "Inserisci identificatore di colonna"
   },
+  "sidebar": {
+    "resize": "Ridimensiona la barra laterale"
+  },
   "result": {
     "heading": "Risultato",
     "empty": "(esegui una query)",

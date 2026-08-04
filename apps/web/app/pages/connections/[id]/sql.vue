@@ -7,7 +7,9 @@ import ResultExportToolbar from "../../../components/ResultExportToolbar.vue";
 import ErrorBanner from "../../../components/ErrorBanner.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
+import SidebarSplitter from "../../../components/SidebarSplitter.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
+import { useSidebarWidth } from "../../../composables/useSidebarWidth";
 import { fromCategorised } from "../../../utils/display-error";
 
 const { t } = useI18n();
@@ -15,6 +17,16 @@ const route = useRoute();
 const connectionId = String(route.params.id);
 
 const { result, state, lastError, run } = useQueryExecution(connectionId);
+
+// The divider reports where the user is asking it to go; what is legal is the
+// composable's call. The page only has to publish the answer as a custom
+// property, so the sidebar column can be sized from CSS (desktop ADR-0083).
+const {
+  width: sidebarWidth,
+  setWidth: setSidebarWidth,
+  nudge: nudgeSidebar,
+  reset: resetSidebar,
+} = useSidebarWidth();
 
 const sqlInput = ref("");
 const isLoading = computed(() => state.value === "loading");
@@ -95,7 +107,7 @@ function onEditorKeydown(event: KeyboardEvent) {
       :error="fromCategorised(lastError, t)"
     />
 
-    <div class="columns">
+    <div class="columns" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
       <div class="editor-column">
         <label class="editor-label" for="sql-input">{{ t("sql.editor.label") }}</label>
         <textarea
@@ -142,6 +154,13 @@ function onEditorKeydown(event: KeyboardEvent) {
 
         <AiPanel :current-sql="sqlInput" @insert="onInsertIdentifier" />
       </div>
+
+      <SidebarSplitter
+        :width="sidebarWidth"
+        @resize="setSidebarWidth"
+        @nudge="nudgeSidebar"
+        @reset="resetSidebar"
+      />
 
       <div class="sidebar-column">
         <SchemaBrowser :connection-id="connectionId" @insert="onInsertIdentifier" />
@@ -194,6 +213,12 @@ function onEditorKeydown(event: KeyboardEvent) {
   gap: 0.75rem;
 }
 
+/* Below the breakpoint the two panes stack, and a vertical divider between
+   them would resize nothing. */
+.columns > .splitter {
+  display: none;
+}
+
 @media (min-width: 768px) {
   .columns {
     flex-direction: row;
@@ -203,7 +228,12 @@ function onEditorKeydown(event: KeyboardEvent) {
     flex: 1 1 auto;
   }
   .sidebar-column {
-    flex: 0 0 280px;
+    /* Set on `.columns` by the page from `useSidebarWidth`, which starts at
+       the 280px this rule used to hard-code. */
+    flex: 0 0 var(--sidebar-width);
+  }
+  .columns > .splitter {
+    display: block;
   }
 }
 

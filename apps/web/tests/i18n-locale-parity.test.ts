@@ -79,6 +79,7 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("schema.error.columns");
     expect(enPaths).toContain("schema.insert-table");
     expect(enPaths).toContain("schema.insert-column");
+    expect(enPaths).toContain("sidebar.resize");
     expect(enPaths).toContain("result.affected");
     expect(enPaths).toContain("error.prefix.connection");
     expect(enPaths).toContain("error.prefix.query");

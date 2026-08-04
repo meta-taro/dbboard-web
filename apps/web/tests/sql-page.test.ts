@@ -288,6 +288,26 @@ describe("SqlPage", () => {
     wrapper.unmount();
   });
 
+  // The export controls follow the grid exactly: a write-style statement has
+  // nothing to hand a spreadsheet but a header line.
+  it("mounts the export toolbar with the grid, and not without it", async () => {
+    resultRef.value = {
+      columns: [{ name: "x", declared_type: "INTEGER" }],
+      rows: [[42]],
+      rows_affected: 0,
+    };
+    const withRows = mount(SqlPage, mountOptions);
+    await flushPromises();
+    expect(withRows.find("[data-testid='result-export__copy']").exists()).toBe(true);
+    withRows.unmount();
+
+    resultRef.value = { columns: [], rows: [], rows_affected: 7 };
+    const withoutRows = mount(SqlPage, mountOptions);
+    await flushPromises();
+    expect(withoutRows.find("[data-testid='result-export__copy']").exists()).toBe(false);
+    withoutRows.unmount();
+  });
+
   it("renders the error banner with the i18nKey resolved by the page", async () => {
     lastErrorRef.value = {
       category: "query",

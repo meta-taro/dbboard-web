@@ -77,7 +77,7 @@ introduced later must read from the active theme, not hard-coded RGB.**
 
 - [x] Slice A — theme resolves light/dark/auto, persists, survives a missing or
       malformed stored value, and every surface reads theme tokens.
-- [ ] Slice B — `to_csv` / `to_tsv` equivalents are pure and unit-tested; copy
+- [x] Slice B — `to_csv` / `to_tsv` equivalents are pure and unit-tested; copy
       and download wired to the grid.
 - [ ] Slice C — `sortedRowOrder` is pure; header clicks cycle asc → desc → off;
       up to three levels; a new result resets the sort.
@@ -120,3 +120,26 @@ pnpm -r test
   - `window.localStorage` is inert under vitest here — Node's experimental Web
     Storage global shadows happy-dom's. The tests supply their own store, which
     is also what makes the throw-on-read / throw-on-write cases expressible.
+- 2026-08-04 — Slice B done, mirroring desktop ADR-0035 assertion for
+  assertion: `utils/export.ts` (pure serialization), `useResultExport`
+  (clipboard + download), `ResultExportToolbar.vue`, `result.export.*` in
+  eleven locales.
+  - Format decisions carried over verbatim: RFC 4180 quoting shared by both
+    formats, NULL as an empty field rather than the word, records separated
+    and not terminated, CSV with a BOM for Excel and clipboard TSV without
+    one, blobs exporting their `<blob: N chars>` placeholder.
+  - Two desktop concerns deliberately dropped. `next_available_name` exists
+    because a native save dialog overwrites silently; the browser's download
+    manager de-duplicates already. ADR-0035 slice 2's row selection is out of
+    scope — nothing in the web grid selects rows yet.
+  - Web-only cases desktop has no equivalent for: a blob arrives as
+    `{ $blob }` over the wire, and a lone `\r` has to quote (a Windows
+    clipboard paste can produce one without a `\n`).
+  - `navigator.clipboard` is undefined outside a secure context — the first
+    way anyone running the API on a LAN box meets the copy button — and
+    rejects on a denied permission. Both land in the status region rather
+    than an exception.
+  - Neither the composable nor the component was written test-first in the
+    strict sense (module followed test within the same cycle), so both were
+    mutation-checked instead of trusted: swapping `toTsv` for `toCsvWithBom`,
+    then the filename and `aria-live`, each produced the expected failures.

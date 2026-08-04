@@ -64,7 +64,14 @@
   "result": {
     "heading": "Ergebnis",
     "empty": "(Abfrage ausführen)",
-    "affected": "OK ({rows} Zeilen betroffen)"
+    "affected": "OK ({rows} Zeilen betroffen)",
+    "export": {
+      "label": "Ergebnis exportieren",
+      "copy": "Als TSV kopieren",
+      "download": "Als CSV speichern",
+      "copied": "Kopiert",
+      "failed": "Kopieren fehlgeschlagen"
+    }
   },
   "ai": {
     "heading": "KI-Assistent",

@@ -64,7 +64,14 @@
   "result": {
     "heading": "Result",
     "empty": "(run a query)",
-    "affected": "OK ({rows} rows affected)"
+    "affected": "OK ({rows} rows affected)",
+    "export": {
+      "label": "Result export",
+      "copy": "Copy as TSV",
+      "download": "Save as CSV",
+      "copied": "Copied",
+      "failed": "Copy failed"
+    }
   },
   "ai": {
     "heading": "AI assist",

@@ -103,6 +103,11 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("ai.state.loading");
     expect(enPaths).toContain("ai.disabled.heading");
     expect(enPaths).toContain("ai.disabled.body");
+    expect(enPaths).toContain("result.export.label");
+    expect(enPaths).toContain("result.export.copy");
+    expect(enPaths).toContain("result.export.download");
+    expect(enPaths).toContain("result.export.copied");
+    expect(enPaths).toContain("result.export.failed");
     expect(enPaths).toContain("locale-switcher.label");
     expect(enPaths).toContain("theme-switcher.label");
     expect(enPaths).toContain("theme-switcher.option.auto");

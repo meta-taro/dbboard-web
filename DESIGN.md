@@ -106,6 +106,11 @@ to block startup.
 - Virtualize rows when the count exceeds `500`.
 - Numeric columns: right-aligned, monospace.
 - Null and empty values render as a muted `NULL` glyph rather than blank cells.
+- Export controls sit in a toolbar directly above the grid, never inside it —
+  the grid's own root element is the virtualizer's scroll container.
+- Copy leaves nothing on screen to notice, so both actions share one live
+  region (`role="status"`), rendered from the start and empty. A region that
+  appears at the same moment it gains text is not reliably announced.
 
 ### Editors
 

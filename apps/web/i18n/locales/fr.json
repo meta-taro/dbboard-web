@@ -64,7 +64,14 @@
   "result": {
     "heading": "Résultat",
     "empty": "(exécutez une requête)",
-    "affected": "OK ({rows} lignes affectées)"
+    "affected": "OK ({rows} lignes affectées)",
+    "export": {
+      "label": "Exporter le résultat",
+      "copy": "Copier en TSV",
+      "download": "Enregistrer en CSV",
+      "copied": "Copié",
+      "failed": "Échec de la copie"
+    }
   },
   "ai": {
     "heading": "Assistant IA",

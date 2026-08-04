@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from "vue";
 import { useRoute } from "vue-router";
 import AiPanel from "../../../components/AiPanel.vue";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
+import ResultExportToolbar from "../../../components/ResultExportToolbar.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
@@ -126,7 +127,12 @@ function onEditorKeydown(event: KeyboardEvent) {
             <p data-testid="result-summary" class="result-summary">
               {{ t("sql.result.summary", summaryParams ?? {}) }}
             </p>
-            <ResultGrid v-if="hasRows" :result="result" />
+            <!-- Both tied to hasRows: a statement that returns no rows has
+                 nothing to export but a header line. -->
+            <template v-if="hasRows">
+              <ResultExportToolbar :result="result" />
+              <ResultGrid :result="result" />
+            </template>
           </template>
         </section>
 

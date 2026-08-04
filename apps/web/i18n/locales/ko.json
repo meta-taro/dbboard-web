@@ -64,7 +64,14 @@
   "result": {
     "heading": "결과",
     "empty": "(쿼리를 실행하세요)",
-    "affected": "OK ({rows}행 영향받음)"
+    "affected": "OK ({rows}행 영향받음)",
+    "export": {
+      "label": "결과 내보내기",
+      "copy": "TSV로 복사",
+      "download": "CSV로 저장",
+      "copied": "복사했습니다",
+      "failed": "복사하지 못했습니다"
+    }
   },
   "ai": {
     "heading": "AI 어시스트",

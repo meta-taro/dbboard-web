@@ -64,7 +64,14 @@
   "result": {
     "heading": "结果",
     "empty": "(请运行查询)",
-    "affected": "OK (受影响行数: {rows})"
+    "affected": "OK (受影响行数: {rows})",
+    "export": {
+      "label": "导出结果",
+      "copy": "复制为 TSV",
+      "download": "保存为 CSV",
+      "copied": "已复制",
+      "failed": "复制失败"
+    }
   },
   "ai": {
     "heading": "AI 助手",

@@ -64,7 +64,14 @@
   "result": {
     "heading": "結果",
     "empty": "（クエリを実行してください）",
-    "affected": "OK ({rows} 行に影響)"
+    "affected": "OK ({rows} 行に影響)",
+    "export": {
+      "label": "結果のエクスポート",
+      "copy": "TSV でコピー",
+      "download": "CSV で保存",
+      "copied": "コピーしました",
+      "failed": "コピーできませんでした"
+    }
   },
   "ai": {
     "heading": "AI アシスト",

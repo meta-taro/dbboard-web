@@ -64,7 +64,14 @@
   "result": {
     "heading": "結果",
     "empty": "(請執行查詢)",
-    "affected": "OK (影響列數：{rows})"
+    "affected": "OK (影響列數：{rows})",
+    "export": {
+      "label": "匯出結果",
+      "copy": "複製為 TSV",
+      "download": "儲存為 CSV",
+      "copied": "已複製",
+      "failed": "複製失敗"
+    }
   },
   "ai": {
     "heading": "AI 助理",

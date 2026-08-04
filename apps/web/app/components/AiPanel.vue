@@ -155,7 +155,7 @@ function onInsert() {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface, transparent);
+  background: var(--surface);
 }
 
 .header {
@@ -172,8 +172,8 @@ function onInsert() {
 .disabled-notice {
   padding: 0.75rem 1rem;
   border-radius: 4px;
-  background: rgba(120, 113, 108, 0.1);
-  border: 1px solid rgba(120, 113, 108, 0.3);
+  background: var(--muted-tint);
+  border: 1px solid var(--muted-tint-border);
   color: var(--text-muted);
   font-size: 0.9rem;
 }
@@ -192,9 +192,9 @@ function onInsert() {
   margin: 0;
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
-  background: rgba(220, 38, 38, 0.1);
-  color: #991b1b;
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-tint-border);
   font-size: 0.85rem;
 }
 
@@ -236,7 +236,7 @@ function onInsert() {
   border-radius: 4px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   font-size: 0.9rem;
   cursor: pointer;
   align-self: flex-start;
@@ -282,7 +282,7 @@ function onInsert() {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--surface-sunken);
 }
 
 .output-text {

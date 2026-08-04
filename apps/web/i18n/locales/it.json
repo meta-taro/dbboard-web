@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "Lingua"
   },
+  "theme-switcher": {
+    "label": "Tema",
+    "option": {
+      "auto": "Automatico",
+      "light": "Chiaro",
+      "dark": "Scuro"
+    }
+  },
   "connections": {
     "title": "Connessioni",
     "empty": "Nessuna connessione registrata.",

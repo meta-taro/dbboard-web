@@ -93,9 +93,9 @@ function cellFor(rowIndex: number, columnIndex: number) {
   max-height: 60vh;
   min-height: 240px;
   overflow: auto;
-  border: 1px solid var(--border, #e3e6ea);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface, #ffffff);
+  background: var(--surface-raised);
 }
 
 .grid {
@@ -112,8 +112,8 @@ function cellFor(rowIndex: number, columnIndex: number) {
   z-index: 1;
   padding: 0.5rem 0.75rem;
   text-align: left;
-  background: var(--surface-muted, #f5f6f8);
-  border-bottom: 1px solid var(--border, #e3e6ea);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -126,14 +126,14 @@ function cellFor(rowIndex: number, columnIndex: number) {
   flex: 1 1 0;
   min-width: 96px;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid var(--border-faint, #eef1f4);
+  border-bottom: 1px solid var(--border-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .cell--null {
-  color: var(--text-muted, #94a0ad);
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -147,7 +147,7 @@ function cellFor(rowIndex: number, columnIndex: number) {
 }
 
 .cell--blob {
-  color: var(--text-muted, #5a6573);
+  color: var(--text-muted);
   font-style: italic;
 }
 </style>

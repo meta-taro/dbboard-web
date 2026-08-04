@@ -2,7 +2,9 @@
 
 Visual and interaction specification for **dbboard-web**.
 
-> Status: placeholder. Tokens and components below are starting points to be refined when the first UI work lands.
+> Status: **Colors** describes what is shipped and is enforced by a test. The
+> remaining sections are still starting points, to be refined as the components
+> they describe land.
 
 ## Visual direction
 
@@ -13,19 +15,62 @@ Visual and interaction specification for **dbboard-web**.
 
 ## Colors
 
-Tentative tokens. Finalize during the first UI phase.
+Declared once, in `apps/web/app/app.vue`. Everything else consumes them through
+`var(--token)` — never a literal, and never a `var(--token, #fallback)`, because
+a fallback pins one theme's colour in place and looks deliberate. Both rules are
+enforced by `apps/web/tests/theme-tokens.test.ts`.
 
-| Token        | Light     | Dark      | Usage                                |
-| ------------ | --------- | --------- | ------------------------------------ |
-| `bg`         | `#ffffff` | `#0b0d10` | Page background                      |
-| `surface`    | `#f5f6f8` | `#14181d` | Panels, sidebars                     |
-| `border`     | `#e3e6ea` | `#1f242a` | Dividers                             |
-| `text`       | `#0f1115` | `#e6e9ee` | Body text                            |
-| `text-muted` | `#5a6573` | `#8a96a3` | Secondary text                       |
-| `accent`     | `#2563eb` | `#3b82f6` | Primary action                       |
-| `success`    | `#16a34a` | `#22c55e` | Successful query, healthy connection |
-| `warning`    | `#d97706` | `#f59e0b` | Truncated result, soft limit         |
-| `danger`     | `#dc2626` | `#ef4444` | Destructive action, errors           |
+| Token                | Light                  | Dark                    | Usage                                        |
+| -------------------- | ---------------------- | ----------------------- | -------------------------------------------- |
+| `bg`                 | `#ffffff`              | `#0b0d10`               | Page background                              |
+| `surface`            | `#f5f6f8`              | `#14181d`               | Panels, sidebars                             |
+| `surface-raised`     | `#ffffff`              | `#14181d`               | Content sitting on `surface` (grid cells)    |
+| `surface-sunken`     | `rgba(15,17,21,.02)`   | `rgba(230,233,238,.03)` | Recessed rows, zebra striping                |
+| `border`             | `#e3e6ea`              | `#1f242a`               | Dividers                                     |
+| `border-faint`       | `#eef1f4`              | `#171c21`               | Grid rules, low-emphasis separators          |
+| `text`               | `#0f1115`              | `#e6e9ee`               | Body text                                    |
+| `text-muted`         | `#5a6573`              | `#8a96a3`               | Secondary text                               |
+| `accent`             | `#2563eb`              | `#3b82f6`               | Primary action                               |
+| `accent-contrast`    | `#ffffff`              | `#ffffff`               | Foreground on an `accent` fill               |
+| `success`            | `#16a34a`              | `#22c55e`               | Successful query, healthy connection         |
+| `success-text`       | `#166534`              | `#86efac`               | Success wording (the fill is too light/dark) |
+| `success-tint`       | `rgba(34,197,94,.15)`  | `rgba(34,197,94,.2)`    | Success banner background                    |
+| `warning`            | `#d97706`              | `#f59e0b`               | Truncated result, soft limit                 |
+| `danger`             | `#dc2626`              | `#ef4444`               | Destructive action, errors                   |
+| `danger-text`        | `#991b1b`              | `#fca5a5`               | Error wording                                |
+| `danger-tint`        | `rgba(220,38,38,.1)`   | `rgba(239,68,68,.16)`   | Error banner background                      |
+| `danger-tint-border` | `rgba(220,38,38,.3)`   | `rgba(239,68,68,.38)`   | Error banner border                          |
+| `muted-tint`         | `rgba(120,113,108,.1)` | `rgba(138,150,163,.12)` | Neutral chip background                      |
+| `muted-tint-border`  | `rgba(120,113,108,.3)` | `rgba(138,150,163,.32)` | Neutral chip border                          |
+| `code-bg`            | `rgba(15,17,21,.06)`   | `rgba(230,233,238,.1)`  | Inline `code`                                |
+
+The `*-text` pairs exist because the fill colours are tuned for solid blocks and
+only just clear AA as body text. The tints carry a different alpha per theme —
+the same alpha over a dark canvas disappears.
+
+### Light / Dark / Auto
+
+Mirrors desktop ADR-0041. Three states, in this cascade order:
+
+| State | Selector                                           | Attribute on `<html>` |
+| ----- | -------------------------------------------------- | --------------------- |
+| Light | `:root`                                            | `data-theme="light"`  |
+| Auto  | `:root:not([data-theme="light"])` in a media query | _(none)_              |
+| Dark  | `:root[data-theme="dark"]`                         | `data-theme="dark"`   |
+
+**Auto is the default and writes no attribute at all.** A resolved value in the
+DOM would be a second source of truth that stops tracking when the OS setting
+changes. The explicit dark block comes last so it outranks the media query at
+equal specificity — that is what lets someone on a dark OS choose light.
+
+`color-scheme` is declared per state rather than once as `light dark`. Declaring
+both while the custom properties were light-only was the original defect: the UA
+painted a dark canvas and every panel stayed white.
+
+The preference persists under `localStorage["dbboard.theme"]`. Following
+ADR-0041, reading it is non-fatal — missing, malformed, or a storage that throws
+all fall back to auto rather than failing the render. UI chrome must not be able
+to block startup.
 
 ## Layout
 

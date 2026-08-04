@@ -104,6 +104,10 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("ai.disabled.heading");
     expect(enPaths).toContain("ai.disabled.body");
     expect(enPaths).toContain("locale-switcher.label");
+    expect(enPaths).toContain("theme-switcher.label");
+    expect(enPaths).toContain("theme-switcher.option.auto");
+    expect(enPaths).toContain("theme-switcher.option.light");
+    expect(enPaths).toContain("theme-switcher.option.dark");
   });
 
   for (const [code, bundle] of locales) {

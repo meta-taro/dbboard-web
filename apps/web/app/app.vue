@@ -47,6 +47,7 @@ async function onInstallClick() {
         <button v-if="canInstall" type="button" class="install-button" @click="onInstallClick">
           {{ t("install.button") }}
         </button>
+        <ThemeSwitcher />
         <LocaleSwitcher />
       </div>
     </header>
@@ -57,6 +58,26 @@ async function onInstallClick() {
 </template>
 
 <style>
+/*
+ * The palette. Mirrors desktop ADR-0041 (Light / Dark / Auto) and the token
+ * table in DESIGN.md.
+ *
+ * Three states, in this order:
+ *
+ *   :root                                    light, and the default
+ *   :root:not([data-theme="light"]) @media   auto — the OS decides
+ *   :root[data-theme="dark"]                 dark, chosen explicitly
+ *
+ * `auto` writes no attribute at all (see app/utils/theme.ts), so the media
+ * query is the only thing deciding and there is no second code path that
+ * could disagree with it. The explicit block comes last so it outranks the
+ * media query at equal specificity — that is what lets someone on a dark OS
+ * choose light.
+ *
+ * `color-scheme` is set per state rather than once as `light dark`. Declaring
+ * both while the custom properties were light-only is exactly what was broken
+ * here before: the UA painted a dark canvas and every panel stayed white.
+ */
 :root {
   font-family:
     ui-sans-serif,
@@ -66,13 +87,93 @@ async function onInstallClick() {
     "Segoe UI",
     Roboto,
     sans-serif;
-  color-scheme: light dark;
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --surface-raised: #ffffff;
+  --border: #e3e6ea;
+  --border-faint: #eef1f4;
+  --text: #0f1115;
   --text-muted: #5a6573;
   --accent: #2563eb;
-  --border: #e3e6ea;
+  /* Foreground on an --accent fill. Not white by coincidence: it has to
+     satisfy contrast against both accent values, and both are mid-blues. */
+  --accent-contrast: #ffffff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  /* Text-on-background variants. The fill colours above are tuned for solid
+     blocks and only just clear AA as body text; these clear it comfortably. */
+  --success-text: #166534;
+  --danger-text: #991b1b;
+  --code-bg: rgba(15, 17, 21, 0.06);
+  /* Tints: a translucent wash of the matching fill, used behind banners and
+     status chips so the message reads as a block without a second border
+     colour. Alpha differs per theme — the same alpha over a dark canvas
+     disappears. */
+  --surface-sunken: rgba(15, 17, 21, 0.02);
+  --danger-tint: rgba(220, 38, 38, 0.1);
+  --danger-tint-border: rgba(220, 38, 38, 0.3);
+  --success-tint: rgba(34, 197, 94, 0.15);
+  --muted-tint: rgba(120, 113, 108, 0.1);
+  --muted-tint-border: rgba(120, 113, 108, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0b0d10;
+    --surface: #14181d;
+    --surface-raised: #14181d;
+    --border: #1f242a;
+    --border-faint: #171c21;
+    --text: #e6e9ee;
+    --text-muted: #8a96a3;
+    --accent: #3b82f6;
+    --accent-contrast: #ffffff;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --success-text: #86efac;
+    --danger-text: #fca5a5;
+    --code-bg: rgba(230, 233, 238, 0.1);
+    --surface-sunken: rgba(230, 233, 238, 0.03);
+    --danger-tint: rgba(239, 68, 68, 0.16);
+    --danger-tint-border: rgba(239, 68, 68, 0.38);
+    --success-tint: rgba(34, 197, 94, 0.2);
+    --muted-tint: rgba(138, 150, 163, 0.12);
+    --muted-tint-border: rgba(138, 150, 163, 0.32);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --surface: #14181d;
+  --surface-raised: #14181d;
+  --border: #1f242a;
+  --border-faint: #171c21;
+  --text: #e6e9ee;
+  --text-muted: #8a96a3;
+  --accent: #3b82f6;
+  --accent-contrast: #ffffff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --success-text: #86efac;
+  --danger-text: #fca5a5;
+  --code-bg: rgba(230, 233, 238, 0.1);
+  --surface-sunken: rgba(230, 233, 238, 0.03);
+  --danger-tint: rgba(239, 68, 68, 0.16);
+  --danger-tint-border: rgba(239, 68, 68, 0.38);
+  --success-tint: rgba(34, 197, 94, 0.2);
+  --muted-tint: rgba(138, 150, 163, 0.12);
+  --muted-tint-border: rgba(138, 150, 163, 0.32);
 }
 
 body {
+  background: var(--bg);
+  color: var(--text);
   margin: 0;
   /* Avoid the iOS standalone status bar overlap when display:standalone. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
@@ -120,7 +221,7 @@ body {
   border-radius: 4px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   font-size: 0.95rem;
   cursor: pointer;
 }
@@ -131,7 +232,7 @@ body {
 }
 
 .app-main code {
-  background: rgba(127, 127, 127, 0.15);
+  background: var(--code-bg);
   padding: 0.1rem 0.35rem;
   border-radius: 0.25rem;
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", monospace;

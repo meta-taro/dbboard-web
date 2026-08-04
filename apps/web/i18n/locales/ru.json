@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "Язык"
   },
+  "theme-switcher": {
+    "label": "Тема",
+    "option": {
+      "auto": "Авто",
+      "light": "Светлая",
+      "dark": "Тёмная"
+    }
+  },
   "connections": {
     "title": "Подключения",
     "empty": "Подключения ещё не зарегистрированы.",

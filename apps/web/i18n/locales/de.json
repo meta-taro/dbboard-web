@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "Sprache"
   },
+  "theme-switcher": {
+    "label": "Design",
+    "option": {
+      "auto": "Automatisch",
+      "light": "Hell",
+      "dark": "Dunkel"
+    }
+  },
   "connections": {
     "title": "Verbindungen",
     "empty": "Noch keine Verbindungen registriert.",

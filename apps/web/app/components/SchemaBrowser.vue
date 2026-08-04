@@ -200,7 +200,7 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface, transparent);
+  background: var(--surface);
 }
 
 .header {
@@ -235,9 +235,9 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
   margin: 0;
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
-  background: rgba(220, 38, 38, 0.1);
-  color: #991b1b;
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-tint-border);
   font-size: 0.85rem;
 }
 

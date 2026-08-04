@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "语言"
   },
+  "theme-switcher": {
+    "label": "主题",
+    "option": {
+      "auto": "自动",
+      "light": "浅色",
+      "dark": "深色"
+    }
+  },
   "connections": {
     "title": "连接",
     "empty": "尚未注册连接。",

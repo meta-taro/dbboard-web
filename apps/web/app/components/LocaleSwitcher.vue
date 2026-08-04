@@ -43,7 +43,7 @@ async function onChange(event: Event) {
 }
 
 .locale-switcher__label {
-  color: var(--text-muted, #5a6573);
+  color: var(--text-muted);
 }
 
 .locale-switcher__select {
@@ -51,7 +51,7 @@ async function onChange(event: Event) {
   min-height: 44px;
   padding: 0 0.5rem;
   border-radius: 4px;
-  border: 1px solid var(--border, #e3e6ea);
+  border: 1px solid var(--border);
   background: transparent;
   color: inherit;
   font-size: 0.95rem;
@@ -59,7 +59,7 @@ async function onChange(event: Event) {
 }
 
 .locale-switcher__select:focus-visible {
-  outline: 2px solid var(--accent, #2563eb);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 </style>

@@ -27,7 +27,7 @@ useHead({
 }
 
 .offline .hint {
-  color: var(--text-muted, #5a6573);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 </style>

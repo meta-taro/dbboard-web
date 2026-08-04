@@ -103,9 +103,9 @@ async function onSubmit() {
 .error-banner {
   padding: 0.75rem 1rem;
   border-radius: 4px;
-  background: rgba(220, 38, 38, 0.1);
-  color: #991b1b;
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-tint-border);
 }
 
 .add-form {
@@ -148,7 +148,7 @@ async function onSubmit() {
   border-radius: 4px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-contrast);
   font-size: 0.95rem;
   cursor: pointer;
 }

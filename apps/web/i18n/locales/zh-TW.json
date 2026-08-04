@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "語言"
   },
+  "theme-switcher": {
+    "label": "主題",
+    "option": {
+      "auto": "自動",
+      "light": "淺色",
+      "dark": "深色"
+    }
+  },
   "connections": {
     "title": "連線",
     "empty": "尚未註冊連線。",

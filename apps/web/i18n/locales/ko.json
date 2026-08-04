@@ -112,6 +112,14 @@
   "locale-switcher": {
     "label": "언어"
   },
+  "theme-switcher": {
+    "label": "테마",
+    "option": {
+      "auto": "자동",
+      "light": "라이트",
+      "dark": "다크"
+    }
+  },
   "connections": {
     "title": "연결",
     "empty": "등록된 연결이 없습니다.",

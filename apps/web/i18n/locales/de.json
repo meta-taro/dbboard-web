@@ -125,7 +125,10 @@
       "capability": "Funktion nicht verfügbar",
       "ai-disabled": "KI-Assistent nicht verfügbar",
       "ai-provider": "Fehler des KI-Anbieters"
-    }
+    },
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "copy-failed": "Kopieren fehlgeschlagen"
   },
   "locale-switcher": {
     "label": "Sprache"

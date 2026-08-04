@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import ErrorBanner from "../../components/ErrorBanner.vue";
 import { useConnections, type Driver } from "../../composables/useConnections";
+import { fromCategorised } from "../../utils/display-error";
 
 const { t } = useI18n();
 const { list, lastError, register, remove } = useConnections();
@@ -30,9 +32,11 @@ async function onSubmit() {
   <section class="connections">
     <h2>{{ t("connections.title") }}</h2>
 
-    <p v-if="lastError" data-testid="error-banner" role="alert" class="error-banner">
-      {{ t(lastError.i18nKey) }}: {{ lastError.message }}
-    </p>
+    <ErrorBanner
+      v-if="lastError"
+      data-testid="error-banner"
+      :error="fromCategorised(lastError, t)"
+    />
 
     <form data-testid="add-form" class="add-form" @submit.prevent="onSubmit">
       <h3>{{ t("connections.add.heading") }}</h3>
@@ -98,14 +102,6 @@ async function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.error-banner {
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  border: 1px solid var(--danger-tint-border);
 }
 
 .add-form {

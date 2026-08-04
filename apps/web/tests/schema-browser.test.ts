@@ -169,6 +169,11 @@ describe("SchemaBrowser", () => {
 
     expect(wrapper.find("[data-testid='schema-error']").exists()).toBe(true);
     expect(wrapper.text()).toContain("schema.error.load");
+    // The searchable half (desktop ADR-0039). `t` is stubbed to echo the key
+    // here, so the English can only have come from the en bundle.
+    expect(wrapper.find("[data-testid='error-banner__original']").text()).toBe(
+      "Failed to load schema: Network down",
+    );
     wrapper.unmount();
   });
 
@@ -184,6 +189,10 @@ describe("SchemaBrowser", () => {
 
     expect(wrapper.find("[data-testid='schema-columns-error']").exists()).toBe(true);
     expect(wrapper.text()).toContain("schema.error.columns");
+    // Nothing from underneath, so no trailing colon on either half.
+    expect(wrapper.find("[data-testid='error-banner__original']").text()).toBe(
+      "Failed to load columns",
+    );
     wrapper.unmount();
   });
 });

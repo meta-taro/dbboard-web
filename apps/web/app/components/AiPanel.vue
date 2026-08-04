@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useAiAssist } from "../composables/useAiAssist";
+import { fromCategorised } from "../utils/display-error";
+import ErrorBanner from "./ErrorBanner.vue";
 
 interface Props {
   currentSql: string;
@@ -65,9 +67,12 @@ function onInsert() {
       <p class="disabled-body">{{ t("ai.disabled.body") }}</p>
     </div>
 
-    <p v-else-if="lastError" data-testid="ai-error" role="alert" class="error-banner">
-      {{ t(lastError.i18nKey) }}: {{ lastError.message }}
-    </p>
+    <ErrorBanner
+      v-else-if="lastError"
+      data-testid="ai-error"
+      dense
+      :error="fromCategorised(lastError, t)"
+    />
 
     <div class="dialect-row">
       <label class="dialect-label" for="ai-dialect">{{ t("ai.dialect.label") }}</label>
@@ -185,16 +190,6 @@ function onInsert() {
 
 .disabled-body {
   margin: 0;
-  font-size: 0.85rem;
-}
-
-.error-banner {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  border: 1px solid var(--danger-tint-border);
   font-size: 0.85rem;
 }
 

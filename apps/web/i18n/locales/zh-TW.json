@@ -125,7 +125,10 @@
       "capability": "不支援此功能",
       "ai-disabled": "AI 助理無法使用",
       "ai-provider": "AI 提供者錯誤"
-    }
+    },
+    "copy": "複製",
+    "copied": "已複製",
+    "copy-failed": "複製失敗"
   },
   "locale-switcher": {
     "label": "語言"

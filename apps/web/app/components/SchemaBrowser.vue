@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
+import ErrorBanner from "./ErrorBanner.vue";
 import {
   quoteIdent,
   useSchemaBrowser,
   type ColumnInfo,
   type TableInfo,
 } from "../composables/useSchemaBrowser";
+import { prefixed } from "../utils/display-error";
 
 interface Props {
   connectionId: string;
@@ -114,9 +116,12 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
       </button>
     </header>
 
-    <p v-if="lastError" data-testid="schema-error" role="alert" class="error-banner">
-      {{ t("schema.error.load") }}: {{ lastError.message }}
-    </p>
+    <ErrorBanner
+      v-if="lastError"
+      data-testid="schema-error"
+      dense
+      :error="prefixed('schema.error.load', lastError.message, t)"
+    />
 
     <p v-if="groups.length === 0 && !lastError" data-testid="schema-empty" class="empty">
       {{ t("schema.empty") }}
@@ -154,14 +159,14 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
                   {{ t("schema.columns.loading") }}
                 </p>
 
-                <p
+                <!-- No sentence from underneath: the failure is the client's
+                     own, so the prefix stands alone. -->
+                <ErrorBanner
                   v-else-if="columnEntry(table)?.state === 'error'"
                   data-testid="schema-columns-error"
-                  role="alert"
-                  class="error-banner"
-                >
-                  {{ t("schema.error.columns") }}
-                </p>
+                  dense
+                  :error="prefixed('schema.error.columns', null, t)"
+                />
 
                 <ul v-else-if="columnEntry(table)?.state === 'loaded'" class="columns">
                   <li
@@ -229,16 +234,6 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
 .refresh-button:disabled {
   opacity: 0.6;
   cursor: progress;
-}
-
-.error-banner {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  border: 1px solid var(--danger-tint-border);
-  font-size: 0.85rem;
 }
 
 .empty {

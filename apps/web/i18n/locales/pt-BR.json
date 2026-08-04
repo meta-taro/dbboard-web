@@ -125,7 +125,10 @@
       "capability": "Recurso indisponível",
       "ai-disabled": "Assistente de IA indisponível",
       "ai-provider": "Erro do provedor de IA"
-    }
+    },
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copy-failed": "Falha ao copiar"
   },
   "locale-switcher": {
     "label": "Idioma"

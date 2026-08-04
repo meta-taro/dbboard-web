@@ -139,6 +139,27 @@ to block startup.
   as the export toolbar, and a visible close button — Escape does not exist on
   a phone, and a backdrop nobody knows to tap is not a way out.
 
+### Error banners
+
+One component renders every error the app shows (`ErrorBanner.vue`, mirroring
+desktop ADR-0039). Nothing else assembles an error line.
+
+- Two halves: the message in the reader's language, and — dimmed, below it —
+  the same message in English. The English one is what can be pasted into a
+  search or an assistant, so it is on screen rather than one click away.
+- The second line appears only when it differs. On an English UI it would
+  repeat the line above, which reads as a bug.
+- Only the prefix is translated. The body comes from the database engine, not
+  from dbboard, so translating it would mean inventing wording for someone
+  else's error. When there is no body — a failure the client itself noticed —
+  the prefix stands alone, with no dangling colon.
+- A copy button takes both halves, newline-separated. It acknowledges in a
+  live region that is a **sibling** of the banner, not inside it: text changing
+  inside a `role="alert"` re-announces the whole alert, so a screen reader user
+  would hear the error again on every press.
+- `dense` tightens the padding and type for a banner inside a sidebar or a
+  panel. Pages use the default.
+
 ### Editors
 
 - SQL editor: Monaco or CodeMirror (decision deferred). Run shortcut: `Cmd/Ctrl + Enter`.

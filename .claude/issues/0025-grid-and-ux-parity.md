@@ -83,7 +83,7 @@ introduced later must read from the active theme, not hard-coded RGB.**
       up to three levels; a new result resets the sort.
 - [x] Slice D — `displayWidth` / `needsViewer` are pure and unit-tested at the
       boundary; a value containing a newline always opens the viewer.
-- [ ] Slice E — one error primitive carrying both halves, with a copy button,
+- [x] Slice E — one error primitive carrying both halves, with a copy button,
       used by every surface that renders an error.
 - [ ] Slice F — divider is a real `role="separator"` with keyboard support;
       `placePopover` is DOM-free and unit-tested for the flip and clamp cases.
@@ -223,3 +223,53 @@ thirteen full-width ranges in `apps/desktop/src/lib/grid/edit.ts`;
   themes rather than a wash of the canvas colour — over a dark canvas a
   dark-grey wash does not read as a scrim at all — with more of it in the
   light theme, where there is more page to push back.
+
+### 2026-08-04, slice E
+
+- `DisplayError` is desktop ADR-0039's pair — the message the reader can read
+  and the English one they can search — and `ErrorBanner.vue` is the one place
+  that renders it. Before this, five surfaces each assembled `prefix: message`
+  by hand and each carried its own copy of the same banner CSS, and the
+  English half existed nowhere: an error a user could not read was also an
+  error they could not look up.
+- The English half is a static import of `en.json`, not `t(key, { locale:
+"en" })`. `i18n.lazy` is on, so on a Japanese session the English bundle may
+  not be in memory, and a half that is sometimes the sentence and sometimes
+  the raw key is worse than no half at all.
+- That import has to be `?raw`. A plain JSON import of a locale file does not
+  yield the JSON — @nuxtjs/i18n compiles locale files into vue-i18n message
+  AST nodes, so `en.error.prefix.query` is an object and interpolating it
+  gives `[object Object]`. The first version shipped exactly that, and the
+  test caught it. `i18n-locale-parity.test.ts` had already hit the same wall
+  and documents it at the top; the fix here is the same trick. There is now a
+  case pinning the subtree behaviour, so a key naming a branch rather than a
+  message reads as unresolved instead of stringifying.
+- The test reads `en.json` off disk rather than importing it. Its first draft
+  imported it, which made the "collapses to one half on an English UI" case
+  pass for the wrong reason: both halves became `[object Object]: boom`, so
+  they matched. Reading from disk also makes the test an independent source —
+  the module reaches the same file through the bundler.
+- `prefixed(key, message | null, t)` generalized out of `fromCategorised`
+  before the call sites were touched. The schema browser and the history
+  sidebar name their prefix outside `error.prefix.*`, and an `error.prefix.*`
+  lookup would have silently dropped their English half. `null` for the body
+  covers `schema.error.columns`, where the client itself noticed the failure
+  and there is nothing from underneath — no dangling colon on either half.
+- Only the prefix is translated. The body is the engine's own wording, and
+  ADR-0039 draws the same boundary: translating it would mean inventing
+  wording for someone else's error.
+- The copy acknowledgement is a sibling of the alert, not inside it. Text
+  changing inside a `role="alert"` re-announces the whole alert, so a screen
+  reader user pressing Copy would hear the error read out again. There is a
+  test for this specifically, and it dies when the live region is moved in.
+- `ErrorBanner.vue` was written before its tests — the one place this slice
+  broke RED-first order. Five mutations stand in for it (always render the
+  original, copy the localized half only, move the status inside the alert,
+  render the live region only once it has text, drop `role="alert"`); all five
+  are caught. Recorded rather than glossed: mutation coverage is stronger
+  evidence than ordering, but it is not the same thing as having followed the
+  chain.
+- Two call-site tests now assert the English half reaches the DOM. `t` is
+  stubbed to echo keys in both suites, so the English wording can only have
+  come from the bundle — that is what makes them wiring tests rather than
+  restatements of the unit tests.

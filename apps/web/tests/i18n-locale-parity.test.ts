@@ -87,6 +87,9 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("error.prefix.capability");
     expect(enPaths).toContain("error.prefix.ai-disabled");
     expect(enPaths).toContain("error.prefix.ai-provider");
+    expect(enPaths).toContain("error.copy");
+    expect(enPaths).toContain("error.copied");
+    expect(enPaths).toContain("error.copy-failed");
     expect(enPaths).toContain("ai.heading");
     expect(enPaths).toContain("ai.section.explain");
     expect(enPaths).toContain("ai.section.suggest");

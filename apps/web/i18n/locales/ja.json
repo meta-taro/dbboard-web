@@ -125,7 +125,10 @@
       "capability": "機能非対応",
       "ai-disabled": "AI アシストは利用できません",
       "ai-provider": "AI プロバイダエラー"
-    }
+    },
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "copy-failed": "コピーできませんでした"
   },
   "locale-switcher": {
     "label": "言語"

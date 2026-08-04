@@ -125,7 +125,10 @@
       "capability": "지원되지 않는 기능",
       "ai-disabled": "AI 어시스트를 사용할 수 없습니다",
       "ai-provider": "AI 공급자 오류"
-    }
+    },
+    "copy": "복사",
+    "copied": "복사됨",
+    "copy-failed": "복사 실패"
   },
   "locale-switcher": {
     "label": "언어"

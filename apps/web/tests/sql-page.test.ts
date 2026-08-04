@@ -322,6 +322,9 @@ describe("SqlPage", () => {
     expect(banner.exists()).toBe(true);
     expect(banner.text()).toContain("error.prefix.query");
     expect(banner.text()).toContain("syntax error");
+    // The English half is what a user pastes into a search. `t` echoes keys
+    // in this suite, so this wording came from the en bundle, not from `t`.
+    expect(banner.find("[data-testid='error-banner__original']").text()).toContain("Query error:");
     wrapper.unmount();
   });
 

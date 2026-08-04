@@ -4,9 +4,11 @@ import { useRoute } from "vue-router";
 import AiPanel from "../../../components/AiPanel.vue";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultExportToolbar from "../../../components/ResultExportToolbar.vue";
+import ErrorBanner from "../../../components/ErrorBanner.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
+import { fromCategorised } from "../../../utils/display-error";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -87,9 +89,11 @@ function onEditorKeydown(event: KeyboardEvent) {
       </p>
     </header>
 
-    <p v-if="lastError" data-testid="error-banner" role="alert" class="error-banner">
-      {{ t(lastError.i18nKey) }}: {{ lastError.message }}
-    </p>
+    <ErrorBanner
+      v-if="lastError"
+      data-testid="error-banner"
+      :error="fromCategorised(lastError, t)"
+    />
 
     <div class="columns">
       <div class="editor-column">
@@ -168,14 +172,6 @@ function onEditorKeydown(event: KeyboardEvent) {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.85rem;
-}
-
-.error-banner {
-  padding: 0.75rem 1rem;
-  border-radius: 4px;
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  border: 1px solid var(--danger-tint-border);
 }
 
 .columns {

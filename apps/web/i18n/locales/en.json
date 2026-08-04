@@ -125,7 +125,10 @@
       "capability": "Capability unavailable",
       "ai-disabled": "AI assist unavailable",
       "ai-provider": "AI provider error"
-    }
+    },
+    "copy": "Copy",
+    "copied": "Copied",
+    "copy-failed": "Copy failed"
   },
   "locale-switcher": {
     "label": "Language"

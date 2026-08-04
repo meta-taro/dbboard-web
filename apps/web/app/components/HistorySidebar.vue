@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useQueryHistory } from "../composables/useQueryHistory";
+import { prefixed } from "../utils/display-error";
+import ErrorBanner from "./ErrorBanner.vue";
 
 interface Props {
   connectionId: string;
@@ -57,9 +59,12 @@ defineExpose({ refresh });
       </button>
     </header>
 
-    <p v-if="lastError" data-testid="history-error" role="alert" class="error-banner">
-      {{ t("history.error.load") }}: {{ lastError.message }}
-    </p>
+    <ErrorBanner
+      v-if="lastError"
+      data-testid="history-error"
+      dense
+      :error="prefixed('history.error.load', lastError.message, t)"
+    />
 
     <p v-if="count === 0" data-testid="history-empty" class="empty">
       {{ t("history.empty") }}
@@ -136,16 +141,6 @@ defineExpose({ refresh });
 .refresh-button:disabled {
   opacity: 0.6;
   cursor: progress;
-}
-
-.error-banner {
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  border: 1px solid var(--danger-tint-border);
-  font-size: 0.85rem;
 }
 
 .empty {

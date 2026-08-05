@@ -10,6 +10,7 @@ import { NullAdapter } from "./infrastructure/null-adapter";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
+import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
 import { HealthController } from "./presentation/health.controller";
@@ -24,6 +25,7 @@ import { ExecuteQuery } from "./usecase/execute-query.use-case";
 import { ExplainSql } from "./usecase/explain-sql.use-case";
 import { ExportHistory } from "./usecase/export-history.use-case";
 import { GetCapabilities } from "./usecase/get-capabilities.use-case";
+import { GetConnectionCapabilities } from "./usecase/get-connection-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
 import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
 import { ListConnectionTables } from "./usecase/list-connection-tables.use-case";
@@ -51,6 +53,7 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
     QueryController,
     ConnectionsController,
     ConnectionTablesController,
+    ConnectionCapabilitiesController,
     HistoryController,
     AiController,
   ],
@@ -79,6 +82,12 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
       provide: ListConnectionTables,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new ListConnectionTables(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    {
+      provide: GetConnectionCapabilities,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new GetConnectionCapabilities(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     {

@@ -210,6 +210,31 @@ describe("HTTP contract surface (0003)", () => {
     });
   });
 
+  // ---- /connections/:id/capabilities surface (0026) ------------------
+
+  it("GET /connections/:id/capabilities answers for that connection's adapter", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Scoped caps", driver: "null" });
+    const res = await request(app.getHttpServer()).get(
+      `/connections/${create.body.id}/capabilities`,
+    );
+    expect(res.status).toBe(200);
+    // Same shape as GET /capabilities so one client type covers both.
+    expect(res.body.id).toBe("null");
+    expect(res.body.capabilities.has_describe_table).toBe(false);
+  });
+
+  it("GET /connections/:id/capabilities with an unknown id → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer()).get("/connections/does-not-exist/capabilities");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({
+      category: "capability",
+      message: expect.stringContaining("unknown connection"),
+    });
+  });
+
   // ---- Secret-leak guard (0004 § Tasks) ----------------------------
 
   it("GET /connections never echoes the registered password or connectionString", async () => {

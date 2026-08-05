@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Caricamento colonne…"
     },
+    "column": {
+      "primary-key": "Chiave primaria",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "valore predefinito"
+    },
     "error": {
       "load": "Impossibile caricare lo schema",
       "columns": "Impossibile caricare le colonne"

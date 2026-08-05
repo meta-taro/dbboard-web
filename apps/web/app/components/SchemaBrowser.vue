@@ -99,6 +99,22 @@ function onInsertColumn(column: ColumnInfo) {
 function columnEntry(table: TableInfo): ColumnEntry | undefined {
   return columnCache[cacheKey(table.schema, table.name)];
 }
+
+// The three below read `undefined` as "unknown", not as "no". A connection
+// that cannot introspect leaves these fields absent, and a column with no
+// badge means we were not told — not that the column is nullable and
+// keyless. Only the describe route can populate them (issue 0026).
+function isPrimaryKey(column: ColumnInfo): boolean {
+  return column.primary_key === true;
+}
+
+function isNotNull(column: ColumnInfo): boolean {
+  return column.nullable === false;
+}
+
+function defaultOf(column: ColumnInfo): string | null {
+  return column.default_value ?? null;
+}
 </script>
 
 <template>
@@ -177,6 +193,29 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
                   >
                     <span class="column-name">{{ column.name }}</span>
                     <span class="column-type">{{ column.declared_type }}</span>
+                    <span
+                      v-if="isPrimaryKey(column)"
+                      data-testid="schema-column-pk"
+                      class="badge badge-key"
+                      :title="t('schema.column.primary-key')"
+                    >
+                      {{ t("schema.column.primary-key-abbr") }}
+                    </span>
+                    <span
+                      v-if="isNotNull(column)"
+                      data-testid="schema-column-not-null"
+                      class="badge"
+                    >
+                      {{ t("schema.column.not-null") }}
+                    </span>
+                    <span
+                      v-if="defaultOf(column) !== null"
+                      data-testid="schema-column-default"
+                      class="column-default"
+                      :title="`${t('schema.column.default')} ${defaultOf(column)}`"
+                    >
+                      = {{ defaultOf(column) }}
+                    </span>
                     <button
                       type="button"
                       data-testid="schema-insert-column"
@@ -294,6 +333,35 @@ function columnEntry(table: TableInfo): ColumnEntry | undefined {
 .column-type {
   color: var(--text-muted);
   font-size: 0.75rem;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.badge-key {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* A default can be an arbitrary expression, so it is allowed to shrink
+   away rather than push the insert button out of the row. The full text
+   stays reachable through the title attribute. */
+.column-default {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.7rem;
 }
 
 .insert-button {

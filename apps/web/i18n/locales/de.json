@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Spalten werden geladen…"
     },
+    "column": {
+      "primary-key": "Primärschlüssel",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "Standardwert"
+    },
     "error": {
       "load": "Schema konnte nicht geladen werden",
       "columns": "Spalten konnten nicht geladen werden"

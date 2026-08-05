@@ -54,6 +54,12 @@
     "columns": {
       "loading": "正在加载列…"
     },
+    "column": {
+      "primary-key": "主键",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "默认值"
+    },
     "error": {
       "load": "加载模式失败",
       "columns": "加载列失败"

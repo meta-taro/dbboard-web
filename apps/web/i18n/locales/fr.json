@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Chargement des colonnes…"
     },
+    "column": {
+      "primary-key": "Clé primaire",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "valeur par défaut"
+    },
     "error": {
       "load": "Échec du chargement du schéma",
       "columns": "Échec du chargement des colonnes"

@@ -54,6 +54,12 @@
     "columns": {
       "loading": "カラムを読み込み中…"
     },
+    "column": {
+      "primary-key": "主キー",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "既定値"
+    },
     "error": {
       "load": "スキーマの読み込みに失敗しました",
       "columns": "カラムの読み込みに失敗しました"

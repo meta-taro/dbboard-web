@@ -54,6 +54,12 @@
     "columns": {
       "loading": "컬럼을 불러오는 중…"
     },
+    "column": {
+      "primary-key": "기본 키",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "기본값"
+    },
     "error": {
       "load": "스키마를 불러오지 못했습니다",
       "columns": "컬럼을 불러오지 못했습니다"

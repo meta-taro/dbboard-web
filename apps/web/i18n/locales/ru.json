@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Загрузка столбцов…"
     },
+    "column": {
+      "primary-key": "Первичный ключ",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "значение по умолчанию"
+    },
     "error": {
       "load": "Не удалось загрузить схему",
       "columns": "Не удалось загрузить столбцы"

@@ -54,6 +54,12 @@
     "columns": {
       "loading": "正在載入欄位…"
     },
+    "column": {
+      "primary-key": "主鍵",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "預設值"
+    },
     "error": {
       "load": "載入結構失敗",
       "columns": "載入欄位失敗"

@@ -4,10 +4,16 @@
  * via the existing `POST /connections/:id/query` endpoint. Mirrors the
  * readonly-ref + `apiBase` resolution pattern of `useQueryHistory`.
  *
- * Column introspection deliberately goes through the existing query route
- * instead of a dedicated `/columns` endpoint so the HTTP contract stays
- * small and every adapter (Null / Postgres / future) gets the surface for
- * free — the result-set's `columns[]` metadata is what we render.
+ * Column introspection takes whichever of two paths the connection can
+ * support (issue 0026). A connection that advertises `has_describe_table`
+ * gets `GET /connections/:id/table-schema`, which reports primary keys,
+ * nullability and defaults. Everything else keeps the original `LIMIT 0`
+ * probe through `POST /connections/:id/query`: it needs no capability at
+ * all, because the result-set's own `columns[]` metadata is the answer.
+ *
+ * The shallow path stays rather than being replaced. It is the only thing
+ * that works against an adapter that cannot introspect, and it is what
+ * keeps the sidebar useful on every driver.
  */
 import { onMounted, readonly, ref } from "vue";
 import { useRuntimeConfig } from "#imports";
@@ -21,7 +27,15 @@ export interface TableInfo {
 
 export interface ColumnInfo {
   name: string;
-  declared_type: string;
+  declared_type: string | null;
+  // Only the describe route can fill these in. They are optional rather
+  // than defaulted so a caller can tell "this column has no primary key"
+  // from "this connection cannot tell us about primary keys" — rendering
+  // the second as the first would be a confident lie.
+  nullable?: boolean;
+  primary_key?: boolean;
+  ordinal?: number;
+  default_value?: string | null;
 }
 
 export type SchemaState = "idle" | "loading" | "error";
@@ -34,6 +48,17 @@ interface QueryResponse {
   columns: ColumnInfo[];
   rows: unknown[];
   rows_affected: number;
+}
+
+interface CapabilitiesResponse {
+  id: string;
+  capabilities: Record<string, boolean>;
+}
+
+interface TableSchemaResponse {
+  table: TableInfo;
+  columns: ColumnInfo[];
+  primary_key: string[];
 }
 
 export interface UseSchemaBrowserOptions {
@@ -80,7 +105,36 @@ export function useSchemaBrowser(connectionId: string, options?: UseSchemaBrowse
     }
   }
 
+  // Memoised as the promise, not the answer, so two tables expanded in the
+  // same tick share one probe instead of racing two. A connection's
+  // capabilities do not change under it, so once is enough.
+  let describeProbe: Promise<boolean> | null = null;
+
+  function supportsDescribe(): Promise<boolean> {
+    describeProbe ??= apiFetch<CapabilitiesResponse>(
+      `${apiBase}/connections/${connectionId}/capabilities`,
+    )
+      .then((res) => res.capabilities?.has_describe_table === true)
+      // An unreachable probe is not a reason to show nothing. The shallow
+      // path still works, so degrade to it.
+      .catch(() => false);
+    return describeProbe;
+  }
+
   async function loadColumns(schema: string | null, table: string): Promise<ColumnInfo[]> {
+    if (await supportsDescribe()) {
+      // Identifiers go in the query string, where `/`, `?` and `#` are just
+      // characters — see the route's own note on why not a path segment.
+      const params = new URLSearchParams({ table });
+      if (schema !== null) params.set("schema", schema);
+      const res = await apiFetch<TableSchemaResponse>(
+        `${apiBase}/connections/${connectionId}/table-schema?${params.toString()}`,
+      );
+      // No fallback on failure: the route was chosen because it works here,
+      // so its error is the real one. Retrying through LIMIT 0 would only
+      // restate it less clearly.
+      return res.columns;
+    }
     const res = await apiFetch<QueryResponse>(`${apiBase}/connections/${connectionId}/query`, {
       method: "POST",
       body: { sql: buildLimitZeroSql(schema, table) },

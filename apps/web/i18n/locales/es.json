@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Cargando columnas…"
     },
+    "column": {
+      "primary-key": "Clave primaria",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "valor predeterminado"
+    },
     "error": {
       "load": "No se pudo cargar el esquema",
       "columns": "No se pudieron cargar las columnas"

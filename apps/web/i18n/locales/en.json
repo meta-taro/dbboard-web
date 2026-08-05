@@ -54,6 +54,12 @@
     "columns": {
       "loading": "Loading columns…"
     },
+    "column": {
+      "primary-key": "Primary key",
+      "primary-key-abbr": "PK",
+      "not-null": "NOT NULL",
+      "default": "default"
+    },
     "error": {
       "load": "Failed to load schema",
       "columns": "Failed to load columns"

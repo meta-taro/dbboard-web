@@ -18,6 +18,10 @@ vi.mock("vue-i18n", () => ({
 
 const mountOptions = { props: { connectionId: "abc", apiBase: "http://test" } };
 
+// The composable probes capabilities before its first column fetch. Most of
+// these tests exercise the shallow LIMIT 0 path, so they answer "no".
+const CANNOT_DESCRIBE = { id: "null", capabilities: { has_describe_table: false } };
+
 describe("SchemaBrowser", () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -95,6 +99,7 @@ describe("SchemaBrowser", () => {
     mockFetch.mockResolvedValueOnce({
       tables: [{ schema: "public", name: "users" }],
     });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
     mockFetch.mockResolvedValueOnce({
       columns: [
         { name: "id", declared_type: "INTEGER" },
@@ -112,23 +117,25 @@ describe("SchemaBrowser", () => {
     await tableDetails.trigger("toggle");
     await flushPromises();
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Probe + columns.
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     const columnRows = wrapper.findAll("[data-testid='schema-column']");
     expect(columnRows).toHaveLength(2);
     expect(columnRows[0]!.text()).toContain("id");
     expect(columnRows[1]!.text()).toContain("email");
 
-    // Re-toggle — cache hit, no third fetch.
+    // Re-toggle — cache hit, no further fetches.
     await tableDetails.trigger("toggle");
     await tableDetails.trigger("toggle");
     await flushPromises();
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
 
     wrapper.unmount();
   });
 
   it("emits insert with the quoted column name (no schema/table prefix) on column-button click", async () => {
     mockFetch.mockResolvedValueOnce({ tables: [{ schema: "public", name: "users" }] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
     mockFetch.mockResolvedValueOnce({
       columns: [{ name: "email", declared_type: "TEXT" }],
       rows: [],
@@ -179,6 +186,7 @@ describe("SchemaBrowser", () => {
 
   it("renders the column-load error banner when LIMIT 0 fails", async () => {
     mockFetch.mockResolvedValueOnce({ tables: [{ schema: "public", name: "users" }] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
     mockFetch.mockRejectedValueOnce(new Error("permission denied"));
 
     const wrapper = mount(SchemaBrowser, mountOptions);
@@ -193,6 +201,96 @@ describe("SchemaBrowser", () => {
     expect(wrapper.find("[data-testid='error-banner__original']").text()).toBe(
       "Failed to load columns",
     );
+    wrapper.unmount();
+  });
+
+  // ---- describe-route depth (0026) -----------------------------------
+
+  const CAN_DESCRIBE = { id: "postgres", capabilities: { has_describe_table: true } };
+
+  async function expandDescribed(columns: unknown[]) {
+    mockFetch.mockResolvedValueOnce({ tables: [{ schema: "public", name: "users" }] });
+    mockFetch.mockResolvedValueOnce(CAN_DESCRIBE);
+    mockFetch.mockResolvedValueOnce({
+      table: { schema: "public", name: "users" },
+      columns,
+      primary_key: ["id"],
+    });
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+    await wrapper.find("[data-testid='schema-table']").trigger("toggle");
+    await flushPromises();
+    return wrapper;
+  }
+
+  it("marks a primary-key column and its NOT NULL constraint", async () => {
+    const wrapper = await expandDescribed([
+      {
+        name: "id",
+        declared_type: "integer",
+        nullable: false,
+        primary_key: true,
+        ordinal: 1,
+        default_value: null,
+      },
+      {
+        name: "email",
+        declared_type: "text",
+        nullable: true,
+        primary_key: false,
+        ordinal: 2,
+        default_value: null,
+      },
+    ]);
+
+    const rows = wrapper.findAll("[data-testid='schema-column']");
+    expect(rows[0]!.find("[data-testid='schema-column-pk']").exists()).toBe(true);
+    expect(rows[0]!.find("[data-testid='schema-column-not-null']").exists()).toBe(true);
+    // A nullable non-key column carries neither badge.
+    expect(rows[1]!.find("[data-testid='schema-column-pk']").exists()).toBe(false);
+    expect(rows[1]!.find("[data-testid='schema-column-not-null']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the default expression verbatim, unparsed", async () => {
+    const wrapper = await expandDescribed([
+      {
+        name: "created_at",
+        declared_type: "timestamp with time zone",
+        nullable: false,
+        primary_key: false,
+        ordinal: 1,
+        default_value: "now()",
+      },
+    ]);
+
+    const shown = wrapper.find("[data-testid='schema-column-default']");
+    expect(shown.exists()).toBe(true);
+    expect(shown.text()).toContain("now()");
+    wrapper.unmount();
+  });
+
+  // The shallow path knows none of this. Rendering "nullable" or "no
+  // primary key" from its silence would be inventing an answer.
+  it("renders no badges at all on the shallow LIMIT 0 path", async () => {
+    mockFetch.mockResolvedValueOnce({ tables: [{ schema: "public", name: "users" }] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+    mockFetch.mockResolvedValueOnce({
+      columns: [{ name: "id", declared_type: "INTEGER" }],
+      rows: [],
+      rows_affected: 0,
+    });
+
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+    await wrapper.find("[data-testid='schema-table']").trigger("toggle");
+    await flushPromises();
+
+    const row = wrapper.find("[data-testid='schema-column']");
+    expect(row.text()).toContain("id");
+    expect(row.find("[data-testid='schema-column-pk']").exists()).toBe(false);
+    expect(row.find("[data-testid='schema-column-not-null']").exists()).toBe(false);
+    expect(row.find("[data-testid='schema-column-default']").exists()).toBe(false);
     wrapper.unmount();
   });
 });

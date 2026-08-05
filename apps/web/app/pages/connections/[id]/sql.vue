@@ -8,6 +8,7 @@ import ErrorBanner from "../../../components/ErrorBanner.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import SidebarSplitter from "../../../components/SidebarSplitter.vue";
+import { useEditContext } from "../../../composables/useEditContext";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 import type { TableInfo } from "../../../composables/useSchemaBrowser";
 import { useSidebarWidth } from "../../../composables/useSidebarWidth";
@@ -17,7 +18,24 @@ const { t } = useI18n();
 const route = useRoute();
 const connectionId = String(route.params.id);
 
-const { result, state, lastError, run } = useQueryExecution(connectionId);
+const { result, sourceTable, state, lastError, run } = useQueryExecution(connectionId);
+
+// Whether the grid is editable, and against what (ticket 0028). Read back
+// from `sourceTable` after every run rather than set from the browse payload:
+// a failed run leaves the previous rows on screen, and those rows are still
+// the previous table's. Reusing the payload would hand a new table's key to
+// an old table's rows.
+const {
+  context: editContext,
+  noPk: noEditKey,
+  load: loadEditContext,
+} = useEditContext(connectionId);
+
+function syncEditContext() {
+  // Fire-and-forget: the key is cleared synchronously inside, so the grid is
+  // read-only for the whole window before the answer arrives.
+  void loadEditContext(sourceTable.value);
+}
 
 // The divider reports where the user is asking it to go; what is legal is the
 // composable's call. The page only has to publish the answer as a custom
@@ -30,6 +48,9 @@ const {
 } = useSidebarWidth();
 
 const sqlInput = ref("");
+/** The statement behind the rows on screen, kept so a save can show what it
+ *  wrote. Only a browse sets it — nothing else produces an editable grid. */
+const browseSql = ref("");
 const isLoading = computed(() => state.value === "loading");
 const historyRef = ref<InstanceType<typeof HistorySidebar> | null>(null);
 const sqlInputRef = ref<HTMLTextAreaElement | null>(null);
@@ -48,6 +69,7 @@ const hasRows = computed(() => (result.value?.rows.length ?? 0) > 0);
 
 async function onRun() {
   await run(sqlInput.value);
+  syncEditContext();
   // Pick up the just-emitted history record. Sidebar refresh is fire-
   // and-forget here — the editor surface stays responsive even if the
   // history fetch lags. Failures are also persisted (interceptor logs
@@ -61,7 +83,26 @@ async function onBrowse(payload: { sql: string; table: TableInfo }) {
   // the run rather than being inferred from the text afterwards — that
   // provenance is what decides whether the grid is editable (ticket 0028).
   sqlInput.value = payload.sql;
+  browseSql.value = payload.sql;
   await run(payload.sql, payload.table);
+  syncEditContext();
+  await historyRef.value?.refresh();
+}
+
+/**
+ * Refresh the grid after a save wrote through it.
+ *
+ * Re-runs the statement that produced the rows, not the editor's current
+ * text: the editor is a scratchpad, and replacing the rows someone just
+ * edited with an unrelated draft query is a strange thing for Save to do.
+ * Desktop's `reloadAfterSave` re-runs the editor instead — this is the one
+ * place the mirror is deliberately narrower.
+ */
+async function onSaved() {
+  const table = sourceTable.value;
+  if (table === null) return;
+  await run(browseSql.value, table);
+  syncEditContext();
   await historyRef.value?.refresh();
 }
 
@@ -158,7 +199,13 @@ function onEditorKeydown(event: KeyboardEvent) {
                  nothing to export but a header line. -->
             <template v-if="hasRows">
               <ResultExportToolbar :result="result" />
-              <ResultGrid :result="result" />
+              <!-- Only shown when a describe actually came back without a
+                   key. A describe that failed leaves the grid read-only too,
+                   but silently: it told us nothing to report. -->
+              <p v-if="noEditKey" data-testid="readonly-no-pk" class="readonly-note" role="note">
+                {{ t("result.edit.readonly-no-pk") }}
+              </p>
+              <ResultGrid :result="result" :edit="editContext" @saved="onSaved" />
             </template>
           </template>
         </section>
@@ -322,5 +369,13 @@ function onEditorKeydown(event: KeyboardEvent) {
 
 .result-summary {
   margin: 0;
+}
+
+/* An explanation, not a failure: the query worked, the rows are fine, and
+   only writing them back is unavailable. Muted rather than tinted. */
+.readonly-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 </style>

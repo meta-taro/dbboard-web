@@ -2,20 +2,21 @@
 // cell". Pure port of desktop `apps/desktop/src/lib/grid/edit.ts`
 // (ADR-0082 decisions 3-5); unit-tested in tests/display-width.test.ts.
 //
-// Desktop's copy gates two things — the read-only value viewer and the
-// inline editor. Web has no inline editing yet (rung 6), so only the viewer
-// is wired here. The threshold is named for the viewer rather than for the
-// editor's CSS width, because the editor is what will have to justify
-// sharing it when it arrives.
+// This gates two things, as desktop's single copy does: the read-only value
+// viewer, and — since ticket 0028 — the inline cell editor's choice between
+// the in-cell input and the full editor dialog. Both are the same question
+// ("could the cell show this in full?"), so they share one predicate under
+// desktop's names rather than a viewer-flavoured clone that would drift.
 
 /**
  * How many display columns a grid cell can be trusted to have shown in full.
  *
- * Past this, the value has been truncated on screen and the viewer is the
- * only way to read it. Matches desktop's `INLINE_EDITOR_COLUMNS` so that a
- * value opens its viewer at the same point on both clients.
+ * Past this, the value has been truncated on screen: the viewer is the only
+ * way to read it, and the inline editor is too narrow to change it. The
+ * number is desktop's, set from the inline editor's CSS minimum width
+ * (22rem of monospace text), so a value opens the same way on both clients.
  */
-export const VIEWER_COLUMN_THRESHOLD = 40;
+export const INLINE_EDITOR_COLUMNS = 40;
 
 /**
  * Display width of `text`, in terminal columns.
@@ -57,18 +58,22 @@ function isFullWidth(cp: number): boolean {
 }
 
 /**
- * Whether `text` is worth opening in the viewer.
+ * Whether `text` needs a surface bigger than the cell — the viewer to read
+ * it, or the editor dialog to change it.
  *
  * Two reasons, and the second is not about comfort:
  *
  * - It is wider than a cell can show, so what is on screen is an ellipsis
- *   and the rest is unreadable.
+ *   and the rest is unreadable. Editing that inline would be a keyhole.
  * - It contains a newline. A cell renders on one line whatever the value
  *   holds, so a multi-line value looks like a single-line one that happens
  *   to have odd spacing — the shape of the data is invisible until it is
  *   opened. Desktop tests `\n` only; a lone CR is not something a database
  *   round-trips often enough to guess at, and CRLF is caught by its LF.
+ *   For the editor this one is not a size judgement at all: HTML strips CR
+ *   and LF from a single-line `<input>`, so editing a multi-line value
+ *   inline would flatten it silently — a data loss nobody asked for.
  */
-export function needsViewer(text: string): boolean {
-  return text.includes("\n") || displayWidth(text) > VIEWER_COLUMN_THRESHOLD;
+export function needsWideEditor(text: string): boolean {
+  return text.includes("\n") || displayWidth(text) > INLINE_EDITOR_COLUMNS;
 }

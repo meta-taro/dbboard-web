@@ -390,3 +390,61 @@ still standing, backslashes survive un-doubled (confirming the
 `IS NULL`, a vanished row is 409, an unkeyed plan is 400 with the table
 untouched, and a constraint violation stays a 400 `query` rather than being
 relabelled a conflict.
+
+### Slice E — the grid and the page (2026-08-05)
+
+Double-click a cell, edit in place, Save. `ResultGrid.vue` grew an optional
+`edit: EditContext | null` prop and a `saved` emit; `CellEditorDialog.vue` is
+the full-value editor behind the `⤢` affordance; `useRowUpdate` is the request
+loop; `useEditContext` decides whether any of it is available. The 16 shared
+strings are mirrored from desktop `messages.ts` across all 11 locales (plus a
+web-only `revert`, which desktop has no per-cell affordance for), so slice F's
+i18n item lands here.
+
+**Staging is keyed on the original row index, never the display position.**
+`grid-edit.ts` already held that rule; the grid honours it by looking every
+staged cell up through `cellKey(originalIndex, col)` and never through the
+sorted position. The acceptance criterion "sort, then edit, updates the row the
+user pointed at" is a test, not a hope.
+
+**Editability is provenance, never SQL.** The page hands the grid a context
+only when a browse named the table and a describe returned a key. Nothing
+parses a query — a `SELECT` cannot be trusted to name the table it reads, and
+guessing here writes to the wrong table.
+
+**The context follows the rows on screen, not the click that asked for them.**
+After every run the page reads provenance back out of `useQueryExecution`
+(`syncEditContext`) rather than reusing the browse payload. A failed run leaves
+the previous rows displayed, and those rows are still the previous table's;
+using the payload would attach a new table's key to an old table's rows. This
+is stricter than desktop, which clears `editTable` on failure and so leaves
+rows on screen that are no longer editable at all.
+
+**"No primary key" and "we could not ask" are different answers.**
+`useEditContext.noPk` is true only when a _successful_ describe reported zero
+key columns; a failed or unsupported describe leaves the grid read-only and
+says nothing. Desktop swallows the describe error into an empty PK and conflates
+the two, which would render "this table has no primary key" at a connection
+that simply cannot introspect. Same distinction `ColumnInfo`'s optional fields
+already draw.
+
+**Errors never clear staging.** A failed save leaves every staged cell tinted
+and the banner above them; `useRowUpdate` stops at the first failing row, so
+what is still marked is exactly what is still unwritten. Discard clears both
+the staging and the error — an error about a write that will never be retried
+is a red box with no way out.
+
+**NULL is an affordance, not a spelling.** `∅` stages SQL `NULL`; an empty
+input stages `""`. The two are different rows, and the editor refuses to make
+the user guess which one an empty box means.
+
+**Save re-runs the browse, not the editor.** `onSaved` re-executes the
+statement that produced the rows (`browseSql`), because the editor is a
+scratchpad and refreshing a just-written grid with an unrelated draft query is
+a strange thing for Save to do. Desktop's `reloadAfterSave` re-runs the editor
+text; this is the one place the mirror is deliberately narrower.
+
+One production fix fell out of the tests: `useRowUpdate` resolved the API base
+at construction, which made _displaying_ a read-only grid require a Nuxt app.
+It now resolves per request — a save always starts from a click, where the Nuxt
+instance is a client-lifetime singleton.

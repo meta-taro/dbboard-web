@@ -9,49 +9,10 @@ vi.mock("vue-i18n", () => ({
   }),
 }));
 
-// We trust @tanstack/vue-virtual itself and only test our component's
-// rendering. The mock returns every row as a visible virtual item so the
-// assertions can target real cells without juggling getBoundingClientRect
-// on happy-dom (which always reports zero size).
-vi.mock("@tanstack/vue-virtual", () => ({
-  useVirtualizer: (computedOptions: unknown) => {
-    function readOptions(): { count: number; estimateSize: () => number } {
-      const candidate = computedOptions as
-        | (() => { count: number; estimateSize: () => number })
-        | { value?: { count: number; estimateSize: () => number } }
-        | { count: number; estimateSize: () => number };
-      if (typeof candidate === "function") return candidate();
-      if (
-        candidate &&
-        typeof candidate === "object" &&
-        "value" in candidate &&
-        candidate.value !== undefined
-      ) {
-        return candidate.value;
-      }
-      return candidate as { count: number; estimateSize: () => number };
-    }
-    return {
-      value: {
-        getVirtualItems: () => {
-          const opts = readOptions();
-          const size = opts.estimateSize();
-          return Array.from({ length: opts.count }, (_, index) => ({
-            index,
-            start: index * size,
-            size,
-            end: (index + 1) * size,
-            key: index,
-          }));
-        },
-        getTotalSize: () => {
-          const opts = readOptions();
-          return opts.count * opts.estimateSize();
-        },
-        measureElement: () => {},
-      },
-    };
-  },
+// See tests/helpers/virtualizer.ts — every row is rendered, because the real
+// virtualizer measures nothing on happy-dom.
+vi.mock("@tanstack/vue-virtual", async () => ({
+  useVirtualizer: (await import("./helpers/virtualizer")).fakeUseVirtualizer,
 }));
 
 const SAMPLE_RESULT = {

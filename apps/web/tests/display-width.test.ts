@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayWidth, needsViewer, VIEWER_COLUMN_THRESHOLD } from "../app/utils/display-width";
+import { displayWidth, needsWideEditor, INLINE_EDITOR_COLUMNS } from "../app/utils/display-width";
 
 // The threshold is imported rather than written out, so these assert
 // behaviour at the boundary instead of restating a number that the module
@@ -57,35 +57,35 @@ describe("displayWidth", () => {
   });
 });
 
-describe("needsViewer", () => {
+describe("needsWideEditor", () => {
   it("leaves a value that fits alone", () => {
-    expect(needsViewer(ascii(VIEWER_COLUMN_THRESHOLD))).toBe(false);
+    expect(needsWideEditor(ascii(INLINE_EDITOR_COLUMNS))).toBe(false);
   });
 
   it("opens one column past the threshold", () => {
-    expect(needsViewer(ascii(VIEWER_COLUMN_THRESHOLD + 1))).toBe(true);
+    expect(needsWideEditor(ascii(INLINE_EDITOR_COLUMNS + 1))).toBe(true);
   });
 
   // The defect ADR-0082 names: measured by `.length`, this text is half the
   // threshold and would never offer a viewer, while on screen it has been
   // truncated for twenty characters already.
   it("reaches the threshold at half the character count in Japanese", () => {
-    const half = VIEWER_COLUMN_THRESHOLD / 2;
-    expect(needsViewer(cjk(half))).toBe(false);
-    expect(needsViewer(cjk(half + 1))).toBe(true);
-    expect(cjk(half + 1).length).toBeLessThan(VIEWER_COLUMN_THRESHOLD);
+    const half = INLINE_EDITOR_COLUMNS / 2;
+    expect(needsWideEditor(cjk(half))).toBe(false);
+    expect(needsWideEditor(cjk(half + 1))).toBe(true);
+    expect(cjk(half + 1).length).toBeLessThan(INLINE_EDITOR_COLUMNS);
   });
 
   it("opens for any value containing a newline, however short", () => {
-    expect(needsViewer("a\nb")).toBe(true);
-    expect(needsViewer("\n")).toBe(true);
+    expect(needsWideEditor("a\nb")).toBe(true);
+    expect(needsWideEditor("\n")).toBe(true);
   });
 
   it("opens for a CRLF value — the LF is what it tests", () => {
-    expect(needsViewer("a\r\nb")).toBe(true);
+    expect(needsWideEditor("a\r\nb")).toBe(true);
   });
 
   it("leaves an empty value alone", () => {
-    expect(needsViewer("")).toBe(false);
+    expect(needsWideEditor("")).toBe(false);
   });
 });

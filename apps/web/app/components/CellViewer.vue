@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Read-only viewer for a cell value the grid could not show in full
 // (desktop ADR-0082 decision 5). Opening is the grid's decision — see
-// `needsViewer` in app/utils/display-width.ts; this component only renders.
+// `needsWideEditor` in app/utils/display-width.ts; this component only renders.
 //
 // Desktop's counterpart is the read-only half of ResultGrid.svelte's popup.
 // Two things are web-specific and deliberate: the copy is acknowledged in a

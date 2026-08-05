@@ -1,6 +1,7 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, ref, type Ref } from "vue";
+import ResultGrid from "../app/components/ResultGrid.vue";
 import SqlPage from "../app/pages/connections/[id]/sql.vue";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_NUDGE } from "../app/utils/splitter";
 
@@ -16,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   sidebarConstructed: vi.fn(),
   schemaConstructed: vi.fn(),
   aiPanelConstructed: vi.fn(),
+  loadEditContext: vi.fn(),
+  editContextConstructed: vi.fn(),
 }));
 
 let resultRef: Ref<{
@@ -25,15 +28,41 @@ let resultRef: Ref<{
 } | null>;
 let stateRef: Ref<"idle" | "loading" | "error">;
 let lastErrorRef: Ref<{ category: string; message: string; i18nKey: string } | null>;
+let sourceTableRef: Ref<{ schema: string | null; name: string } | null>;
 
 vi.mock("../app/composables/useQueryExecution", () => ({
   useQueryExecution: (id: string, options?: unknown) => {
     mocks.useQueryExecutionFactory(id, options);
     return {
       result: resultRef,
+      sourceTable: sourceTableRef,
       state: stateRef,
       lastError: lastErrorRef,
       run: mocks.run,
+    };
+  },
+}));
+
+// The edit context is stubbed the same way, for the same reason: the page's
+// job is to ask for the browsed table's key and hand the answer to the grid,
+// and the asking is what these tests are about. What the answer is made of is
+// use-edit-context.test.ts.
+let editContextRef: Ref<{
+  connectionId: string;
+  table: { schema: string | null; name: string };
+  pk: string[];
+} | null>;
+let noPkRef: Ref<boolean>;
+
+vi.mock("../app/composables/useEditContext", () => ({
+  useEditContext: (id: string, options?: unknown) => {
+    mocks.editContextConstructed(id, options);
+    return {
+      table: ref(null),
+      pk: ref([]),
+      context: editContextRef,
+      noPk: noPkRef,
+      load: mocks.loadEditContext,
     };
   },
 }));
@@ -109,6 +138,9 @@ const mountOptions = {
 describe("SqlPage", () => {
   beforeEach(() => {
     resultRef = ref(null);
+    sourceTableRef = ref(null);
+    editContextRef = ref(null);
+    noPkRef = ref(false);
     stateRef = ref<"idle" | "loading" | "error">("idle");
     lastErrorRef = ref<{
       category: string;
@@ -121,6 +153,8 @@ describe("SqlPage", () => {
     mocks.sidebarConstructed.mockReset();
     mocks.schemaConstructed.mockReset();
     mocks.aiPanelConstructed.mockReset();
+    mocks.loadEditContext.mockReset();
+    mocks.editContextConstructed.mockReset();
     // The sidebar remembers its width, so without a storage of its own per
     // test the first drag would decide the starting width of every test
     // after it. See use-theme.test.ts: the environment's own `localStorage`
@@ -583,5 +617,176 @@ describe("SqlPage", () => {
 
     expect(mocks.run).toHaveBeenLastCalledWith('SELECT * FROM "t" JOIN u USING (id)');
     wrapper.unmount();
+  });
+
+  // Inline editing, page half (ticket 0028 slice E). The grid is handed an
+  // edit context or nothing; everything about *deciding* that lives in
+  // useEditContext, and everything about *editing* lives in ResultGrid. What
+  // is tested here is the wiring between them — including the one thing
+  // neither can see on its own: that the context follows the rows actually on
+  // screen, even when a run fails.
+  describe("inline editing", () => {
+    const USERS = { schema: "public", name: "users" };
+    const BROWSE_SQL = 'SELECT * FROM "public"."users" LIMIT 100;';
+
+    /** Mimic the real composable: provenance is recorded on success only. */
+    function runSucceeds() {
+      mocks.run.mockImplementation(
+        (_sql: string, table?: { schema: string | null; name: string }) => {
+          sourceTableRef.value = table ?? null;
+          return Promise.resolve();
+        },
+      );
+    }
+
+    function withRows() {
+      resultRef.value = {
+        columns: [
+          { name: "id", declared_type: "INTEGER" },
+          { name: "email", declared_type: "TEXT" },
+        ],
+        rows: [[1, "ann@example.com"]],
+        rows_affected: 0,
+      };
+    }
+
+    async function browse(wrapper: ReturnType<typeof mount>, table = USERS, sql = BROWSE_SQL) {
+      wrapper.findComponent({ name: "SchemaBrowser" }).vm.$emit("browse", { sql, table });
+      await flushPromises();
+    }
+
+    it("passes the route id through to useEditContext", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(mocks.editContextConstructed).toHaveBeenCalledTimes(1);
+      expect(mocks.editContextConstructed.mock.calls[0]![0]).toBe("route-id");
+      wrapper.unmount();
+    });
+
+    it("asks for the browsed table's key once the rows are in", async () => {
+      runSucceeds();
+      withRows();
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      await browse(wrapper);
+
+      expect(mocks.loadEditContext).toHaveBeenLastCalledWith(USERS);
+      wrapper.unmount();
+    });
+
+    it("takes the key away when the user runs their own SQL", async () => {
+      runSucceeds();
+      withRows();
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+      await browse(wrapper);
+
+      await wrapper.find("[data-testid='sql-input']").setValue("SELECT 1");
+      await wrapper.find("[data-testid='run-button']").trigger("click");
+      await flushPromises();
+
+      expect(mocks.loadEditContext).toHaveBeenLastCalledWith(null);
+      wrapper.unmount();
+    });
+
+    it("keeps the browsed table's key when a later query fails", async () => {
+      // The failed run leaves the browse's rows on screen. Those rows are
+      // still that table's, so taking their key away would make a grid the
+      // user is still looking at silently read-only.
+      runSucceeds();
+      withRows();
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+      await browse(wrapper);
+
+      // A failure never touches provenance — same as useQueryExecution.
+      mocks.run.mockImplementation(() => Promise.resolve());
+      await wrapper.find("[data-testid='sql-input']").setValue("SELECT nope");
+      await wrapper.find("[data-testid='run-button']").trigger("click");
+      await flushPromises();
+
+      expect(mocks.loadEditContext).toHaveBeenLastCalledWith(USERS);
+      wrapper.unmount();
+    });
+
+    it("hands the grid the context once the key is known", async () => {
+      runSucceeds();
+      withRows();
+      editContextRef.value = { connectionId: "route-id", table: USERS, pk: ["id"] };
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(wrapper.findComponent(ResultGrid).props("edit")).toEqual({
+        connectionId: "route-id",
+        table: USERS,
+        pk: ["id"],
+      });
+      wrapper.unmount();
+    });
+
+    it("hands the grid nothing when the result is not editable", async () => {
+      withRows();
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(wrapper.findComponent(ResultGrid).props("edit")).toBeNull();
+      expect(wrapper.find("[data-testid='readonly-no-pk']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("says why the grid is read-only when the table has no primary key", async () => {
+      withRows();
+      noPkRef.value = true;
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      const note = wrapper.find("[data-testid='readonly-no-pk']");
+      expect(note.exists()).toBe(true);
+      expect(note.text()).toBe("result.edit.readonly-no-pk");
+      wrapper.unmount();
+    });
+
+    it("re-runs the statement that produced the rows after a save", async () => {
+      // Save writes row by row; the grid it wrote through is now a stale
+      // read. Re-running the browse is how the user sees what landed.
+      runSucceeds();
+      withRows();
+      editContextRef.value = { connectionId: "route-id", table: USERS, pk: ["id"] };
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+      await browse(wrapper);
+      mocks.run.mockClear();
+      mocks.sidebarRefresh.mockClear();
+
+      wrapper.findComponent(ResultGrid).vm.$emit("saved");
+      await flushPromises();
+
+      expect(mocks.run).toHaveBeenCalledTimes(1);
+      expect(mocks.run).toHaveBeenCalledWith(BROWSE_SQL, USERS);
+      expect(mocks.sidebarRefresh).toHaveBeenCalledTimes(1);
+      wrapper.unmount();
+    });
+
+    it("re-runs the browse, not whatever the user has since typed", async () => {
+      // The editor is a scratchpad. After a save, refreshing the grid with an
+      // unrelated query the user happens to be drafting would replace the
+      // rows they just wrote to with something else entirely.
+      runSucceeds();
+      withRows();
+      editContextRef.value = { connectionId: "route-id", table: USERS, pk: ["id"] };
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+      await browse(wrapper);
+
+      await wrapper.find("[data-testid='sql-input']").setValue("DROP TABLE users");
+      mocks.run.mockClear();
+      wrapper.findComponent(ResultGrid).vm.$emit("saved");
+      await flushPromises();
+
+      expect(mocks.run).toHaveBeenCalledWith(BROWSE_SQL, USERS);
+      wrapper.unmount();
+    });
   });
 });

@@ -114,6 +114,11 @@ async function onInstallClick() {
   --surface-sunken: rgba(15, 17, 21, 0.02);
   --danger-tint: rgba(220, 38, 38, 0.1);
   --danger-tint-border: rgba(220, 38, 38, 0.3);
+  /* Unsaved, not wrong: the staged-edit tint in the result grid, and the bar
+     that offers to write or discard them. Amber rather than red because
+     nothing has failed. */
+  --warn-tint: rgba(217, 119, 6, 0.12);
+  --warn-tint-border: rgba(217, 119, 6, 0.32);
   --success-tint: rgba(34, 197, 94, 0.15);
   --muted-tint: rgba(120, 113, 108, 0.1);
   --muted-tint-border: rgba(120, 113, 108, 0.3);
@@ -145,6 +150,8 @@ async function onInstallClick() {
     --surface-sunken: rgba(230, 233, 238, 0.03);
     --danger-tint: rgba(239, 68, 68, 0.16);
     --danger-tint-border: rgba(239, 68, 68, 0.38);
+    --warn-tint: rgba(245, 158, 11, 0.18);
+    --warn-tint-border: rgba(245, 158, 11, 0.4);
     --success-tint: rgba(34, 197, 94, 0.2);
     --muted-tint: rgba(138, 150, 163, 0.12);
     --muted-tint-border: rgba(138, 150, 163, 0.32);
@@ -172,6 +179,8 @@ async function onInstallClick() {
   --surface-sunken: rgba(230, 233, 238, 0.03);
   --danger-tint: rgba(239, 68, 68, 0.16);
   --danger-tint-border: rgba(239, 68, 68, 0.38);
+  --warn-tint: rgba(245, 158, 11, 0.18);
+  --warn-tint-border: rgba(245, 158, 11, 0.4);
   --success-tint: rgba(34, 197, 94, 0.2);
   --muted-tint: rgba(138, 150, 163, 0.12);
   --muted-tint-border: rgba(138, 150, 163, 0.32);

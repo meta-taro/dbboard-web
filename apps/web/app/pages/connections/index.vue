@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import ErrorBanner from "../../components/ErrorBanner.vue";
-import { useConnections, type Driver } from "../../composables/useConnections";
+import { useConnections, type Driver, type RegisterInput } from "../../composables/useConnections";
+import { defaultPortFor } from "../../utils/default-port";
 import { fromCategorised } from "../../utils/display-error";
 
 const { t } = useI18n();
@@ -9,21 +10,88 @@ const { list, lastError, register, remove } = useConnections();
 
 const labelInput = ref("");
 const driverInput = ref<Driver>("postgres");
+
+// Field entry is the default and the URL is the way out of it (ADR-0073
+// decision 2). Providers hand out ready-made URLs, so pasting one has to
+// keep working; typing five fields is the case that happens more often.
+const useUrl = ref(false);
+
 const connectionStringInput = ref("");
+
+// HeidiSQL's order, which desktop adopted so that anyone arriving from it
+// finds the fields where they expect them.
+const hostInput = ref("");
+// `string | number` because `v-model` on `<input type="number">` hands back
+// a number once the box parses, and the empty string while it does not.
+const portInput = ref<string | number>("");
+const userInput = ref("");
+const passwordInput = ref("");
+const databaseInput = ref("");
+
+// The null adapter connects to nothing and ignores every credential field.
+// Rendering them would be offering inputs whose effect is nil — the defect
+// ADR-0074 names, one level below the driver list.
+const needsCredential = computed(() => driverInput.value !== "null");
+
+// A blank box means "not supplied", which is not the same as an empty
+// value: the API treats a supplied-but-empty user or database as a real
+// one and forwards it, where it means something different from letting the
+// server apply its own default.
+function supplied(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+// Blank falls back to the driver's default (ADR-0073 decision 3).
+// Unparseable does too rather than sending NaN — `type="number"` already
+// makes that hard to reach, but a fallback the user can see beats a
+// payload the server cannot read.
+function resolvePort(driver: Driver): number | undefined {
+  const parsed = Number.parseInt(String(portInput.value).trim(), 10);
+  return Number.isNaN(parsed) ? defaultPortFor(driver) : parsed;
+}
+
+// One entry mode or the other, never a merge. The API prefers
+// `connectionString` when both arrive, so sending an abandoned host
+// alongside a URL would have it silently ignored — the form would be
+// showing one thing and sending another.
+function buildPayload(): RegisterInput {
+  const base = { label: labelInput.value.trim(), driver: driverInput.value };
+  if (!needsCredential.value) return base;
+  if (useUrl.value) {
+    return { ...base, connectionString: supplied(connectionStringInput.value) };
+  }
+  return {
+    ...base,
+    host: supplied(hostInput.value),
+    port: resolvePort(driverInput.value),
+    user: supplied(userInput.value),
+    password: supplied(passwordInput.value),
+    database: supplied(databaseInput.value),
+  };
+}
 
 async function onSubmit() {
   if (labelInput.value.trim() === "") return;
-  await register({
-    label: labelInput.value.trim(),
-    driver: driverInput.value,
-    connectionString:
-      connectionStringInput.value.trim() === "" ? undefined : connectionStringInput.value.trim(),
-  });
+  const payload = buildPayload();
+  // `undefined` members would still serialise as absent, but stripping
+  // them here keeps the payload the tests assert on and the payload the
+  // server receives literally the same object.
+  await register(
+    Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    ) as unknown as RegisterInput,
+  );
   // Reset only on success — keep the form populated so the user can fix
   // their input if the backend rejected it.
   if (lastError.value === null) {
     labelInput.value = "";
     connectionStringInput.value = "";
+    hostInput.value = "";
+    portInput.value = "";
+    userInput.value = "";
+    passwordInput.value = "";
+    databaseInput.value = "";
   }
 }
 </script>
@@ -51,15 +119,67 @@ async function onSubmit() {
           <option value="null">null</option>
         </select>
       </label>
-      <label>
-        {{ t("connections.add.connection-string-input") }}
-        <input
-          v-model="connectionStringInput"
-          data-testid="connection-string-input"
-          type="text"
-          autocomplete="off"
-        />
-      </label>
+      <template v-if="needsCredential">
+        <label class="toggle">
+          <input v-model="useUrl" data-testid="use-url-toggle" type="checkbox" />
+          {{ t("connections.add.use-url") }}
+        </label>
+
+        <label v-if="useUrl">
+          {{ t("connections.add.connection-string-input") }}
+          <input
+            v-model="connectionStringInput"
+            data-testid="connection-string-input"
+            type="text"
+            autocomplete="off"
+          />
+        </label>
+
+        <fieldset v-else class="parts">
+          <legend>{{ t("connections.add.parts-heading") }}</legend>
+          <label>
+            {{ t("connections.add.host-input") }}
+            <input v-model="hostInput" data-testid="host-input" type="text" autocomplete="off" />
+          </label>
+          <label>
+            {{ t("connections.add.port-input") }}
+            <!-- Blank is legitimate: `resolvePort` fills the driver default. -->
+            <input
+              v-model="portInput"
+              data-testid="port-input"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="65535"
+              :placeholder="String(defaultPortFor(driverInput) ?? '')"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            {{ t("connections.add.user-input") }}
+            <input v-model="userInput" data-testid="user-input" type="text" autocomplete="off" />
+          </label>
+          <label>
+            {{ t("connections.add.password-input") }}
+            <input
+              v-model="passwordInput"
+              data-testid="password-input"
+              type="password"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            {{ t("connections.add.database-input") }}
+            <input
+              v-model="databaseInput"
+              data-testid="database-input"
+              type="text"
+              autocomplete="off"
+            />
+          </label>
+        </fieldset>
+      </template>
+
       <button type="submit" data-testid="add-submit">
         {{ t("connections.add.submit") }}
       </button>
@@ -135,6 +255,37 @@ async function onSubmit() {
   font-size: 1rem;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* The toggle reads as one control: the box and its wording sit on a line,
+   and the whole line is the 44px target rather than the box alone. */
+.add-form label.toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+
+.add-form label.toggle input[type="checkbox"] {
+  min-height: 24px;
+  width: 24px;
+  flex: none;
+}
+
+.parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.parts legend {
+  padding: 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .add-form button {

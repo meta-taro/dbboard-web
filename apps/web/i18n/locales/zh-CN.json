@@ -158,6 +158,13 @@
       "heading": "注册连接",
       "label-input": "标签",
       "driver-input": "驱动",
+      "use-url": "改为粘贴连接 URL",
+      "parts-heading": "服务器",
+      "host-input": "主机",
+      "port-input": "端口",
+      "user-input": "用户",
+      "password-input": "密码",
+      "database-input": "数据库",
       "connection-string-input": "连接字符串",
       "submit": "注册"
     },

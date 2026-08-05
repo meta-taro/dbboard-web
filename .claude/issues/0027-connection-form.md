@@ -200,6 +200,22 @@ infrastructure (§9), and the rule is not Postgres-specific — desktop
 applies the same one to MySQL. `domain/ssl-mode.ts` holds the values, the
 type derived from them, and `hardenSslMode`.
 
+**`defaultPortFor` lives in `app/utils`, not in `useConnections`.** It is not
+HTTP I/O — it decides nothing about the request, only what the form shows
+before one is made. And `useConnections` reaches for `#imports` at module
+scope, so the page test mocks the whole module; anything exported beside it
+can only be exercised through that mock, which would have made the 5432
+default a property of the test double rather than of the app.
+
+**Slice C settled a standing Prettier/ESLint conflict.** Prettier rewrites
+`<input>` to `<input />` in Vue templates and `vue/html-self-closing`
+defaults to warning about exactly that, so the warning could not be acted
+on — satisfying it fails `pnpm format:check`. Three such warnings predated
+this rung and the parts fieldset would have added six more. `void: "any"`
+in `apps/web/eslint.config.mjs` gives Prettier the void-element spelling
+and leaves `normal` and `component` enforced. `pnpm -r lint` is now at zero
+warnings, which is what makes the next warning worth reading.
+
 **The host-suffix list becomes dead.** `SSL_REQUIRED_HOST_SUFFIXES` exists to
 force TLS on Neon and Supabase. Once the default is `require`, it can only ever
 do one thing the default does not: override an explicit `disable`. Slice A

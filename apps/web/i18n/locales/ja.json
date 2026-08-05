@@ -158,6 +158,13 @@
       "heading": "接続を登録",
       "label-input": "ラベル",
       "driver-input": "ドライバ",
+      "use-url": "代わりに接続 URL を貼り付ける",
+      "parts-heading": "サーバー",
+      "host-input": "ホスト",
+      "port-input": "ポート",
+      "user-input": "ユーザー",
+      "password-input": "パスワード",
+      "database-input": "データベース",
       "connection-string-input": "接続文字列",
       "submit": "登録"
     },

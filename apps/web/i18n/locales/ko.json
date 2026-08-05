@@ -158,6 +158,13 @@
       "heading": "연결 등록",
       "label-input": "레이블",
       "driver-input": "드라이버",
+      "use-url": "대신 연결 URL 붙여넣기",
+      "parts-heading": "서버",
+      "host-input": "호스트",
+      "port-input": "포트",
+      "user-input": "사용자",
+      "password-input": "비밀번호",
+      "database-input": "데이터베이스",
       "connection-string-input": "연결 문자열",
       "submit": "등록"
     },

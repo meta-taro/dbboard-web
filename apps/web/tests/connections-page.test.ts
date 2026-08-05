@@ -87,12 +87,103 @@ describe("ConnectionsPage", () => {
     wrapper.unmount();
   });
 
-  it("calls register() with the form payload when the add form submits", async () => {
+  // Rewritten for 0027 slice C. Until then the form had one
+  // `connection-string-input` and this test drove it; the URL is now the
+  // escape hatch rather than the only way in, so the same assertion moved
+  // to "still registers a pasted provider URL" below.
+  it("calls register() with the parts as separate fields when the add form submits", async () => {
     const wrapper = mount(ConnectionsPage, mountOptions);
     await flushPromises();
 
     await wrapper.find("[data-testid='label-input']").setValue("Neon");
     await wrapper.find("[data-testid='driver-input']").setValue("postgres");
+    await wrapper.find("[data-testid='host-input']").setValue("db.example.com");
+    await wrapper.find("[data-testid='port-input']").setValue("6543");
+    await wrapper.find("[data-testid='user-input']").setValue("app");
+    await wrapper.find("[data-testid='password-input']").setValue("s3cr3t");
+    await wrapper.find("[data-testid='database-input']").setValue("main");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    expect(mocks.register).toHaveBeenCalledWith({
+      label: "Neon",
+      driver: "postgres",
+      host: "db.example.com",
+      port: 6543,
+      user: "app",
+      password: "s3cr3t",
+      database: "main",
+    });
+    wrapper.unmount();
+  });
+
+  // The whole point of the parts mode (ADR-0073). Desktop percent-encodes
+  // in `composeDsn` because sqlx has no parts-shaped path; web's API takes
+  // the fields individually, so the password never passes through a URL
+  // parser and there is nothing to encode. Pinned because the tempting
+  // "just build the DSN in the browser" refactor would reintroduce exactly
+  // the bug the ADR removes.
+  it("sends a password containing URL-significant characters untouched", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Awkward");
+    await wrapper.find("[data-testid='host-input']").setValue("db.example.com");
+    await wrapper.find("[data-testid='password-input']").setValue("p@ss/w#rd?x");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith(
+      expect.objectContaining({ password: "p@ss/w#rd?x", host: "db.example.com" }),
+    );
+    expect(mocks.register.mock.calls[0]![0]).not.toHaveProperty("connectionString");
+    wrapper.unmount();
+  });
+
+  // ADR-0073 decision 3: a blank port fills in, so the common case is four
+  // fields rather than five.
+  it("fills in the default port when the port field is left blank", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Local");
+    await wrapper.find("[data-testid='host-input']").setValue("localhost");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ port: 5432 }));
+    wrapper.unmount();
+  });
+
+  it("omits the parts the user left blank rather than sending empty strings", async () => {
+    // An empty string is not the same as "not supplied": the resolver
+    // treats a supplied-but-empty user or database as a real value and
+    // would send it to the server, where it means something different
+    // from letting the server apply its own default.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Sparse");
+    await wrapper.find("[data-testid='host-input']").setValue("localhost");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = mocks.register.mock.calls[0]![0];
+    expect(payload).not.toHaveProperty("user");
+    expect(payload).not.toHaveProperty("password");
+    expect(payload).not.toHaveProperty("database");
+    wrapper.unmount();
+  });
+
+  it("still registers a pasted provider URL through the escape hatch", async () => {
+    // Neon, Supabase and Aurora DSQL hand out ready-made URLs. Parts mode
+    // is the default; this is the way back out of it.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Neon");
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
     await wrapper
       .find("[data-testid='connection-string-input']")
       .setValue("postgres://localhost/db");
@@ -105,6 +196,50 @@ describe("ConnectionsPage", () => {
       driver: "postgres",
       connectionString: "postgres://localhost/db",
     });
+    wrapper.unmount();
+  });
+
+  it("sends only the entry mode that is showing, not both", async () => {
+    // Typing a host, switching to URL entry and submitting must not send
+    // the abandoned host along with the URL. The API takes the
+    // connectionString branch when both are present, so the stray parts
+    // would be silently ignored rather than rejected — which is the kind
+    // of divergence between what the form shows and what it sends that
+    // this rung exists to remove.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Switcher");
+    await wrapper.find("[data-testid='host-input']").setValue("abandoned.example.com");
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
+    await wrapper.find("[data-testid='connection-string-input']").setValue("postgres://real/db");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = mocks.register.mock.calls[0]![0];
+    expect(payload).not.toHaveProperty("host");
+    expect(payload.connectionString).toBe("postgres://real/db");
+    wrapper.unmount();
+  });
+
+  it("asks for no credential at all when the driver needs none", async () => {
+    // The null adapter ignores every connection field. Rendering five
+    // boxes that do nothing is the same defect ADR-0074 names — offering
+    // an input whose effect is nil — one level down from the driver list.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='driver-input']").setValue("null");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='host-input']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='use-url-toggle']").exists()).toBe(false);
+
+    await wrapper.find("[data-testid='label-input']").setValue("Fake");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith({ label: "Fake", driver: "null" });
     wrapper.unmount();
   });
 

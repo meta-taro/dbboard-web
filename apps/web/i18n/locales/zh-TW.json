@@ -158,6 +158,13 @@
       "heading": "註冊連線",
       "label-input": "標籤",
       "driver-input": "驅動程式",
+      "use-url": "改為貼上連線 URL",
+      "parts-heading": "伺服器",
+      "host-input": "主機",
+      "port-input": "連接埠",
+      "user-input": "使用者",
+      "password-input": "密碼",
+      "database-input": "資料庫",
       "connection-string-input": "連線字串",
       "submit": "註冊"
     },

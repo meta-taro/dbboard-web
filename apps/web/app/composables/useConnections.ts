@@ -25,10 +25,27 @@ export interface ConnectionView {
   driver: string;
 }
 
+/**
+ * What `POST /connections` accepts. Two mutually exclusive ways to name a
+ * database, and the API prefers `connectionString` when both arrive — so
+ * callers send one shape or the other, never a merge of the two.
+ *
+ * The parts are sent as parts rather than assembled into a DSN here. The
+ * API's split-fields branch hands them to `pg.Pool` individually, so a
+ * password containing `@`, `/`, `#` or `?` never passes through a URL
+ * parser. Desktop composes a DSN in the frontend (ADR-0073) only because
+ * sqlx offers no parts-shaped path; adopting that here would mean building
+ * the bug in order to solve it.
+ */
 export interface RegisterInput {
   label: string;
   driver: Driver;
   connectionString?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  database?: string;
 }
 
 export type ConnectionsState = "idle" | "loading" | "error";

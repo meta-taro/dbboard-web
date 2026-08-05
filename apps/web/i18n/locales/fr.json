@@ -158,6 +158,13 @@
       "heading": "Enregistrer une connexion",
       "label-input": "Étiquette",
       "driver-input": "Pilote",
+      "use-url": "Coller une URL de connexion à la place",
+      "parts-heading": "Serveur",
+      "host-input": "Hôte",
+      "port-input": "Port",
+      "user-input": "Utilisateur",
+      "password-input": "Mot de passe",
+      "database-input": "Base de données",
       "connection-string-input": "Chaîne de connexion",
       "submit": "Enregistrer"
     },

@@ -158,6 +158,13 @@
       "heading": "Register a connection",
       "label-input": "Label",
       "driver-input": "Driver",
+      "use-url": "Paste a connection URL instead",
+      "parts-heading": "Server",
+      "host-input": "Host",
+      "port-input": "Port",
+      "user-input": "User",
+      "password-input": "Password",
+      "database-input": "Database",
       "connection-string-input": "Connection string",
       "submit": "Register"
     },

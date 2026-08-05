@@ -158,6 +158,13 @@
       "heading": "Зарегистрировать подключение",
       "label-input": "Метка",
       "driver-input": "Драйвер",
+      "use-url": "Вставить URL подключения",
+      "parts-heading": "Сервер",
+      "host-input": "Хост",
+      "port-input": "Порт",
+      "user-input": "Пользователь",
+      "password-input": "Пароль",
+      "database-input": "База данных",
       "connection-string-input": "Строка подключения",
       "submit": "Зарегистрировать"
     },

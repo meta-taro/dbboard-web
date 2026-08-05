@@ -158,6 +158,13 @@
       "heading": "Verbindung registrieren",
       "label-input": "Bezeichnung",
       "driver-input": "Treiber",
+      "use-url": "Stattdessen eine Verbindungs-URL einfügen",
+      "parts-heading": "Server",
+      "host-input": "Host",
+      "port-input": "Port",
+      "user-input": "Benutzer",
+      "password-input": "Passwort",
+      "database-input": "Datenbank",
       "connection-string-input": "Verbindungszeichenfolge",
       "submit": "Registrieren"
     },

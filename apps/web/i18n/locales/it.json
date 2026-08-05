@@ -158,6 +158,13 @@
       "heading": "Registra una connessione",
       "label-input": "Etichetta",
       "driver-input": "Driver",
+      "use-url": "Incolla invece un URL di connessione",
+      "parts-heading": "Server",
+      "host-input": "Host",
+      "port-input": "Porta",
+      "user-input": "Utente",
+      "password-input": "Password",
+      "database-input": "Database",
       "connection-string-input": "Stringa di connessione",
       "submit": "Registra"
     },

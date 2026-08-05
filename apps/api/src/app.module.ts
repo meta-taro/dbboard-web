@@ -11,6 +11,7 @@ import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
+import { ConnectionSchemaController } from "./presentation/connection-schema.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
 import { HealthController } from "./presentation/health.controller";
@@ -21,6 +22,7 @@ import { TablesController } from "./presentation/tables.controller";
 import { ADAPTER_FACTORY } from "./usecase/adapter-factory.port";
 import { CONNECTION_REGISTRY } from "./usecase/connection-registry.port";
 import { DeleteConnection } from "./usecase/delete-connection.use-case";
+import { DescribeTable } from "./usecase/describe-table.use-case";
 import { ExecuteQuery } from "./usecase/execute-query.use-case";
 import { ExplainSql } from "./usecase/explain-sql.use-case";
 import { ExportHistory } from "./usecase/export-history.use-case";
@@ -54,6 +56,7 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
     ConnectionsController,
     ConnectionTablesController,
     ConnectionCapabilitiesController,
+    ConnectionSchemaController,
     HistoryController,
     AiController,
   ],
@@ -82,6 +85,12 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
       provide: ListConnectionTables,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new ListConnectionTables(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    {
+      provide: DescribeTable,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new DescribeTable(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     {

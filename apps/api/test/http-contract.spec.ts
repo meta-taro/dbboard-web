@@ -235,6 +235,43 @@ describe("HTTP contract surface (0003)", () => {
     });
   });
 
+  // ---- /connections/:id/table-schema surface (0026) ------------------
+
+  it("GET /connections/:id/table-schema → 404 when the adapter cannot describe", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Scoped describe", driver: "null" });
+    const res = await request(app.getHttpServer())
+      .get(`/connections/${create.body.id}/table-schema`)
+      .query({ table: "users" });
+    expect(res.status).toBe(404);
+    expect(res.body.error.category).toBe("capability");
+    expect(res.body.error.message).toMatch(/describe/i);
+  });
+
+  it("GET /connections/:id/table-schema with an unknown id → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/connections/does-not-exist/table-schema")
+      .query({ table: "users" });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({
+      category: "capability",
+      message: expect.stringContaining("unknown connection"),
+    });
+  });
+
+  it("GET /connections/:id/table-schema without ?table → 422", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Missing table param", driver: "null" });
+    const res = await request(app.getHttpServer()).get(
+      `/connections/${create.body.id}/table-schema`,
+    );
+    expect(res.status).toBe(422);
+  });
+
   // ---- Secret-leak guard (0004 § Tasks) ----------------------------
 
   it("GET /connections never echoes the registered password or connectionString", async () => {

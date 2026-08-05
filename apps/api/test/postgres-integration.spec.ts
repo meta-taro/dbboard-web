@@ -410,6 +410,60 @@ describe("Postgres adapter integration (testcontainers)", () => {
       expect(schema.columns.map((c) => c.name)).toEqual(["id"]);
     });
 
+    // The two routes together: the flag says the depth is available, the
+    // describe route delivers it. Neither is worth much without the other.
+    it("is advertised and reachable over HTTP for a registered connection", async (ctx) => {
+      if (skipReason || !app || !connectionId) return ctx.skip();
+      const setup = await runQuery(
+        "CREATE TABLE IF NOT EXISTS describe_http (id serial PRIMARY KEY, label text)",
+      );
+      expect(setup.status).toBe(200);
+
+      const caps = await request(app.getHttpServer()).get(
+        `/connections/${connectionId}/capabilities`,
+      );
+      expect(caps.status).toBe(200);
+      expect(caps.body).toMatchObject({
+        id: "postgres",
+        capabilities: { has_describe_table: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/connections/${connectionId}/table-schema`)
+        .query({ table: "describe_http" });
+      expect(res.status).toBe(200);
+      expect(res.body.primary_key).toEqual(["id"]);
+      expect(res.body.columns).toEqual([
+        {
+          name: "id",
+          declared_type: "integer",
+          nullable: false,
+          primary_key: true,
+          ordinal: 1,
+          default_value: "nextval('describe_http_id_seq'::regclass)",
+        },
+        {
+          name: "label",
+          declared_type: "text",
+          nullable: true,
+          primary_key: false,
+          ordinal: 2,
+          default_value: null,
+        },
+      ]);
+    });
+
+    it("reports an unknown table over HTTP as a 400 query envelope", async (ctx) => {
+      if (skipReason || !app || !connectionId) return ctx.skip();
+      const res = await request(app.getHttpServer())
+        .get(`/connections/${connectionId}/table-schema`)
+        .query({ table: "no_such_table" });
+      // A missing table is the client naming something that is not there —
+      // a query-level failure, not a capability the server lacks.
+      expect(res.status).toBe(400);
+      expect(res.body.error.category).toBe("query");
+    });
+
     it("rejects an unknown table as a missing relation", async (ctx) => {
       if (skipReason) return ctx.skip();
       await expect(

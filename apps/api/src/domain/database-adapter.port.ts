@@ -1,4 +1,4 @@
-import type { Capabilities, QueryResult, TableInfo } from "./values";
+import type { Capabilities, QueryResult, TableInfo, TableSchema } from "./values";
 
 // The port every concrete adapter implements. NullAdapter (0003) and
 // PostgresAdapter (0004) sit behind this; the controller layer never
@@ -15,6 +15,12 @@ export interface DatabaseAdapter {
   getCapabilities(): Capabilities;
   listTables(): Promise<TableInfo[]>;
   executeQuery(sql: string): Promise<QueryResult>;
+  // Optional introspection hook (desktop ADR-0028). Optional rather than
+  // required so adapters that cannot introspect — NullAdapter — need no
+  // change: absence is the "not supported" signal, and DescribeTable turns
+  // it into a CapabilityError. An adapter that implements this also sets
+  // `has_describe_table` in getCapabilities(); the two travel together.
+  describeTable?(table: TableInfo): Promise<TableSchema>;
   // Optional teardown hook. Implementations that hold network resources
   // (PostgresAdapter's pg.Pool) implement this so DELETE /connections
   // can release the sockets before evicting the registry record.

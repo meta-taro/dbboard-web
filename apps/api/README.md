@@ -85,15 +85,39 @@ Verification needs a CA the caller can nominate, which this API has
 nowhere to accept yet.
 
 A server with TLS unconfigured — a local container, a database reached
-through an SSH tunnel — needs the opt-out written down:
+through an SSH tunnel — needs the opt-out written down. Either spelling
+works:
 
 ```jsonc
+// inside a connection string, where libpq's conventions apply
 {
   "driver": "postgres",
   "label": "dev",
   "connectionString": "postgres://user:pass@localhost:5432/db?sslmode=disable",
 }
+
+// as a field, which is the only way to say it on the split-fields path
+{
+  "driver": "postgres",
+  "label": "dev",
+  "host": "localhost",
+  "port": 5432,
+  "database": "db",
+  "user": "user",
+  "password": "pass",
+  "sslMode": "disable",
+}
 ```
+
+The field takes `require` or `disable` and nothing else — `prefer` and the
+`verify-*` modes are a 422. That is stricter than the connection-string
+path treats the same words, on purpose: text inside a pasted URL may not
+be the user's own, so it is hardened silently, whereas the field is a claim
+about which option the form's TLS select was on. There is no third option,
+so a third value means the client has drifted from the API, and hardening
+it would hide that. When both are present the field wins, because a select
+that lost to a stale query parameter would be reporting a choice it does
+not make.
 
 Mirrors desktop ADR-0078. A connection the user believes is encrypted and
 is not is worse than one they knowingly turned off.

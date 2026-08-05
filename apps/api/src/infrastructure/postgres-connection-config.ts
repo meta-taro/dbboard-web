@@ -2,6 +2,12 @@
 // runtime dep) so unit tests don't need to spin up the driver. The
 // adapter factory consumes the output and hands it to `new pg.Pool(...)`.
 
+import { hardenSslMode, type SslMode } from "../domain/ssl-mode";
+
+// Re-exported so callers that already reach for the Postgres config do not
+// need a second import for the mode it resolves to.
+export type { SslMode };
+
 const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_POOL_SIZE = 4;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
@@ -12,14 +18,6 @@ const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 // blown its budget, while the cost of being too tight is the user losing
 // the server's explanation of what happened.
 const CLIENT_TIMEOUT_GRACE_MS = 2_000;
-
-// The two modes the connection form can express (ADR-0078 Decision 2).
-// `prefer` is deliberately absent: it is the mode that tries TLS and
-// silently continues in plaintext when the server refuses, which is the
-// failure this type exists to make unrepresentable. `verify-ca` /
-// `verify-full` are absent for a different reason — they need a CA file
-// this API has nowhere to put.
-export type SslMode = "require" | "disable";
 
 export interface PostgresConnectionConfig {
   // Caller picks one path or the other. connectionString wins when both
@@ -82,19 +80,12 @@ export interface ResolvedPostgresPoolOptions {
   statement_timeout: number;
 }
 
-// TLS is on unless the caller says otherwise, and only `disable` counts as
-// saying otherwise. Everything else — nothing at all, `prefer`, a mode we
-// do not recognise, a stricter mode we cannot express — resolves to
-// `require`, so no input can quietly land on plaintext. Mirrors desktop's
-// `harden_ssl_mode` (ADR-0078).
-//
-// `prefer` in particular is rewritten rather than honoured. libpq reads it
-// as "try TLS, fall back to plaintext"; node-pg does not implement the
-// fallback at all, and this API resolved it to no-TLS outright. A URL
-// carrying it was therefore asking for the one behaviour ADR-0078 removes.
-function hardenSslMode(supplied: string | null | undefined): SslMode {
-  return supplied === "disable" ? "disable" : "require";
-}
+// `hardenSslMode` lives in `domain/ssl-mode` — the rule is not a Postgres
+// detail. What is Postgres-specific is why `prefer` needs rewriting rather
+// than honouring: libpq reads it as "try TLS, fall back to plaintext", and
+// node-pg does not implement the fallback at all, so this API resolved it
+// to no-TLS outright. A URL carrying it was asking for the one behaviour
+// ADR-0078 removes.
 
 export function resolvePostgresPoolOptions(
   input: PostgresConnectionConfig,

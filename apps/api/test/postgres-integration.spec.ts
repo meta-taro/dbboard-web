@@ -356,6 +356,64 @@ describe("Postgres adapter integration (testcontainers)", () => {
     }
   }, 30_000);
 
+  // Slice B's field, end to end and over HTTP. The DTO tests prove it
+  // validates and the resolver tests prove it wins over the URL, but
+  // neither shows it survives the trip through the controller, the use
+  // case and the factory into `pg.Pool`. Registering over HTTP and then
+  // running a query is the only evidence that nothing in that chain drops
+  // it — and the split-fields path is the one that needs it, because it
+  // composes no URL and so has nowhere else to say `disable`.
+  it("honours sslMode as a field on the split-fields path (0027 slice B)", async (ctx) => {
+    if (skipReason || !container || !app) return ctx.skip();
+    const reg = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "tc-pg-parts",
+        driver: "postgres",
+        host: container.getHost(),
+        port: container.getMappedPort(5432),
+        database: "test",
+        user: "test",
+        password: "test",
+        sslMode: "disable",
+      });
+    expect(reg.status).toBe(201);
+
+    const res = await request(app.getHttpServer())
+      .post(`/connections/${reg.body.id}/query`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1 AS one" });
+    expect(res.status).toBe(200);
+  }, 30_000);
+
+  // The same registration without the field must fail, for the same
+  // reason the URL case above fails. Without this, the test above would
+  // still pass if `sslMode` were being dropped somewhere in the chain and
+  // the split path had simply never been hardened.
+  it("requires TLS on the split-fields path when sslMode is omitted", async (ctx) => {
+    if (skipReason || !container || !app) return ctx.skip();
+    const reg = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "tc-pg-parts-tls",
+        driver: "postgres",
+        host: container.getHost(),
+        port: container.getMappedPort(5432),
+        database: "test",
+        user: "test",
+        password: "test",
+      });
+    expect(reg.status).toBe(201);
+
+    const res = await request(app.getHttpServer())
+      .post(`/connections/${reg.body.id}/query`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1 AS one" });
+    expect(res.status).not.toBe(200);
+  }, 30_000);
+
   // ---- ticket 0026: describeTable against a real catalog -------------
 
   // Stubs can prove the assembly logic; only a live catalog can prove the

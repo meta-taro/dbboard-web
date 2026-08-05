@@ -163,6 +163,24 @@ describe("HTTP contract surface (0003)", () => {
     expect(res.body.error.message).toMatch(/connectionString|host/);
   });
 
+  // The DTO spec proves the validator rejects it; this proves the
+  // rejection reaches the client as a refusal rather than being whitelisted
+  // away into a silent plaintext connection. `whitelist: true` drops
+  // undeclared fields, so an unrecognised TLS spelling would be dropped —
+  // the field has to be declared *and* constrained for this to be a 422.
+  it("POST /connections with a TLS mode it cannot honour → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Prefer",
+        driver: "postgres",
+        host: "db.example.com",
+        sslMode: "prefer",
+      });
+    expect(res.status).toBe(422);
+  });
+
   it("POST /connections/:id/query routes to the registered adapter", async () => {
     const create = await request(app.getHttpServer())
       .post("/connections")

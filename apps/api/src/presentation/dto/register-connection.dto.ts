@@ -1,4 +1,5 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import { SSL_MODES, type SslMode } from "../../domain/ssl-mode";
 
 // Body schema for POST /connections. 0003 persisted label + driver.
 // 0004 adds the optional postgres connection fields — class-validator
@@ -43,4 +44,24 @@ export class RegisterConnectionDto {
   @IsOptional()
   @IsString()
   password?: string;
+
+  // The form's TLS select, as a field rather than a query parameter, so
+  // the split-fields path can express it at all — it composes no URL and
+  // has nowhere to write `?sslmode=`. On the connectionString path it
+  // outranks whatever the URL says, because the select must report the
+  // choice it actually makes.
+  //
+  // Spelled camelCase to match `connectionString`; libpq's own spelling
+  // is `sslmode`, and that one still works where libpq's conventions
+  // apply — inside a pasted connection string.
+  //
+  // Exactly the two values the select offers. `prefer` is refused here
+  // even though the resolver hardens it inside a URL: as a field it
+  // claims the select was on an option that does not exist. Stricter
+  // modes are refused because honouring them would need a CA this API
+  // has nowhere to accept, and resolving them down to `require` would
+  // promise a verification it does not perform.
+  @IsOptional()
+  @IsIn(SSL_MODES)
+  sslMode?: SslMode;
 }

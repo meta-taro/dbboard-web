@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import type { SslMode } from "../domain/ssl-mode";
 
 // Open bag of driver-config fields. The "null" branch ignores everything;
 // the "postgres" branch (0004) reads the connection bits. Keeping this
@@ -11,6 +12,10 @@ export interface AdapterConfig {
   database?: string;
   user?: string;
   password?: string;
+  // 0027 slice B. Typed rather than `string` so a driver that later grows
+  // its own TLS handling inherits the two-mode vocabulary instead of
+  // inventing a third spelling of the same choice.
+  sslMode?: SslMode;
 }
 
 // Constructs an adapter from a driver discriminator + per-driver config.

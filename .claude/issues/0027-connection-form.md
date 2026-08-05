@@ -128,7 +128,7 @@ rungs 3 and 4 confirmed. The rung must leave that file with a zero diff.
 | Slice | What                                                                                                              |
 | ----- | ----------------------------------------------------------------------------------------------------------------- |
 | A     | Harden TLS in the adapter: unspecified and `prefer` both resolve to `require`; only an explicit `disable` is off. |
-| B     | `sslmode` becomes an accepted registration field, so the choice can reach the adapter from either entry mode.     |
+| B     | `sslMode` becomes an accepted registration field, so the choice can reach the adapter from either entry mode.     |
 | C     | The form collects parts (host / port / user / password / database) with a URL escape hatch, in 11 locales.        |
 | D     | The TLS select: two options, default Required, outside the entry-mode branch; in URL mode a view of the URL text. |
 | E     | Driver options come from the factory, so an unsupported driver is never offered.                                  |
@@ -147,7 +147,7 @@ depends on it.
       expressible outcome of the resolver.
 - [ ] An explicit `sslmode=disable` is honoured on every host, including
       `*.neon.tech` and `*.supabase.co` — a knowing opt-out is not overridden.
-- [ ] `POST /connections` accepts `sslmode` with exactly the two values the
+- [ ] `POST /connections` accepts `sslMode` with exactly the two values the
       form can express, and rejects anything else at the DTO.
 - [ ] The form submits `host` / `port` / `user` / `password` / `database` as
       separate fields, with 5432 filled in for a blank port, and no DSN
@@ -185,6 +185,20 @@ config that fails on first run.
 rewritten, not deleted (baseline §7): the first inverts, the second becomes its
 own opposite and gains a note saying why a knowing opt-out outranks a
 host-suffix guess.
+
+**The field is `sslMode`, not `sslmode`.** camelCase, matching
+`connectionString` and the rest of the envelope. libpq's own spelling keeps
+working where libpq's conventions apply — inside a pasted connection
+string — so both appear, each in its own place. The two are also validated
+differently on purpose: the field rejects `prefer` while the URL merely
+hardens it, because a field is a claim about which option the select was
+on and the select has no such option.
+
+**The two-mode vocabulary lives in `domain`, not beside the Postgres
+adapter.** `AdapterConfig` is a usecase-layer type and must not import
+infrastructure (§9), and the rule is not Postgres-specific — desktop
+applies the same one to MySQL. `domain/ssl-mode.ts` holds the values, the
+type derived from them, and `hardenSslMode`.
 
 **The host-suffix list becomes dead.** `SSL_REQUIRED_HOST_SUFFIXES` exists to
 force TLS on Neon and Supabase. Once the default is `require`, it can only ever

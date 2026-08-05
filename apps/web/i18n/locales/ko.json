@@ -165,6 +165,9 @@
       "user-input": "사용자",
       "password-input": "비밀번호",
       "database-input": "데이터베이스",
+      "ssl-input": "암호화",
+      "ssl-require": "필수",
+      "ssl-disable": "사용 안 함",
       "connection-string-input": "연결 문자열",
       "submit": "등록"
     },

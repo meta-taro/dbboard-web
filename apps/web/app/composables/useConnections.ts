@@ -15,6 +15,8 @@ import { useRuntimeConfig } from "#imports";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
+import type { SslMode } from "../utils/ssl-mode";
+
 export type { CategorisedError, ErrorCategory } from "./internal/i18n-error";
 
 export type Driver = "postgres" | "null";
@@ -46,6 +48,9 @@ export interface RegisterInput {
   user?: string;
   password?: string;
   database?: string;
+  // Outranks any `sslmode` inside `connectionString`, which is what lets
+  // the form's select be trusted in URL mode as well as parts mode.
+  sslMode?: SslMode;
 }
 
 export type ConnectionsState = "idle" | "loading" | "error";

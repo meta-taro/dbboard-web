@@ -165,6 +165,9 @@
       "user-input": "Пользователь",
       "password-input": "Пароль",
       "database-input": "База данных",
+      "ssl-input": "Шифрование",
+      "ssl-require": "Обязательно",
+      "ssl-disable": "Отключено",
       "connection-string-input": "Строка подключения",
       "submit": "Зарегистрировать"
     },

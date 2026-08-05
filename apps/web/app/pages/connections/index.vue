@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import ErrorBanner from "../../components/ErrorBanner.vue";
 import { useConnections, type Driver, type RegisterInput } from "../../composables/useConnections";
 import { defaultPortFor } from "../../utils/default-port";
 import { fromCategorised } from "../../utils/display-error";
+import { readSslModeFromUrl, SSL_MODES, type SslMode } from "../../utils/ssl-mode";
 
 const { t } = useI18n();
 const { list, lastError, register, remove } = useConnections();
@@ -27,6 +28,19 @@ const portInput = ref<string | number>("");
 const userInput = ref("");
 const passwordInput = ref("");
 const databaseInput = ref("");
+
+// Required by default, and the default is not a guess the API might
+// override — the same value is sent explicitly, so the select always
+// reports the connection that is about to be made (ADR-0079).
+const sslModeInput = ref<SslMode>("require");
+
+// Editing the URL moves the select to whatever that URL will actually get.
+// Only a URL that states a mode moves it: one that says nothing is not a
+// reason to discard a choice the user made here.
+watch(connectionStringInput, (text) => {
+  const stated = readSslModeFromUrl(text);
+  if (stated !== undefined) sslModeInput.value = stated;
+});
 
 // The null adapter connects to nothing and ignores every credential field.
 // Rendering them would be offering inputs whose effect is nil — the defect
@@ -58,11 +72,14 @@ function resolvePort(driver: Driver): number | undefined {
 function buildPayload(): RegisterInput {
   const base = { label: labelInput.value.trim(), driver: driverInput.value };
   if (!needsCredential.value) return base;
+  // The TLS choice belongs to both modes, so it is added to both rather
+  // than living inside either branch.
+  const secured = { ...base, sslMode: sslModeInput.value };
   if (useUrl.value) {
-    return { ...base, connectionString: supplied(connectionStringInput.value) };
+    return { ...secured, connectionString: supplied(connectionStringInput.value) };
   }
   return {
-    ...base,
+    ...secured,
     host: supplied(hostInput.value),
     port: resolvePort(driverInput.value),
     user: supplied(userInput.value),
@@ -92,6 +109,9 @@ async function onSubmit() {
     userInput.value = "";
     passwordInput.value = "";
     databaseInput.value = "";
+    // Back to the safe default, so the next connection does not inherit an
+    // opt-out from the last one.
+    sslModeInput.value = "require";
   }
 }
 </script>
@@ -178,6 +198,17 @@ async function onSubmit() {
             />
           </label>
         </fieldset>
+
+        <!-- Outside the entry-mode branch: "is this encrypted" is the same
+             question whichever way the database was named. -->
+        <label>
+          {{ t("connections.add.ssl-input") }}
+          <select v-model="sslModeInput" data-testid="ssl-mode-input">
+            <option v-for="mode in SSL_MODES" :key="mode" :value="mode">
+              {{ t(`connections.add.ssl-${mode}`) }}
+            </option>
+          </select>
+        </label>
       </template>
 
       <button type="submit" data-testid="add-submit">

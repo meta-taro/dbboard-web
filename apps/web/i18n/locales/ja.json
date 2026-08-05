@@ -165,6 +165,9 @@
       "user-input": "ユーザー",
       "password-input": "パスワード",
       "database-input": "データベース",
+      "ssl-input": "暗号化",
+      "ssl-require": "必須",
+      "ssl-disable": "無効",
       "connection-string-input": "接続文字列",
       "submit": "登録"
     },

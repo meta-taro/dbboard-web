@@ -165,6 +165,9 @@
       "user-input": "User",
       "password-input": "Password",
       "database-input": "Database",
+      "ssl-input": "Encryption",
+      "ssl-require": "Required",
+      "ssl-disable": "Disabled",
       "connection-string-input": "Connection string",
       "submit": "Register"
     },

@@ -165,6 +165,9 @@
       "user-input": "使用者",
       "password-input": "密碼",
       "database-input": "資料庫",
+      "ssl-input": "加密",
+      "ssl-require": "必需",
+      "ssl-disable": "已停用",
       "connection-string-input": "連線字串",
       "submit": "註冊"
     },

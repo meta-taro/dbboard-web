@@ -165,6 +165,9 @@
       "user-input": "用户",
       "password-input": "密码",
       "database-input": "数据库",
+      "ssl-input": "加密",
+      "ssl-require": "必需",
+      "ssl-disable": "已禁用",
       "connection-string-input": "连接字符串",
       "submit": "注册"
     },

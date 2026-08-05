@@ -165,6 +165,9 @@
       "user-input": "Usuario",
       "password-input": "Contraseña",
       "database-input": "Base de datos",
+      "ssl-input": "Cifrado",
+      "ssl-require": "Obligatorio",
+      "ssl-disable": "Desactivado",
       "connection-string-input": "Cadena de conexión",
       "submit": "Registrar"
     },

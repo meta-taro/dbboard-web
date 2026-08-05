@@ -114,6 +114,8 @@ describe("ConnectionsPage", () => {
       user: "app",
       password: "s3cr3t",
       database: "main",
+      // Slice D. Always stated, never inferred — see the TLS-select cases.
+      sslMode: "require",
     });
     wrapper.unmount();
   });
@@ -195,6 +197,10 @@ describe("ConnectionsPage", () => {
       label: "Neon",
       driver: "postgres",
       connectionString: "postgres://localhost/db",
+      // Slice D. The URL states no mode, so this is the select's own
+      // default — and it outranks the URL, which is what makes the select
+      // trustworthy in this mode too.
+      sslMode: "require",
     });
     wrapper.unmount();
   });
@@ -234,6 +240,149 @@ describe("ConnectionsPage", () => {
 
     expect(wrapper.find("[data-testid='host-input']").exists()).toBe(false);
     expect(wrapper.find("[data-testid='use-url-toggle']").exists()).toBe(false);
+
+    await wrapper.find("[data-testid='label-input']").setValue("Fake");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith({ label: "Fake", driver: "null" });
+    wrapper.unmount();
+  });
+
+  // ---- 0027 slice D: the TLS select ----
+
+  it("defaults the TLS select to required and says so on the wire", async () => {
+    // Sent rather than left off. The API defaults to `require` too, so the
+    // value is the same either way — but a select that reports a choice it
+    // does not transmit is the failure this slice exists to avoid.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    const select = wrapper.find("[data-testid='ssl-mode-input']");
+    expect(select.exists()).toBe(true);
+    expect((select.element as HTMLSelectElement).value).toBe("require");
+
+    await wrapper.find("[data-testid='label-input']").setValue("Secure");
+    await wrapper.find("[data-testid='host-input']").setValue("db.example.com");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ sslMode: "require" }));
+    wrapper.unmount();
+  });
+
+  it("sends the opt-out when the user picks it", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Local");
+    await wrapper.find("[data-testid='host-input']").setValue("localhost");
+    await wrapper.find("[data-testid='ssl-mode-input']").setValue("disable");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ sslMode: "disable" }));
+    wrapper.unmount();
+  });
+
+  it("offers the two modes the API accepts and no others", async () => {
+    // `prefer` is a 422 as a field. Offering it would be offering a choice
+    // that fails on submit — ADR-0074's defect, in a second select.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    const options = wrapper
+      .find("[data-testid='ssl-mode-input']")
+      .findAll("option")
+      .map((o) => o.element.value);
+    expect(options).toEqual(["require", "disable"]);
+    wrapper.unmount();
+  });
+
+  it("keeps the TLS select visible in URL entry mode", async () => {
+    // Outside the entry-mode branch: the question "is this encrypted" has
+    // an answer in both modes, and it is the same question.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='ssl-mode-input']").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("moves the select to match a pasted URL that states a mode", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
+    await wrapper
+      .find("[data-testid='connection-string-input']")
+      .setValue("postgres://u:p@localhost:5432/db?sslmode=disable");
+    await flushPromises();
+
+    const select = wrapper.find("[data-testid='ssl-mode-input']");
+    expect((select.element as HTMLSelectElement).value).toBe("disable");
+
+    await wrapper.find("[data-testid='label-input']").setValue("Pasted");
+    await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionString: "postgres://u:p@localhost:5432/db?sslmode=disable",
+        sslMode: "disable",
+      }),
+    );
+    wrapper.unmount();
+  });
+
+  it("shows Required for a pasted URL asking for the plaintext fallback", async () => {
+    // The API rewrites `prefer` up, so the connection will be encrypted.
+    // A select reading Disabled would be describing a different connection
+    // from the one about to be made.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
+    await wrapper
+      .find("[data-testid='connection-string-input']")
+      .setValue("postgres://localhost/db?sslmode=prefer");
+    await flushPromises();
+
+    const select = wrapper.find("[data-testid='ssl-mode-input']");
+    expect((select.element as HTMLSelectElement).value).toBe("require");
+    wrapper.unmount();
+  });
+
+  it("leaves a deliberate opt-out alone when the URL states nothing", async () => {
+    // A URL with no `sslmode` has no opinion, and overwriting the user's
+    // pick with a default they did not choose would be the select changing
+    // itself behind them.
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='use-url-toggle']").setValue(true);
+    await wrapper.find("[data-testid='ssl-mode-input']").setValue("disable");
+    await wrapper
+      .find("[data-testid='connection-string-input']")
+      .setValue("postgres://localhost/db");
+    await flushPromises();
+
+    const select = wrapper.find("[data-testid='ssl-mode-input']");
+    expect((select.element as HTMLSelectElement).value).toBe("disable");
+    wrapper.unmount();
+  });
+
+  it("asks nothing about TLS for a driver that opens no socket", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='driver-input']").setValue("null");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='ssl-mode-input']").exists()).toBe(false);
 
     await wrapper.find("[data-testid='label-input']").setValue("Fake");
     await wrapper.find("[data-testid='add-form']").trigger("submit.prevent");

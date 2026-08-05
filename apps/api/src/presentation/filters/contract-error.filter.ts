@@ -12,6 +12,10 @@ const CATEGORY_STATUS: Record<ErrorCategory, number> = {
   connection: 502,
   schema: 502,
   capability: 404,
+  // Web-only, and 409 rather than 400 on purpose: a failed affected-row
+  // gate means the request was fine and the world moved. The client should
+  // reload, not rewrite what it sent.
+  conflict: 409,
   // Web-only AI categories (not in docs/api-contract.md). 404 mirrors
   // `capability` (route gated off this deployment); 502 mirrors
   // `connection` (upstream third-party service failed).

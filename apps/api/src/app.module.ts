@@ -11,6 +11,7 @@ import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
+import { ConnectionRowsController } from "./presentation/connection-rows.controller";
 import { ConnectionSchemaController } from "./presentation/connection-schema.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
 import { ConnectionsController } from "./presentation/connections.controller";
@@ -38,6 +39,7 @@ import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
 import { SuggestSql } from "./usecase/suggest-sql.use-case";
 import { UpdateConnection } from "./usecase/update-connection.use-case";
+import { UpdateRow } from "./usecase/update-row.use-case";
 
 // Layered structure (per AI_AGENT_RULES.md §3):
 //   src/domain          — business rules, entities, value objects
@@ -59,6 +61,7 @@ import { UpdateConnection } from "./usecase/update-connection.use-case";
     ConnectionTablesController,
     ConnectionCapabilitiesController,
     ConnectionSchemaController,
+    ConnectionRowsController,
     HistoryController,
     AiController,
   ],
@@ -93,6 +96,16 @@ import { UpdateConnection } from "./usecase/update-connection.use-case";
       provide: DescribeTable,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new DescribeTable(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    // The one write path (ticket 0028). Resolved per request like every
+    // other scoped use case, so an edit always runs on the adapter the
+    // connection currently holds — never one cached across a rebuild
+    // (ticket 0027).
+    {
+      provide: UpdateRow,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new UpdateRow(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     {

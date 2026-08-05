@@ -218,9 +218,9 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   getCapabilities(): Capabilities {
-    // Set alongside the method that implements it, per the port's contract:
-    // the flag and `describeTable` travel together.
-    return { ...NULL_CAPABILITIES, has_describe_table: true };
+    // Set alongside the methods that implement them, per the port's
+    // contract: each flag and its method travel together.
+    return { ...NULL_CAPABILITIES, has_describe_table: true, has_execute: true };
   }
 
   async listTables(): Promise<TableInfo[]> {
@@ -250,6 +250,24 @@ export class PostgresAdapter implements DatabaseAdapter {
         }),
       );
       return { columns, rows, rows_affected: result.rowCount ?? 0 };
+    } catch (e) {
+      throw this.translateError(e);
+    }
+  }
+
+  async execute(sql: string): Promise<number> {
+    try {
+      const result = await this.pool.query({ text: sql });
+      // No `assertTextWireFormat` and no decoding: a write returns no
+      // result set, so there are no cells to get wrong. `rowMode` is left
+      // off for the same reason, and `values` is absent so the statement
+      // stays on the simple protocol — it arrives fully escaped from
+      // `buildUpdateSql` and has nothing to bind.
+      //
+      // pg reports `null` for a statement with no measurable effect. Zero
+      // is the truthful reading, and it is what the caller's exactly-one
+      // gate needs in order to refuse rather than assume.
+      return result.rowCount ?? 0;
     } catch (e) {
       throw this.translateError(e);
     }

@@ -329,3 +329,64 @@ TDD note: the implementation of `grid-edit.ts` was written before its test — a
 §4/§20 chain break. It was parked outside the tree, the test was written and
 confirmed RED (module not found), then the implementation was restored to make
 it GREEN. Recorded rather than quietly retrofitted.
+
+### Slice D — usecase and route (2026-08-05)
+
+`POST /connections/:id/rows` → `ConnectionRowsController` → `UpdateRow` →
+`buildUpdateSql` → `DatabaseAdapter.execute`. Web-only surface (desktop reaches
+write-back through the `update_row` Tauri command and has no HTTP route to
+mirror), nested under the already-unilateral `/connections/*` prefix so
+`docs/api-contract.md` keeps its zero diff against `86b324f`.
+
+**The write primitive is its own port method.** `DatabaseAdapter.execute?(sql)`
+returns the affected row count and is optional, so a driver that must not write
+simply omits it and `UpdateRow` turns that absence into a `CapabilityError` —
+the web equivalent of desktop's `NotEditable`. It is not folded into
+`executeQuery`, which decodes a result set and asserts text wire format: a write
+has no result set, and the count is the only thing worth reading back. The
+shape matches desktop's `execute`, which restore (ADR-0051, rung 6b) needs too.
+`PostgresAdapter` implements it and flips `has_execute`; the flag and the method
+travel together, as the port says.
+
+**A new error category.** A failed affected-row gate is not a bad request — the
+client sent something well-formed and the world moved underneath it — so
+`ConflictError` → **409** rather than reusing `QueryError` → 400. Same envelope,
+new category; web-only, because desktop reports the gate straight into its own
+UI and has no status code to choose. Desktop's two messages are mirrored
+verbatim: `0` → "no row matched — it may have been changed or deleted since it
+was loaded", `n` → "expected to update exactly one row but {n} matched — the key
+columns are not unique".
+
+**Build before send.** `buildUpdateSql` runs before `adapter.execute`, so a
+refused plan costs no round trip. That ordering is the point for an empty key:
+the alternative is learning about it from an affected count _after_ an unkeyed
+`UPDATE` has rewritten the table. A test asserts `execute` was never called.
+
+Honest limitation, inherited from desktop: this is a bare statement, not a
+transaction, so a count other than 1 is only visible after the write committed.
+For 0 that is harmless. For >1 it means the catalog named a "primary key" that
+is not unique and several rows now hold the new value; rolling that back needs
+`executeInTransaction`, which arrives with restore in rung 6b.
+
+**The DTO validates shape; the domain validates meaning.** `UpdateRowDto`
+mirrors desktop's `KeyColumnInput` / `CellEditInput`. An empty `key`, an empty
+`edits`, and a blob identity value all pass validation and are refused by
+`write-back.ts` by name — re-gating them here would replace those messages with
+a generic 422 on a field path. `value: null` and an absent `value` both mean SQL
+`NULL`; `""` stays a value, because an empty string and NULL are different rows.
+
+Not decorated with `@UseInterceptors(HistoryRecordingInterceptor)`: history is
+the record of queries the user ran, and this is a statement they never typed.
+Desktop writes no history entry for write-back either, and keeps the command off
+its MCP surface so external agents stay read-only — web keeps the route off the
+AI tool surface for the same reason.
+
+Integration coverage (11 tests, real Postgres via testcontainers) proves what no
+mock can: the generated statement parses, the affected count comes back off the
+wire, a text literal is assignment-cast into an `int` column, a
+statement-shaped value (`'); DROP TABLE …; --`) lands as data with the table
+still standing, backslashes survive un-doubled (confirming the
+`standard_conforming_strings` assumption from slice B), a NULL identity keys on
+`IS NULL`, a vanished row is 409, an unkeyed plan is 400 with the table
+untouched, and a constraint violation stays a 400 `query` rather than being
+relabelled a conflict.

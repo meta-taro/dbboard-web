@@ -25,11 +25,61 @@ describe("PostgresAdapter", () => {
   });
 
   // Every other flag stays false — a flag is set by the rung that gives it
-  // something to promise, and only has_describe_table has one (0026).
-  it("advertises has_describe_table and nothing else", () => {
+  // something to promise: has_describe_table by 0026, has_execute by 0028.
+  it("advertises has_describe_table and has_execute, and nothing else", () => {
     expect(new PostgresAdapter(stubPool()).getCapabilities()).toEqual({
       ...NULL_CAPABILITIES,
       has_describe_table: true,
+      has_execute: true,
+    });
+  });
+
+  describe("execute (write path, desktop ADR-0042)", () => {
+    it("sends the statement and returns the engine's affected-row count", async () => {
+      const query = vi.fn().mockResolvedValue({ rows: [], fields: [], rowCount: 1 });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+
+      const affected = await adapter.execute(`UPDATE "users" SET "a" = 'b' WHERE "id" = 1`);
+
+      expect(affected).toBe(1);
+      expect(query).toHaveBeenCalledWith({ text: `UPDATE "users" SET "a" = 'b' WHERE "id" = 1` });
+    });
+
+    it("does not bind parameters, so the statement stays on the simple protocol", async () => {
+      // The statement arrives fully escaped from `buildUpdateSql`. Adding a
+      // `values` array here would move pg to the extended protocol, which is
+      // where a binary result format becomes expressible (ADR-0070).
+      const query = vi.fn().mockResolvedValue({ rows: [], fields: [], rowCount: 1 });
+      await new PostgresAdapter(stubPool({ query })).execute("UPDATE t SET a = 1");
+      expect(query.mock.calls[0]?.[0]).not.toHaveProperty("values");
+    });
+
+    it("reports zero rather than inventing a count when pg reports none", async () => {
+      // `rowCount` is null for statements that affect nothing measurable.
+      // Zero is the truthful answer, and it is what the caller's
+      // exactly-one gate needs in order to refuse.
+      const query = vi.fn().mockResolvedValue({ rows: [], fields: [], rowCount: null });
+      await expect(
+        new PostgresAdapter(stubPool({ query })).execute("UPDATE t SET a = 1"),
+      ).resolves.toBe(0);
+    });
+
+    it("translates a rejected statement into a QueryError", async () => {
+      const query = vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("syntax error"), { code: "42601" }));
+      await expect(
+        new PostgresAdapter(stubPool({ query })).execute("UPDATE nope"),
+      ).rejects.toBeInstanceOf(QueryError);
+    });
+
+    it("translates a dropped connection into a ConnectionError", async () => {
+      const query = vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("gone"), { code: "ECONNRESET" }));
+      await expect(
+        new PostgresAdapter(stubPool({ query })).execute("UPDATE t SET a = 1"),
+      ).rejects.toBeInstanceOf(ConnectionError);
     });
   });
 

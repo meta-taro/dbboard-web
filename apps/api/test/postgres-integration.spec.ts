@@ -559,4 +559,187 @@ describe("Postgres adapter integration (testcontainers)", () => {
       ).rejects.toThrow(/relation "public\.no_such_table" does not exist/);
     });
   });
+
+  // ---- inline cell editing (ticket 0028, desktop ADR-0063) ---------
+  //
+  // The unit tests prove the statement text; these prove a real Postgres
+  // accepts it, that the affected count comes back from the wire, and —
+  // the part no mock can answer — that a literal built by `quoteLiteral`
+  // survives the parser as data rather than as syntax.
+  describe("inline cell editing (write-back)", () => {
+    async function updateRow(body: object) {
+      if (!app || !connectionId) throw new Error("Suite not initialised");
+      return request(app.getHttpServer())
+        .post(`/connections/${connectionId}/rows`)
+        .set("Content-Type", "application/json")
+        .send(body);
+    }
+
+    async function seedRow(id: number, note: string): Promise<void> {
+      const res = await runQuery(
+        `INSERT INTO edit_http (id, note, n) VALUES (${id}, '${note.replace(/'/g, "''")}', 1)`,
+      );
+      expect(res.status).toBe(200);
+    }
+
+    async function noteOf(id: number): Promise<unknown> {
+      const { status, body } = await runQuery(`SELECT note FROM edit_http WHERE id = ${id}`);
+      expect(status).toBe(200);
+      return firstCell(body);
+    }
+
+    it("creates the fixture table", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const res = await runQuery(
+        "CREATE TABLE IF NOT EXISTS edit_http (id int PRIMARY KEY, note text, n int)",
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("advertises has_execute alongside the route that uses it", async (ctx) => {
+      if (skipReason || !app || !connectionId) return ctx.skip();
+      const caps = await request(app.getHttpServer()).get(
+        `/connections/${connectionId}/capabilities`,
+      );
+      expect(caps.status).toBe(200);
+      expect(caps.body.capabilities.has_execute).toBe(true);
+    });
+
+    it("applies an edit and reports exactly one row affected", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await seedRow(1, "before");
+      const res = await updateRow({
+        table: "edit_http",
+        schema: "public",
+        key: [{ column: "id", value: 1 }],
+        edits: [{ column: "note", value: "after" }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({ rows_affected: 1 });
+      await expect(noteOf(1)).resolves.toBe("after");
+    });
+
+    // Every edited value goes out as a text literal; the engine coerces it
+    // by the target column's type. This is the assignment cast the design
+    // depends on, so it is worth proving against a real planner.
+    it("coerces a text literal into a non-text column", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await seedRow(2, "n-test");
+      const res = await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 2 }],
+        edits: [{ column: "n", value: "4242" }],
+      });
+      expect(res.status).toBe(201);
+      const { body } = await runQuery("SELECT n FROM edit_http WHERE id = 2");
+      expect(firstCell(body)).toBe(4242);
+    });
+
+    it("writes SQL NULL, and keeps an empty string distinct from it", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await seedRow(3, "cleared");
+      await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 3 }],
+        edits: [{ column: "note", value: null }],
+      });
+      await expect(noteOf(3)).resolves.toBeNull();
+
+      await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 3 }],
+        edits: [{ column: "note", value: "" }],
+      });
+      await expect(noteOf(3)).resolves.toBe("");
+    });
+
+    // The test this module exists for: a value that is valid SQL syntax
+    // must land in the column as text and change nothing else.
+    it("stores a statement-shaped value as data, not as syntax", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await seedRow(4, "injection");
+      const hostile = "'); DROP TABLE edit_http; --";
+      const res = await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 4 }],
+        edits: [{ column: "note", value: hostile }],
+      });
+      expect(res.status).toBe(201);
+      await expect(noteOf(4)).resolves.toBe(hostile);
+      // The table is still here, and so is every other row.
+      const { body } = await runQuery("SELECT count(*)::int FROM edit_http");
+      expect(firstCell(body)).toBeGreaterThan(0);
+    });
+
+    // Backslashes are ordinary characters under `standard_conforming_strings`,
+    // which is why quoteLiteral does not double them. If that assumption were
+    // wrong, this row would come back short.
+    it("stores backslashes literally", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await seedRow(5, "backslash");
+      const value = "C:\\path\\n not a newline";
+      await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 5 }],
+        edits: [{ column: "note", value }],
+      });
+      await expect(noteOf(5)).resolves.toBe(value);
+    });
+
+    it("keys on the row's original value, including NULL", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const setup = await runQuery(
+        "INSERT INTO edit_http (id, note, n) VALUES (6, NULL, 1) ON CONFLICT (id) DO UPDATE SET note = NULL",
+      );
+      expect(setup.status).toBe(200);
+      const res = await updateRow({
+        table: "edit_http",
+        key: [
+          { column: "id", value: 6 },
+          { column: "note", value: null },
+        ],
+        edits: [{ column: "n", value: "9" }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({ rows_affected: 1 });
+    });
+
+    it("reports a row that no longer matches as a conflict", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const res = await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 9999 }],
+        edits: [{ column: "note", value: "ghost" }],
+      });
+      expect(res.status).toBe(409);
+      expect(res.body.error.category).toBe("conflict");
+      expect(res.body.error.message).toMatch(/no row matched/);
+    });
+
+    it("refuses an unkeyed plan without touching the table", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const res = await updateRow({
+        table: "edit_http",
+        key: [],
+        edits: [{ column: "note", value: "everything" }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.category).toBe("query");
+      await expect(noteOf(1)).resolves.toBe("after");
+    });
+
+    it("surfaces a constraint violation as the engine reported it", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      // id 1 already exists, so re-keying row 2 onto it must fail as a
+      // query error rather than as a conflict — the request was fine, the
+      // data was not.
+      const res = await updateRow({
+        table: "edit_http",
+        key: [{ column: "id", value: 2 }],
+        edits: [{ column: "id", value: "1" }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.category).toBe("query");
+    });
+  });
 });

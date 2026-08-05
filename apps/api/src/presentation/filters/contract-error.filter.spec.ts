@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AiDisabledError, AiUpstreamError } from "../../domain/ai/ai-error";
 import {
   CapabilityError,
+  ConflictError,
   ConnectionError,
   QueryError,
   SchemaError,
@@ -34,6 +35,7 @@ describe("ContractErrorFilter", () => {
     [new ConnectionError("bad"), 502, "connection"],
     [new SchemaError("bad"), 502, "schema"],
     [new CapabilityError("bad"), 404, "capability"],
+    [new ConflictError("bad"), 409, "conflict"],
     [new AiDisabledError("bad"), 404, "ai_disabled"],
     [new AiUpstreamError("bad"), 502, "ai_provider"],
   ])("maps %s to the contract envelope", (err, code, category) => {

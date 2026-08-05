@@ -21,6 +21,21 @@ export interface DatabaseAdapter {
   // it into a CapabilityError. An adapter that implements this also sets
   // `has_describe_table` in getCapabilities(); the two travel together.
   describeTable?(table: TableInfo): Promise<TableSchema>;
+  // Optional write hook (desktop ADR-0042 write-back, ADR-0051 restore).
+  // Runs ONE statement that is expected to change the database, and returns
+  // the number of rows it affected — 0 for DDL. Distinct from
+  // `executeQuery`, which decodes a result set: a write has none, and the
+  // affected count is the only thing worth reading back.
+  //
+  // Splitting a script into statements belongs to the caller, not here
+  // (desktop puts it in `split_statements`, which arrives with restore).
+  //
+  // Optional for the same reason `describeTable` is: absence is the "not
+  // supported" signal, so an adapter that must not write simply omits it
+  // and UpdateRow turns that into a CapabilityError. An adapter that
+  // implements this also sets `has_execute` in getCapabilities(); the two
+  // travel together.
+  execute?(sql: string): Promise<number>;
   // Optional teardown hook. Implementations that hold network resources
   // (PostgresAdapter's pg.Pool) implement this so DELETE /connections
   // can release the sockets before evicting the registry record.

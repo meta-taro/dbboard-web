@@ -2,6 +2,8 @@
 
 Append-only log of significant technical decisions. Each entry: date, decision, context, alternatives considered, rationale.
 
+> **On baseline §31 (record-file stocktake).** This file passed 400 lines on 2026-08-05 and will keep growing. It is not a stocktake target: §31 names decisions, their Why, lessons from failures, and primary-source citations as content that stays in the original file — and this file is nothing else. Archiving an entry here would remove the record a future session needs in order to not re-litigate the decision. The files §31 is aimed at are the ones that accumulate session logs and stale snapshots; `project-status.md` is the one to watch.
+
 ---
 
 ## 2026-05-19 — Frontend framework: Nuxt
@@ -583,3 +585,51 @@ The divider half is mirrored whole, including the two decisions that look like d
 
 - Desktop: ADR-0041, ADR-0035, ADR-0048, ADR-0082, ADR-0039, ADR-0083 in `dbboard/docs/decisions.md`; ported source read directly from `dbboard-core/src/sort.rs`, `dbboard-ui` `SortState`, and `apps/desktop/src/lib/grid/edit.ts`.
 - Ticket: [`issues/0025-grid-and-ux-parity.md`](./issues/0025-grid-and-ux-parity.md) — per-slice log, including the mutations each slice was checked with. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 3.
+
+## 2026-08-05 — Schema depth: a second column type, and a flag that has to be per connection to mean anything
+
+**Context.** Ticket [`0026`](./issues/0026-schema-depth.md), rung 4 of [`parity-ledger.md`](./parity-ledger.md) — desktop ADR-0028 (`describe_table`), ADR-0031 (inspect a table's columns), ADR-0072 (identifier dialect). Re-deriving the three rows before writing code moved two of them off the rung entirely: ADR-0072 to rung 7 and ADR-0028's AI half (Decisions 8-9) to rung 8, both for reasons recorded in the ticket. It also surfaced a prerequisite no ADR could have named. What follows is the subset that constrains work after this rung.
+
+**Decision 1 — introspection gets its own column type; the wire's `Column` is not widened.**
+
+Desktop keeps two: `Column` in `row.rs` for query results and `ColumnInfo` in `schema.rs` for introspection. ADR-0028 widened the second and left the first alone. Web had mirrored only `Column` — and `Column` is on the shared wire, pinned by `docs/api-contract.md § Column`, which is drafted desktop-side and mirrored here byte-for-byte (ADR-0004).
+
+Adding `nullable` and `primary_key` to it would therefore have been a contract change to `QueryResult`, negotiated across repos, for a field that cannot be filled in: **a query result genuinely has no primary key to report.** `SELECT 1 AS x` has a column named `x` that belongs to no table. So rung 4 added `TableSchema` and a separate `ColumnInfo` alongside, matching desktop's split rather than collapsing it. `docs/api-contract.md` is untouched across the whole rung, verified by `git diff`.
+
+**Decision 2 — capabilities are answered per connection, because otherwise flipping a flag is invisible.**
+
+This is the part the ledger could not have contained, and it is the more useful half of the rung.
+
+`GET /capabilities` resolves the **bootstrap** adapter — the one built from `DATABASE_ADAPTER` at startup. Every real connection lives in the registry and carries its own adapter, created by `POST /connections`. So setting `has_describe_table: true` on `PostgresAdapter` would have changed nothing anyone could observe: the only capabilities route in existence reports a different adapter, usually the null one. The flag would have been true in the code and false at every surface that could read it.
+
+Desktop does not have this problem, and that is why no ADR mentions it: desktop has one backend at a time, swapped via `swap_backend` (ADR-0020), so "the adapter" is unambiguous. Web's per-connection registry is a divergence rung 0 already recorded — the consequence just landed four rungs later. `GET /connections/:id/capabilities` is therefore a prerequisite of the rung, not an extra on it.
+
+**The generalisation, and it applies to every remaining rung: re-deriving a row means asking not only "is this still true of desktop and of web?" but "what does web have to already be true for this to be visible?"** Rungs 1-3 each corrected a row's _content_. This one added a slice that no row implied, and the reason lived in web's divergences from desktop rather than in any ADR.
+
+**Decision 3 — table and schema names travel as query parameters, not path segments.**
+
+A Postgres identifier may legally contain `/`, `%`, `?` and `#`. All four survive a path segment only if every hop percent-encodes correctly and nothing along the way normalises. Nothing breaks when it works, and nothing checks that it did — a table named `a/b` failing to open is a bug that surfaces against exactly one user's schema and nobody else's. The query string makes those characters ordinary. `/tables/:name/columns` would also have under-named the response, which is a `TableSchema`, not a column collection.
+
+Related, and pinned by test rather than by comment: `describeTable` **binds** `$1`/`$2` rather than interpolating the identifiers, and rung 2's text-format invariant still holds on that path. Ticket 0024 pinned the _result format_, not the protocol — a bound query takes pg's extended path, and pg-protocol writes result format code `0` (text) unless `binary: true` is passed. `still refuses a binary reply on the bound path (ADR-0070)` keeps the guard enforced where it would otherwise be assumed.
+
+**Decision 4 — the shallow path is kept, and absence is rendered as "not told", never as "no".**
+
+The `LIMIT 0` probe was not replaced. It needs no capability at all — the result set's own `columns[]` metadata is the answer — so it is the only thing that works against an adapter that cannot introspect, and it keeps the sidebar useful on every driver web will ever add.
+
+Keeping two paths makes the optional fields load-bearing. `nullable`, `primary_key` and `default_value` are optional on `ColumnInfo` rather than defaulted, and `SchemaBrowser.vue` reads `undefined` as unknown: a column on the shallow path shows **no badge**, not "nullable, no key". Defaulting them would have been a confident claim about a table that was never inspected, and it would have looked correct in every screenshot. A test asserts the absence.
+
+The two failure modes are deliberately asymmetric. A failed **probe** degrades to `LIMIT 0` — the shallow path still works, and showing nothing because a metadata request failed is a worse answer than showing less. A failed **describe route** propagates — that route was chosen because this connection advertises it, so its error is the real one, and a `LIMIT 0` retry would restate "relation does not exist" less clearly and cost a round trip. Both are tested.
+
+**Consequences.**
+
+- The first rung-0 capability flag is true, and true at a surface that can read it. Rung 6 sets the next ones and now has the per-connection route it will need.
+- `useSchemaBrowser` probes lazily and memoises the **promise**, not the answer, so two tables expanded in the same tick share one probe. Mount still issues exactly one request.
+- Anything added to `ColumnInfo` later must stay optional or explain why it can be answered on both paths. The badge rule is the reason: a required field forces the shallow path to invent a value.
+- ADR-0031 is closed on the depth, not on a tab. Web's docked sidebar already expands a table inline and works on a phone; a Structure tab beside Results would duplicate a working surface with a worse one. **A later rung should not "finish" ADR-0031 by adding one.**
+
+**Reversibility.** Every slice is additive: a new domain type, an optional port method, two new routes, one branch in the composable. Nothing existing changed shape. The one standing implication is Decision 1 — widening `Column` later is still possible, but it becomes a cross-repo contract change rather than a local edit, which is the intended cost.
+
+**Cross-references.**
+
+- Desktop: ADR-0028, ADR-0031 in `dbboard/docs/decisions.md`; the two-type split read directly from `crates/dbboard-core/src/row.rs` and `src/schema.rs`. ADR-0028 ships with no HTTP route (`describe_table` is absent from `crates/dbboard-server`), so web's route is a unilateral surface and no handoff is owed.
+- Ticket: [`issues/0026-schema-depth.md`](./issues/0026-schema-depth.md) — the survey corrections in full. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 4.

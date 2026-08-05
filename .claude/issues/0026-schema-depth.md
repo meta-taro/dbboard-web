@@ -1,6 +1,6 @@
 # 0026 — Schema depth: describe a table, not just name it
 
-**Status:** open (2026-08-05) · **Opened:** 2026-08-05 · **Rung 4** of
+**Status:** closed (2026-08-05) · **Opened:** 2026-08-05 · **Rung 4** of
 [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -218,24 +218,24 @@ schema. The response is a `TableSchema`, not a column collection, so
 
 ## Acceptance
 
-- [ ] `describeTable` on a Postgres connection returns every column in
+- [x] `describeTable` on a Postgres connection returns every column in
       `ordinal_position` order, with `nullable`, `primary_key`, `ordinal`
       (1-based) and the raw `default_value` text.
-- [ ] A composite primary key comes back in key order, and the per-column flags
+- [x] A composite primary key comes back in key order, and the per-column flags
       agree with the table-level list.
-- [ ] A table with no primary key returns `primary_key: []` and no column
+- [x] A table with no primary key returns `primary_key: []` and no column
       flagged.
-- [ ] An unknown table returns a `query` error (400), not an empty schema.
-- [ ] `GET /connections/:id/capabilities` reports `has_describe_table: true`
+- [x] An unknown table returns a `query` error (400), not an empty schema.
+- [x] `GET /connections/:id/capabilities` reports `has_describe_table: true`
       for a Postgres connection and `false` for a null one.
-- [ ] `GET /connections/:id/table-schema` 404s with category `capability` on a
+- [x] `GET /connections/:id/table-schema` 404s with category `capability` on a
       connection whose adapter does not describe, and 404s on an unknown
       connection id.
-- [ ] The sidebar shows the described columns on a Postgres connection and
+- [x] The sidebar shows the described columns on a Postgres connection and
       still shows name + type via the `LIMIT 0` probe on a null one.
-- [ ] Every new `schema.*` key exists in all 11 locales
+- [x] Every new `schema.*` key exists in all 11 locales
       (`i18n-locale-parity.test.ts` stays green).
-- [ ] `docs/api-contract.md` is untouched and still byte-identical to the
+- [x] `docs/api-contract.md` is untouched and still byte-identical to the
       desktop copy.
 
 ## Verification
@@ -252,3 +252,57 @@ the exit code. `postgres-integration.spec.ts` skips without a Docker daemon;
 CI has one.
 
 ## Log
+
+**2026-08-05 — five slices, five commits, closed.**
+
+| Slice | Commit    | What landed                                                                                                                                   |
+| ----- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| A     | `2be7ce8` | `ColumnInfo` / `TableSchema` in `domain/values`, optional `describeTable` on the port, `DescribeTable` resolving through the registry.        |
+| B     | `9c7c9f3` | Postgres implementation: two bound `information_schema` queries, `has_describe_table: true`.                                                  |
+| C     | `d671a1f` | `GET /connections/:id/capabilities` — the flag becomes observable per connection.                                                             |
+| D     | `5f7da3f` | `GET /connections/:id/table-schema`, its query DTO, and two live HTTP tests against `postgres:16-alpine`.                                     |
+| E     | `a2dfdbf` | `useSchemaBrowser` takes whichever of the two paths the connection supports; `SchemaBrowser.vue` renders PK / NOT NULL / default; 11 locales. |
+
+Final gate: api 452 passed / 2 skipped (52 files), web 724 passed (70 files),
+`format:check` clean, lint 0 errors (3 pre-existing `vue/html-self-closing`
+warnings elsewhere), typecheck exit 0. Docker was available, so the 31
+integration tests ran rather than skipping — the flag genuinely flips to `true`
+for a registered Postgres connection, and the route returns real `nextval(...)`
+defaults.
+
+### Three things worth carrying forward
+
+**The capability probe is lazy and memoised, not fetched on mount.** Probing at
+mount would have made the sidebar's first request two instead of one, and it
+would have re-ordered the mock sequence in roughly ten existing tests. Lazy
+probing touched three. It also matches the composable's existing philosophy —
+columns are not fetched until a table is expanded, so neither is the question of
+how to fetch them. The promise is memoised rather than its result, so two tables
+expanded in the same tick share one probe instead of racing two.
+
+**The two failure modes are deliberately asymmetric.** A failed _probe_ degrades
+to `LIMIT 0`: the shallow path still works, and showing nothing because a
+metadata request failed would be a worse answer than showing less. A failed
+_describe route_ propagates: that route was chosen because this connection
+advertises it, so its error is the real one, and retrying through `LIMIT 0`
+would restate "relation does not exist" less clearly and cost a round trip.
+Both are tested.
+
+**`undefined` means "not told", not "no".** `nullable`, `primary_key` and
+`default_value` are optional on `ColumnInfo` rather than defaulted, and
+`SchemaBrowser.vue` reads absence as unknown. A column on the shallow path
+therefore shows no badge — rendering "nullable, no key" from silence would be a
+confident lie about a table we never inspected. `renders no badges at all on the
+shallow LIMIT 0 path` keeps that enforced rather than trusted.
+
+### What this rung did not do, and why
+
+Two of the three ADRs on the rung moved off it before code was written —
+ADR-0072 to rung 7 and ADR-0028's Decisions 8–9 to rung 8 — for the reasons in
+_What the survey got wrong_ above. That section is the more durable half of this
+ticket: the fourth consecutive rung where re-deriving the ledger row from both
+codebases changed the work, and the second where it shrank it.
+
+`docs/api-contract.md` is untouched and still byte-identical to the desktop
+copy, verified by `git diff` over the whole rung. `Column` was not widened;
+introspection got its own type, as desktop's `row.rs` / `schema.rs` split does.

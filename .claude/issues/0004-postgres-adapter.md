@@ -111,6 +111,9 @@ pnpm --filter @dbboard-web/api start &
 sleep 2
 
 # Register a connection.
+# Since 0027 slice A this needs `?sslmode=disable` appended: TLS is now
+# required unless refused explicitly, and the container above has none.
+# Left as written to record what the command was when 0004 closed.
 CONN_ID=$(curl -s -X POST http://localhost:4000/connections \
   -H 'Content-Type: application/json' \
   -d '{"driver":"postgres","label":"dev","connectionString":"postgres://postgres:dev@localhost:5432/postgres"}' \

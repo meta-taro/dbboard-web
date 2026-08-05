@@ -7,8 +7,11 @@ import {
 // Helper for the connectionString path — sslmode is exposed on the result
 // object (not in the URL) so the adapter controls SSL via the explicit
 // PoolConfig.ssl field, never via the URL's query params.
-function sslmodeFor(connectionString: string): string | undefined {
-  return resolvePostgresPoolOptions({ connectionString }).sslmode;
+function sslmodeFor(
+  connectionString: string,
+  rest: Omit<PostgresConnectionConfig, "connectionString"> = {},
+): string | undefined {
+  return resolvePostgresPoolOptions({ connectionString, ...rest }).sslmode;
 }
 
 describe("resolvePostgresPoolOptions — defaults", () => {
@@ -78,8 +81,21 @@ describe("resolvePostgresPoolOptions — defaults", () => {
 });
 
 describe("resolvePostgresPoolOptions — connectionString path", () => {
-  it("defaults sslmode to 'prefer' when not specified", () => {
-    expect(sslmodeFor("postgresql://u:p@plain.example.com:5432/db")).toBe("prefer");
+  it("defaults sslmode to 'require' when not specified (ADR-0078)", () => {
+    // Was 'prefer' until 0027 slice A. `prefer` reached
+    // `createPostgresAdapter` as `ssl: false`, so an unqualified URL
+    // connected in plaintext without ever attempting TLS. Desktop's
+    // `harden_ssl_mode` rewrites the unspecified default up to Required on
+    // the ground that a connection the user believes is encrypted and is
+    // not is worse than one they knowingly turned off.
+    expect(sslmodeFor("postgresql://u:p@plain.example.com:5432/db")).toBe("require");
+  });
+
+  it("rewrites an explicit sslmode=prefer up to 'require'", () => {
+    // `prefer` is the plaintext-fallback mode. Desktop refuses to offer it
+    // at all (ADR-0078 Decision 2); honouring it here would leave the one
+    // spelling that still silently downgrades.
+    expect(sslmodeFor("postgresql://u:p@plain.example.com:5432/db?sslmode=prefer")).toBe("require");
   });
 
   it("preserves a caller-specified sslmode on plain hosts", () => {
@@ -88,28 +104,48 @@ describe("resolvePostgresPoolOptions — connectionString path", () => {
     );
   });
 
-  it("auto-upgrades to 'require' for *.neon.tech regardless of input", () => {
+  it("requires TLS for *.neon.tech, as it does everywhere", () => {
     expect(sslmodeFor("postgresql://u:p@ep-aaa-123-pooler.us-east-2.aws.neon.tech:5432/db")).toBe(
       "require",
     );
   });
 
-  it("auto-upgrades to 'require' for *.neon.tech even if caller passed sslmode=disable", () => {
+  it("honours sslmode=disable on *.neon.tech rather than overriding it", () => {
+    // The inverse of what this pinned before 0027 slice A. The old
+    // host-suffix override existed to force TLS on hosts that need it —
+    // which the new default already does. All it could still do was
+    // contradict an explicit choice, and a knowing opt-out outranks a guess
+    // made from a hostname. Neon will refuse the plaintext connection
+    // itself, which tells the user more than us quietly disagreeing.
     expect(
       sslmodeFor("postgresql://u:p@ep-aaa-123.us-east-2.aws.neon.tech:5432/db?sslmode=disable"),
-    ).toBe("require");
+    ).toBe("disable");
   });
 
-  it("auto-upgrades to 'require' for *.supabase.co", () => {
+  it("requires TLS for *.supabase.co", () => {
     expect(sslmodeFor("postgresql://u:p@db.abcdefg.supabase.co:5432/postgres")).toBe("require");
   });
 
   it("strips sslmode from the URL so the explicit PoolConfig.ssl field owns SSL routing", () => {
     const opts = resolvePostgresPoolOptions({
-      connectionString: "postgresql://u:p@plain.example.com:5432/db?sslmode=prefer",
+      connectionString: "postgresql://u:p@plain.example.com:5432/db?sslmode=disable",
     });
     expect(opts.connectionString).toBeDefined();
     expect(new URL(opts.connectionString!).searchParams.has("sslmode")).toBe(false);
+  });
+
+  it("takes an explicit sslMode over anything the URL says", () => {
+    // Slice B sends the form's TLS select as a field. It has to win over a
+    // stale parameter in a URL the user also edited, or the select would be
+    // reporting a choice it does not make.
+    expect(
+      sslmodeFor("postgresql://u:p@plain.example.com:5432/db?sslmode=disable", {
+        sslMode: "require",
+      }),
+    ).toBe("require");
+    expect(sslmodeFor("postgresql://u:p@plain.example.com:5432/db", { sslMode: "disable" })).toBe(
+      "disable",
+    );
   });
 });
 
@@ -132,16 +168,16 @@ describe("resolvePostgresPoolOptions — split-fields path", () => {
     expect(opts.connectionString).toBeUndefined();
   });
 
-  it("defaults sslmode to 'prefer' on plain hosts", () => {
+  it("defaults sslmode to 'require' on plain hosts (ADR-0078)", () => {
     const opts = resolvePostgresPoolOptions(base);
-    // pg's PoolConfig encodes ssl=false|'prefer'|'require'|… via the `ssl`
-    // field, NOT a sslmode query param. We surface the resolved mode under
-    // a stable key so the integration layer doesn't need to keep these
-    // two encodings in sync.
-    expect(opts.sslmode).toBe("prefer");
+    // pg's PoolConfig encodes ssl=false|'require'|… via the `ssl` field,
+    // NOT a sslmode query param. We surface the resolved mode under a
+    // stable key so the integration layer doesn't need to keep these two
+    // encodings in sync.
+    expect(opts.sslmode).toBe("require");
   });
 
-  it("auto-upgrades sslmode to 'require' on *.neon.tech", () => {
+  it("requires TLS on *.neon.tech, as it does everywhere", () => {
     const opts = resolvePostgresPoolOptions({
       ...base,
       host: "ep-xyz.us-east-2.aws.neon.tech",
@@ -149,12 +185,21 @@ describe("resolvePostgresPoolOptions — split-fields path", () => {
     expect(opts.sslmode).toBe("require");
   });
 
-  it("auto-upgrades sslmode to 'require' on *.supabase.co", () => {
+  it("requires TLS on *.supabase.co", () => {
     const opts = resolvePostgresPoolOptions({
       ...base,
       host: "db.abcdefg.supabase.co",
     });
     expect(opts.sslmode).toBe("require");
+  });
+
+  it("turns TLS off on the split-fields path only when asked explicitly", () => {
+    // The parts path composes no URL, so there is nowhere to write
+    // `sslmode=disable`. Without a field the form's Disabled option would
+    // be unreachable for exactly the setup that most needs it — a tunnelled
+    // or loopback server with TLS never configured (ADR-0078 § Context).
+    const opts = resolvePostgresPoolOptions({ ...base, sslMode: "disable" });
+    expect(opts.sslmode).toBe("disable");
   });
 });
 

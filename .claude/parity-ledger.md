@@ -4,6 +4,13 @@ Maps every desktop ADR (`dbboard/docs/decisions.md`, ADR-0001 … ADR-0085 as of
 `dbboard@2fab7ba`) onto a web-side status, so "how far behind is web?" is a
 lookup rather than a re-survey.
 
+**Two desktop ADRs land after that ceiling and are not yet classified**
+(observed at `dbboard@e2ab46e`, 2026-08-05): ADR-0086 "The desktop lib is an
+rlib, so its fingerprint can vary" and ADR-0087 "The MCP server writes, behind
+a per-connection flag and a closed list". The first is a Cargo build concern
+with no web analogue. The second bears on rung 6 — web's first write path —
+and should be read before that rung's re-derivation, not after.
+
 **This ledger does not override [ADR-0004](./decisions.md).** The two repos
 share the HTTP API contract and the user-data JSON formats, nothing else.
 Feature parity is a _goal we chose_, not an obligation the contract imposes —

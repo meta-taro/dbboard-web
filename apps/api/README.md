@@ -27,10 +27,11 @@ The Postgres adapter speaks to any Postgres-wire database — local
 docker run --rm -d -e POSTGRES_PASSWORD=dev -p 5432:5432 --name dev-pg postgres:16-alpine
 pnpm --filter @dbboard-web/api start &
 
-# Register the connection.
+# Register the connection. `sslmode=disable` is needed because the
+# container above has no TLS configured — see "TLS" below.
 curl -s -X POST http://localhost:4000/connections \
   -H 'Content-Type: application/json' \
-  -d '{"driver":"postgres","label":"dev","connectionString":"postgres://postgres:dev@localhost:5432/postgres"}'
+  -d '{"driver":"postgres","label":"dev","connectionString":"postgres://postgres:dev@localhost:5432/postgres?sslmode=disable"}'
 # → { "id": "<uuid>" }
 
 # Run a query against it.
@@ -65,6 +66,37 @@ docker rm -f dev-pg
 Secrets never reach `GET /connections`. Only `{ id, label, driver }` is
 exposed in the listing — see the secret-leak guard in
 [`test/http-contract.spec.ts`](./test/http-contract.spec.ts).
+
+### TLS
+
+TLS is on unless you turn it off, on both paths. An unqualified URL, a URL
+carrying `sslmode=prefer`, and a set of split fields all resolve to
+`require`; only an explicit `sslmode=disable` connects in plaintext.
+
+`prefer` is rewritten rather than honoured. libpq reads it as "try TLS,
+fall back to plaintext"; node-pg has no such fallback and this API used to
+resolve it to no-TLS outright, so a URL carrying it was asking for a
+plaintext connection while looking like it asked for an encrypted one.
+
+`require` encrypts without verifying the server certificate — the same
+meaning libpq gives it. That defends against passive interception, not
+against an active attacker presenting a certificate of their own.
+Verification needs a CA the caller can nominate, which this API has
+nowhere to accept yet.
+
+A server with TLS unconfigured — a local container, a database reached
+through an SSH tunnel — needs the opt-out written down:
+
+```jsonc
+{
+  "driver": "postgres",
+  "label": "dev",
+  "connectionString": "postgres://user:pass@localhost:5432/db?sslmode=disable",
+}
+```
+
+Mirrors desktop ADR-0078. A connection the user believes is encrypted and
+is not is worse than one they knowingly turned off.
 
 ## Tests
 

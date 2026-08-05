@@ -2,11 +2,6 @@
 // runtime dep) so unit tests don't need to spin up the driver. The
 // adapter factory consumes the output and hands it to `new pg.Pool(...)`.
 
-// Hostnames whose pooled flavours we know reject anything but TLS. We
-// silently upgrade sslmode for these so the user doesn't have to remember
-// the per-vendor quirk — desktop counterpart has the same list.
-const SSL_REQUIRED_HOST_SUFFIXES = [".neon.tech", ".supabase.co"];
-
 const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_POOL_SIZE = 4;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
@@ -18,6 +13,14 @@ const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 // the server's explanation of what happened.
 const CLIENT_TIMEOUT_GRACE_MS = 2_000;
 
+// The two modes the connection form can express (ADR-0078 Decision 2).
+// `prefer` is deliberately absent: it is the mode that tries TLS and
+// silently continues in plaintext when the server refuses, which is the
+// failure this type exists to make unrepresentable. `verify-ca` /
+// `verify-full` are absent for a different reason — they need a CA file
+// this API has nowhere to put.
+export type SslMode = "require" | "disable";
+
 export interface PostgresConnectionConfig {
   // Caller picks one path or the other. connectionString wins when both
   // are supplied (mirrors libpq behavior).
@@ -27,6 +30,11 @@ export interface PostgresConnectionConfig {
   database?: string;
   user?: string;
   password?: string;
+  // Explicit TLS choice. Outranks anything the connectionString says: on
+  // the split-fields path there is no URL to carry it, and on the URL path
+  // a form control that lost to a stale query parameter would be
+  // displaying a choice it does not make.
+  sslMode?: SslMode;
   // Per-connection override; defaults to 30 s per the ticket.
   statementTimeoutMs?: number;
 }
@@ -41,7 +49,7 @@ export interface ResolvedPostgresPoolOptions {
   database?: string;
   user?: string;
   password?: string;
-  sslmode?: "prefer" | "require" | "disable";
+  sslmode?: SslMode;
   max: number;
   idleTimeoutMillis: number;
   // Two timeouts, same budget, different failure sites — keep both.
@@ -74,10 +82,18 @@ export interface ResolvedPostgresPoolOptions {
   statement_timeout: number;
 }
 
-function hostNeedsSsl(host: string | null | undefined): boolean {
-  if (!host) return false;
-  const lower = host.toLowerCase();
-  return SSL_REQUIRED_HOST_SUFFIXES.some((s) => lower.endsWith(s));
+// TLS is on unless the caller says otherwise, and only `disable` counts as
+// saying otherwise. Everything else — nothing at all, `prefer`, a mode we
+// do not recognise, a stricter mode we cannot express — resolves to
+// `require`, so no input can quietly land on plaintext. Mirrors desktop's
+// `harden_ssl_mode` (ADR-0078).
+//
+// `prefer` in particular is rewritten rather than honoured. libpq reads it
+// as "try TLS, fall back to plaintext"; node-pg does not implement the
+// fallback at all, and this API resolved it to no-TLS outright. A URL
+// carrying it was therefore asking for the one behaviour ADR-0078 removes.
+function hardenSslMode(supplied: string | null | undefined): SslMode {
+  return supplied === "disable" ? "disable" : "require";
 }
 
 export function resolvePostgresPoolOptions(
@@ -87,16 +103,7 @@ export function resolvePostgresPoolOptions(
 
   if (input.connectionString) {
     const url = new URL(input.connectionString);
-    const forceRequire = hostNeedsSsl(url.hostname);
-    let sslmode: "prefer" | "require" | "disable" = "prefer";
-    if (forceRequire) {
-      sslmode = "require";
-    } else {
-      const supplied = url.searchParams.get("sslmode");
-      if (supplied === "require" || supplied === "disable" || supplied === "prefer") {
-        sslmode = supplied;
-      }
-    }
+    const sslmode = hardenSslMode(input.sslMode ?? url.searchParams.get("sslmode"));
     // Strip sslmode from the URL so the explicit `ssl` field on PoolConfig
     // is the single source of truth. pg-connection-string maps sslmode in
     // the URL to ssl: {} (require) and `ssl: false` from PoolConfig does
@@ -124,7 +131,7 @@ export function resolvePostgresPoolOptions(
     database: input.database,
     user: input.user,
     password: input.password,
-    sslmode: hostNeedsSsl(input.host) ? "require" : "prefer",
+    sslmode: hardenSslMode(input.sslMode),
     max: DEFAULT_POOL_SIZE,
     idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
     query_timeout: statementTimeoutMs + CLIENT_TIMEOUT_GRACE_MS,

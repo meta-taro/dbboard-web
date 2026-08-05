@@ -323,11 +323,16 @@ export function createPostgresAdapter(config: PostgresConnectionConfig): Postgre
     user: opts.user,
     password: opts.password,
     // Explicit ssl wins over whatever sslmode the connectionString URL
-    // carries. node-pg does not implement libpq's "prefer" (try-then-fall-
-    // back) — pg-connection-string maps `sslmode=prefer` to ssl: {} which
-    // requires TLS. So we resolve here: require → TLS, disable/prefer → no
-    // TLS. Hosts that actually need TLS get caught by the Neon/Supabase
-    // auto-upgrade or by the caller passing sslmode=require explicitly.
+    // carries — `resolvePostgresPoolOptions` has already stripped it from
+    // the URL for that reason. Only two modes survive resolution and only
+    // `disable` turns TLS off; see `hardenSslMode` for why nothing else
+    // can (ADR-0078).
+    //
+    // `rejectUnauthorized: false` encrypts without verifying the chain,
+    // which is what `require` means in libpq and in sqlx alike: it defends
+    // against passive interception, not against an active attacker holding
+    // a wrong certificate. Verification needs a CA the caller can nominate
+    // and there is nowhere to put one yet.
     ssl: opts.sslmode === "require" ? { rejectUnauthorized: false } : false,
     max: opts.max,
     idleTimeoutMillis: opts.idleTimeoutMillis,

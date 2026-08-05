@@ -51,7 +51,13 @@ describe("Postgres adapter integration (testcontainers)", () => {
 
     const host = container.getHost();
     const port = container.getMappedPort(5432);
-    const connectionString = `postgresql://test:test@${host}:${port}/test`;
+    // `sslmode=disable` is required, not incidental. `postgres:16-alpine`
+    // ships with TLS unconfigured, and since 0027 slice A an unqualified
+    // URL resolves to `require` — so without the opt-out the container
+    // refuses the SSLRequest and every test here fails to connect. This is
+    // the tunnelled/loopback case from ADR-0078 § Context, and typing the
+    // opt-out is the intended answer to it.
+    const connectionString = `postgresql://test:test@${host}:${port}/test?sslmode=disable`;
 
     const reg = await request(app.getHttpServer())
       .post("/connections")
@@ -314,13 +320,37 @@ describe("Postgres adapter integration (testcontainers)", () => {
     // A dedicated adapter with a short budget. The registered connection
     // carries the 30 s default, which is not a practical test duration.
     const adapter = createPostgresAdapter({
-      connectionString: `postgresql://test:test@${host}:${port}/test`,
+      connectionString: `postgresql://test:test@${host}:${port}/test?sslmode=disable`,
       statementTimeoutMs: 300,
     });
     try {
       await expect(adapter.executeQuery("SELECT pg_sleep(5)")).rejects.toThrow(
         /statement timeout|canceling statement/i,
       );
+    } finally {
+      await adapter.close();
+    }
+  }, 30_000);
+
+  // ---- ticket 0027: TLS is required unless refused --------------------
+
+  // Every other test in this file opts out of TLS explicitly, and a suite
+  // that only ever passes `sslmode=disable` cannot tell a hardened default
+  // from a default that was never applied. This is the one test that omits
+  // the parameter, so it is the only evidence that the opt-out is doing
+  // anything. `postgres:16-alpine` has no TLS configured, so requiring it
+  // must fail to connect — a plaintext success here would mean the
+  // hardening in `resolvePostgresPoolOptions` had silently stopped
+  // working, which is exactly the failure ADR-0078 is about.
+  it("refuses to connect in plaintext when TLS was not opted out (ADR-0078)", async (ctx) => {
+    if (skipReason || !container) return ctx.skip();
+    const host = container.getHost();
+    const port = container.getMappedPort(5432);
+    const adapter = createPostgresAdapter({
+      connectionString: `postgresql://test:test@${host}:${port}/test`,
+    });
+    try {
+      await expect(adapter.executeQuery("SELECT 1")).rejects.toThrow(/does not support SSL/i);
     } finally {
       await adapter.close();
     }
@@ -339,7 +369,7 @@ describe("Postgres adapter integration (testcontainers)", () => {
       const host = container?.getHost();
       const port = container?.getMappedPort(5432);
       const adapter = createPostgresAdapter({
-        connectionString: `postgresql://test:test@${host}:${port}/test`,
+        connectionString: `postgresql://test:test@${host}:${port}/test?sslmode=disable`,
       });
       try {
         return await fn(adapter);

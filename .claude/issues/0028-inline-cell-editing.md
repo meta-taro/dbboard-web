@@ -1,6 +1,6 @@
 # 0028 — Inline cell editing: SQL the user did not type
 
-**Status:** open (2026-08-05) · **Opened:** 2026-08-05 · **Rung 6a** of
+**Status:** closed (2026-08-05) · **Opened:** 2026-08-05 · **Rung 6a** of
 [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -448,3 +448,48 @@ One production fix fell out of the tests: `useRowUpdate` resolved the API base
 at construction, which made _displaying_ a read-only grid require a Nuxt app.
 It now resolves per request — a save always starts from a click, where the Nuxt
 instance is a client-lifetime singleton.
+
+### Slice F — closeout (2026-08-05)
+
+No code. ADR appended to [`decisions.md`](../decisions.md) —
+"2026-08-05 — Inline cell editing: the rung that spends web's read-only
+property, and the ADR it turned out to mirror" — carrying the seven decisions
+this rung settled: 0063 over 0042, provenance over SQL parsing, the context
+following the rows on screen, "no key" separated from "could not ask",
+staging that survives a failed save, one predicate for viewer and editor, and
+Save re-running the browse.
+
+[`parity-ledger.md`](../parity-ledger.md): the ADR-0042 row now reads
+`ADR-0042 / ADR-0063` and is `done`; rung 6 is split into a struck-through
+**6a** and a remaining **6b** (dump, restore, annotations), and the position
+paragraph is rewritten. Splitting the rung is recorded rather than done
+silently — the ledger's rung numbering is referenced from
+[`project-status.md`](../project-status.md) and from earlier ADRs, so a
+renumber would have broken those.
+
+[`project-status.md`](../project-status.md): current-phase heading, a rung 6a
+paragraph, and a rung 6b "next" paragraph that carries forward the four
+constraints a later write path inherits.
+
+**i18n was not part of this slice.** The ticket's plan put all 11 locales
+here; they landed in slice E instead, in the same commit as the behaviour they
+name. `tests/i18n-locale-parity.test.ts` makes new keys all-or-nothing, so
+deferring them would have meant either a red suite for one commit or English
+strings hard-coded and swapped later. Neither is worth the tidier slice
+boundary.
+
+**Acceptance criteria — all met.** Contract zero diff confirmed against
+`86b324f` (empty, four rungs running). Full gate green with Docker up:
+`format:check` clean, `pnpm -r lint` clean, `pnpm -r typecheck` exit 0,
+`pnpm -r test` exit 0 — api 611 passed / 2 skipped (61 files), web 1004
+passed (88 files).
+
+**Status: closed.**
+
+**What this rung leaves for 6b.** Restore is the inverse risk: 6a writes
+statements web composed from a key it verified, and restore executes
+statements web did not compose at all. The rules 6a established still hold
+there — name the target explicitly rather than inferring it, and do not let a
+failure discard the user's input — but the thing being named is a whole
+target database rather than a row, and the ticket for it should re-derive
+ADR-0087 from the shipped Rust rather than from this log.

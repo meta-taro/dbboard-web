@@ -701,3 +701,129 @@ Two differences are deliberate. The **driver is shown, not offered**: repointing
 
 - Desktop: ADR-0073, ADR-0074, ADR-0078, ADR-0079, ADR-0080 in `dbboard/docs/decisions.md`; `harden_ssl_mode` and `dsn_with_stored_password` read directly from the Rust adapters.
 - Ticket: [`issues/0027-connection-form.md`](./issues/0027-connection-form.md) — the survey corrections in full, per-slice. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 5.
+
+## 2026-08-05 — Inline cell editing: the rung that spends web's read-only property, and the ADR it turned out to mirror
+
+**Context.** Ticket [`0028`](./issues/0028-inline-cell-editing.md), rung 6a of
+[`parity-ledger.md`](./parity-ledger.md). Until this rung every route web
+exposed could be pointed at a production database with the confidence that
+nothing would change. That is a real property, and this is the rung that gives
+it up. It was split off the rest of rung 6 for that reason: dump, restore and
+annotations are risky in the ordinary way, and this one changes what the
+product _is_.
+
+Re-deriving the rung before writing code moved its target ADR, which is the
+usual outcome by now and the reason the re-derivation rule exists.
+
+**Decision 1 — the mirror target is ADR-0063, not the ADR-0042 the ledger
+named.**
+
+ADR-0042 identifies a row by primary key and falls back to the engine's rowid
+when there is none. ADR-0063 supersedes it and removes the fallback: only a
+declared primary key identifies a row. Reading the two in order matters,
+because the fallback is the part a web client must not port — a rowid is
+stable only within a session on some engines, and web's request/response cycle
+has no session to be stable within. A keyless table is therefore read-only
+here, and the grid says so.
+
+The ledger row now names both ADRs with 0063 as the target.
+
+**Decision 2 — editability is decided by provenance, never by reading the
+SQL.**
+
+`useQueryExecution` records a `sourceTable` when, and only when, a run came
+from the schema browser's browse. Nothing else sets it. The alternative — look
+at the statement and decide whether it is a plain single-table `SELECT` — is
+how this goes wrong: every parser is one `JOIN`, one CTE, one view away from
+offering to write rows it cannot locate, and the failure is silent until it
+writes to the wrong table.
+
+The cost is that a hand-typed `SELECT * FROM users` is not editable even
+though it could be. That is the right side to be wrong on.
+
+**Decision 3 — the context follows the rows on screen, not the last thing the
+user clicked.**
+
+`useEditContext` is read back from `sourceTable` after every run rather than
+set from the browse payload before it. A failed run leaves the previous rows
+on screen, and those rows still belong to the previous table; setting the
+context from the payload would hand a new table's key to an old table's rows.
+
+The same concern one layer down: every `load()` bumps a generation counter and
+clears the key synchronously, so a describe that resolves after the grid has
+moved on is discarded rather than applied. Browsing two tables in quick
+succession is one click each, and the wrong key writes to the wrong row
+without erroring.
+
+**Decision 4 — "this table has no key" and "we could not ask" are different
+states, and only the first is reported.**
+
+Desktop swallows a failed describe into an empty primary key, which reads to
+the user as a claim about the table. Web keeps them apart: `noPk` is true only
+after a describe that succeeded and returned zero key columns. A describe that
+failed leaves the grid read-only too, but silently — it learned nothing, so it
+says nothing. A connection that cannot introspect is not a connection whose
+tables have no keys, and the rows are still on screen and still worth reading.
+
+**Decision 5 — a failed save does not discard what the user typed.**
+
+Staging is held in the grid, keyed on the **original** row index rather than
+the displayed one — rung 3's sort is a permutation, so the third row on screen
+is not row 3. An error surfaces above the grid with the staging intact, which
+means a rejected write can be corrected and retried rather than retyped. This
+is the one behaviour most likely to be quietly dropped by a later refactor, so
+it has its own test.
+
+NULL is an explicit affordance (∅ NULL) rather than a magic string: there is
+no way to type the four characters `NULL` and have them mean anything but
+those four characters.
+
+**Decision 6 — one predicate decides both the viewer and the editor.**
+
+`needsWideEditor` (formerly `needsViewer`, in `app/utils/display-width.ts`)
+now answers both "is this value too big to read in the cell" and "is this
+value too big to edit in the cell". They are the same question, and a value
+that opened the read-only viewer but then accepted an inline edit would be a
+strange thing to explain. The newline half is not cosmetic: an
+`<input type="text">` strips CR/LF without reporting it, so editing a
+multi-line value inline would silently flatten it.
+
+**Decision 7 — Save re-runs the statement that produced the rows, not the
+editor's current text.**
+
+Desktop's `reloadAfterSave` re-runs the editor. Web keeps the browse statement
+separately and re-runs that. The editor is a scratchpad; replacing the rows
+someone just edited with an unrelated draft query is a strange thing for Save
+to do. This is the one place the mirror is deliberately narrower, and it is
+recorded here so a later rung does not "fix" it back.
+
+**Consequences.**
+
+- **Web is no longer read-only.** Every later write path inherits this rung's
+  rules: a declared key or nothing, provenance rather than SQL parsing,
+  staging that survives a failed save.
+- `useEditContext` and `useRowUpdate` both resolve the API base **at request
+  time**, not at construction. `useRuntimeConfig()` throws when a component is
+  mounted bare in `happy-dom`, and a page that never browses a table should
+  not need the runtime config at all. This fell out of the tests and is worth
+  keeping for the second reason, not the first.
+- `result.edit.*` landed across all 11 locales in the same commit as the
+  behaviour, per the parity test that makes new keys all-or-nothing.
+- `/connections/*` remains unilateral and `docs/api-contract.md` has a zero
+  diff against `86b324f` — four rungs running. The write route itself
+  (`POST /connections/:id/rows`) shipped in rung 5 and was not touched.
+
+**Reversibility.** Reversible by deletion — the grid falls back to read-only
+if `:edit` is never passed, and every new file is additive. What is not
+reversible by deletion is the decision to have a write path at all; that is
+the thing this ADR records deliberately.
+
+**Cross-references.**
+
+- Desktop: ADR-0063 (supersedes ADR-0042) and ADR-0087 in
+  `dbboard/docs/decisions.md`; the staging and NULL behaviour read directly
+  from `QueryPanel.svelte`, whose `editTable` / `editPk` pair is what
+  `useEditContext` mirrors.
+- Ticket: [`issues/0028-inline-cell-editing.md`](./issues/0028-inline-cell-editing.md)
+  — the survey corrections and the per-slice log. Ledger:
+  [`parity-ledger.md`](./parity-ledger.md) rung 6a.

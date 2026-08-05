@@ -3,6 +3,7 @@ import { ConnectionError, QueryError } from "../domain/errors";
 import { NULL_CAPABILITIES } from "../domain/values";
 import {
   attachIdleClientErrorHandler,
+  createPostgresAdapter,
   PostgresAdapter,
   type PgQueryRunner,
 } from "./postgres-adapter";
@@ -396,5 +397,73 @@ describe("PostgresAdapter", () => {
       await new PostgresAdapter(stubPool({ end })).close();
       expect(end).toHaveBeenCalledOnce();
     });
+  });
+});
+
+describe("rebuildWith (0027 slice G)", () => {
+  // `pg.Pool` opens nothing until the first query, so these build real pools
+  // and never connect. Reading `pool.options` reaches through a `private`
+  // field, deliberately: the guarantee under test is that the credential
+  // reaches the successor's pool, and the production type offers no way to
+  // ask for it. A getter would make the test tidier and the design worse.
+  function poolOptionsOf(adapter: PostgresAdapter): Record<string, unknown> {
+    return (adapter as unknown as { pool: { options: Record<string, unknown> } }).pool.options;
+  }
+
+  it("carries the credential of the connection it replaces", async () => {
+    const before = createPostgresAdapter({
+      host: "old.host",
+      user: "reader",
+      password: "OLD-PW",
+      database: "app",
+    });
+    const after = before.rebuildWith({ host: "new.host", user: "reader", database: "app" });
+
+    expect(poolOptionsOf(after)).toMatchObject({ host: "new.host", password: "OLD-PW" });
+    await before.close();
+    await after.close();
+  });
+
+  it("returns a successor, not a secret", async () => {
+    // The credential leaves the old adapter only as far as the new one's
+    // pool. There is no accessor that hands it back to a caller, which is
+    // what keeps a rebuild from becoming a read.
+    const before = createPostgresAdapter({ host: "old.host", password: "OLD-PW" });
+    const after = before.rebuildWith({ host: "new.host" });
+
+    expect(after).toBeInstanceOf(PostgresAdapter);
+    expect(after).not.toBe(before);
+    await before.close();
+    await after.close();
+  });
+
+  it("takes the new password when the edit states one", async () => {
+    const before = createPostgresAdapter({ host: "old.host", password: "OLD-PW" });
+    const after = before.rebuildWith({ host: "old.host", password: "NEW-PW" });
+
+    expect(poolOptionsOf(after)).toMatchObject({ password: "NEW-PW" });
+    await before.close();
+    await after.close();
+  });
+
+  it("replaces the configuration wholesale rather than merging it field by field", async () => {
+    // The form submits every box it rendered, so a field that is absent was
+    // cleared. Merging would make an emptied user box unsavable — the same
+    // shape of bug as reading a blank password as a removal, pointing the
+    // other way.
+    const before = createPostgresAdapter({
+      host: "old.host",
+      user: "reader",
+      database: "app",
+      password: "OLD-PW",
+    });
+    const after = before.rebuildWith({ host: "old.host" });
+
+    expect(poolOptionsOf(after).user).toBeUndefined();
+    expect(poolOptionsOf(after).database).toBeUndefined();
+    // The password is the one exception, and it is an exception on purpose.
+    expect(poolOptionsOf(after).password).toBe("OLD-PW");
+    await before.close();
+    await after.close();
   });
 });

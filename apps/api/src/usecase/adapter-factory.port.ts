@@ -26,6 +26,19 @@ export interface AdapterConfig {
 export interface AdapterFactory {
   create(driver: string, config: AdapterConfig): DatabaseAdapter;
 
+  // A replacement for `previous`, pointed at `config`. Separate from
+  // `create` because of what an edit is allowed to leave out: the password.
+  // Web keeps no keyring, so the only copy of a live connection's credential
+  // is inside the adapter serving it — a rebuild has to start from that
+  // adapter to be able to keep it (0027 slice G, desktop ADR-0080).
+  //
+  // Driver-agnostic in the same way `create` is: each branch decides what
+  // carrying over means, and a driver holding no credential simply builds a
+  // new one. Raises the same CapabilityError for an unknown driver or a
+  // config the driver refuses — before anything is torn down, so a rejected
+  // edit leaves the connection it was editing intact.
+  rebuild(previous: DatabaseAdapter, driver: string, config: AdapterConfig): DatabaseAdapter;
+
   // The drivers `create` accepts, in the order a chooser should offer them.
   // 0027 slice E: the connection form used to restate this list in its
   // template, which was right only by coincidence — a driver added here and

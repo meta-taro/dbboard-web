@@ -57,6 +57,60 @@ describe("StaticAdapterFactory", () => {
     }
   });
 
+  describe("rebuild (0027 slice G)", () => {
+    it("hands the postgres rebuild to the adapter being replaced", () => {
+      // The factory does not read the credential to pass it on — it cannot,
+      // there is no accessor. It asks the old adapter for its successor and
+      // the secret stays inside the pair.
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("postgres", {
+        host: "127.0.0.1",
+        port: 1,
+        user: "u",
+        password: "OLD-PW",
+      });
+      const after = factory.rebuild(before, "postgres", { host: "127.0.0.2", port: 1, user: "u" });
+      try {
+        expect(after).toBeInstanceOf(PostgresAdapter);
+        expect(after).not.toBe(before);
+        expect(
+          (after as unknown as { pool: { options: Record<string, unknown> } }).pool.options,
+        ).toMatchObject({ host: "127.0.0.2", password: "OLD-PW" });
+      } finally {
+        void before.close?.();
+        void after.close?.();
+      }
+    });
+
+    it("rebuilds a driver that holds no credential without consulting the old one", () => {
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("null", {});
+      const after = factory.rebuild(before, "null", {});
+      expect(after).toBeInstanceOf(NullAdapter);
+      expect(after).not.toBe(before);
+    });
+
+    it("raises CapabilityError for an unknown driver, as create does", () => {
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("null", {});
+      expect(() => factory.rebuild(before, "mongo", {})).toThrowError(CapabilityError);
+    });
+
+    it("reports a rebuild it cannot perform rather than returning a broken adapter", () => {
+      // Same validation `create` applies: a postgres config naming neither a
+      // host nor a connectionString is refused. The use case relies on this
+      // raising *before* it closes the old pool, so a rejected edit leaves
+      // the connection working.
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("postgres", { host: "127.0.0.1", port: 1 });
+      try {
+        expect(() => factory.rebuild(before, "postgres", {})).toThrowError(CapabilityError);
+      } finally {
+        void before.close?.();
+      }
+    });
+  });
+
   it("does not mistake an inherited object property for a driver", () => {
     // A lookup table keyed by a caller-supplied string is one prototype
     // away from `create("constructor", …)` finding a function and calling

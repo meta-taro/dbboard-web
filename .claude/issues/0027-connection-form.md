@@ -306,6 +306,52 @@ the API's shape so `ConnectionView` describes what the server actually sends;
 nothing observable changes until slice G reads it. Recorded here rather than
 covered by a test that would only be asserting a mock's own shape.
 
+**Slice G is two commits: the API, then the form.** The keep-the-password rule
+is the whole difficulty and it is entirely server-side, so it lands with its
+own tests before a single input renders. G2 is then a form that submits what
+the add form submits.
+
+**Web has no keyring, so the rebuild starts from the adapter.** Desktop's
+`dsn_with_stored_password` (ADR-0080 decision 3) asks the OS keyring for the
+password and grafts it on inside the Rust process. Web has no keyring: the
+only copy of a live connection's credential is inside the adapter serving it.
+So `AdapterFactory` gained `rebuild(previous, driver, config)`, and for
+postgres it delegates to `PostgresAdapter.rebuildWith`, which answers with a
+successor adapter rather than a secret. The credential moves from one private
+field to another and there is no accessor that yields it — the same property
+ADR-0080 states as "it never crosses into the webview in either direction",
+arrived at through a different mechanism because the storage is different.
+
+**`rebuild` is a second method on the factory, not a second port.** It could
+have been a standalone `AdapterRebuilder`, but `supported()` already makes
+`AdapterFactory` the place that knows the driver table, and a rebuild has to
+consult exactly that table. The cost was adding `rebuild` to four inline test
+fakes.
+
+**Parse failures are treated asymmetrically, on purpose.** A stored
+connection string that cannot be parsed raises `ConnectionError` (502) rather
+than quietly proceeding without the password — ADR-0080 decision 3 is strict
+there, and a silent fall-through would produce an authentication failure whose
+cause is invisible. A malformed _next_ URL is left alone for
+`resolvePostgresPoolOptions` to reject, so the error names the DSN the user
+just typed instead of blaming the password carry. The stored-value path is
+unreachable today, since registration will not accept such a DSN; it is
+pinned because that is a property of the current DTO, not of this function.
+
+**Build before tearing down.** `UpdateConnection` constructs the replacement
+adapter first and closes the old pool only once the factory has accepted the
+new configuration. An edit the factory refuses therefore costs nothing — least
+of all the connection the user was in the middle of editing.
+
+**`ConnectionRegistry.add` was already an upsert; now it says so.** Editing
+the middle connection must not send it to the bottom of the sidebar. The
+behaviour was there and untested, which is the same as not being there.
+
+**One chain-order slip, recorded rather than papered over.**
+`update-connection.dto.ts` was written before its spec. The spec was written
+immediately after and does fail against a DTO without the `password`-accepts-
+blank rule, but it was not a genuine RED at the time it was authored.
+
 ## Log
 
 _(open)_

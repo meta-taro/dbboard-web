@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  carryCredential,
   resolvePostgresPoolOptions,
   type PostgresConnectionConfig,
 } from "./postgres-connection-config";
@@ -206,5 +207,140 @@ describe("resolvePostgresPoolOptions — split-fields path", () => {
 describe("resolvePostgresPoolOptions — input validation", () => {
   it("throws when neither connectionString nor host is provided", () => {
     expect(() => resolvePostgresPoolOptions({})).toThrowError(/connection/i);
+  });
+});
+
+describe("carryCredential", () => {
+  // The web analogue of desktop's `dsn_with_stored_password` (ADR-0080
+  // decision 3): an edit that does not restate the password keeps the one
+  // already in use, and the graft happens inside this process — the
+  // credential is never sent to the browser so that the browser can send it
+  // back. What differs is only where "already in use" is read from: desktop
+  // asks the OS keyring, web has none and reads the config the live adapter
+  // was built from.
+
+  it("leaves a next config that states its own password alone", () => {
+    expect(
+      carryCredential(
+        { host: "old", password: "OLD-PW" },
+        { host: "new", user: "u", password: "NEW-PW" },
+      ),
+    ).toEqual({ host: "new", user: "u", password: "NEW-PW" });
+  });
+
+  it("carries the stored password into an edit that omits one", () => {
+    expect(
+      carryCredential({ host: "old", user: "u", password: "OLD-PW" }, { host: "new" }),
+    ).toEqual({ host: "new", password: "OLD-PW" });
+  });
+
+  it("treats a blank password box as omitted, never as 'remove it'", () => {
+    // ADR-0080's consequence, verbatim: "In edit + parts mode a blank
+    // password box cannot mean 'remove the password' — it means keep." A
+    // form that round-trips its inputs sends "" for an untouched box, and
+    // reading that as a removal would break every save that did not retype
+    // the credential.
+    expect(
+      carryCredential({ host: "old", password: "OLD-PW" }, { host: "new", password: "" }),
+    ).toEqual({ host: "new", password: "OLD-PW" });
+  });
+
+  it("recovers the stored password from a URL when the edit is split fields", () => {
+    // Registering by DSN and then editing in parts mode is the ordinary
+    // path, because `GET /connections` reports parts and never a DSN.
+    expect(
+      carryCredential(
+        { connectionString: "postgresql://reader:OLD-PW@old.host:5432/app" },
+        { host: "new.host", port: 5432, database: "app", user: "reader" },
+      ),
+    ).toEqual({
+      host: "new.host",
+      port: 5432,
+      database: "app",
+      user: "reader",
+      password: "OLD-PW",
+    });
+  });
+
+  it("decodes a percent-escaped password on the way out of a stored URL", () => {
+    expect(
+      carryCredential(
+        { connectionString: "postgresql://u:p%40ss%2Fword@old/app" },
+        { host: "new" },
+      ),
+    ).toEqual({ host: "new", password: "p@ss/word" });
+  });
+
+  it("grafts the stored password into a pasted URL that has none", () => {
+    const out = carryCredential(
+      { host: "old", user: "reader", password: "OLD-PW" },
+      { connectionString: "postgresql://reader@new.host:5432/app" },
+    );
+    expect(out.connectionString).toBe("postgresql://reader:OLD-PW@new.host:5432/app");
+    // Not alongside the URL: `resolvePostgresPoolOptions` ignores the
+    // password field once a connectionString is present, so a copy left
+    // there would be a credential nothing reads.
+    expect(out).not.toHaveProperty("password");
+  });
+
+  it("percent-encodes a grafted password that would otherwise break the URL", () => {
+    const out = carryCredential(
+      { host: "old", password: "p@ss/word" },
+      { connectionString: "postgresql://u@new.host/app" },
+    );
+    expect(out.connectionString).toBe("postgresql://u:p%40ss%2Fword@new.host/app");
+    // The round trip is what matters — the escaped spelling above is the
+    // URL's business, the value the driver ends up with is ours.
+    expect(new URL(out.connectionString ?? "").password).toBe("p%40ss%2Fword");
+  });
+
+  it("carries the credential from one URL to the next", () => {
+    const out = carryCredential(
+      { connectionString: "postgresql://u:OLD-PW@old.host/app" },
+      { connectionString: "postgresql://u@new.host/app?sslmode=require" },
+    );
+    expect(out.connectionString).toBe("postgresql://u:OLD-PW@new.host/app?sslmode=require");
+  });
+
+  it("invents nothing when the connection never had a password", () => {
+    // A trust-auth or peer-auth server. Adding an empty password would make
+    // the driver send one, which is a different handshake.
+    expect(carryCredential({ host: "old", user: "u" }, { host: "new" })).toEqual({ host: "new" });
+    expect(carryCredential({ host: "old", user: "u" }, { host: "new" })).not.toHaveProperty(
+      "password",
+    );
+  });
+
+  it("prefers the URL's credential over a stray password field, as the resolver does", () => {
+    // `resolvePostgresPoolOptions` ignores `password` once a
+    // connectionString is present. A carry that read the field instead
+    // would resurrect a credential the live pool never used.
+    expect(
+      carryCredential(
+        { connectionString: "postgresql://u:URL-PW@old/app", password: "FIELD-PW" },
+        { host: "new" },
+      ),
+    ).toEqual({ host: "new", password: "URL-PW" });
+  });
+
+  it("refuses to guess when the stored connection string cannot be parsed", () => {
+    // Strict, per ADR-0080 decision 3: an unparseable stored value is an
+    // error, not a fall-through to "there was no password". Unreachable by
+    // construction today — `createPostgresAdapter` rejects a DSN this
+    // malformed at registration — which is exactly why it is pinned here
+    // rather than left to be discovered later.
+    expect(() => carryCredential({ connectionString: "not a url" }, { host: "new" })).toThrowError(
+      /stored connection/i,
+    );
+  });
+
+  it("leaves an unparseable *next* URL for the resolver to complain about", () => {
+    // The caller's own malformed input. Reporting it here would name the
+    // password carry in an error about a URL the user just typed.
+    const out = carryCredential(
+      { host: "old", password: "OLD-PW" },
+      { connectionString: "not a url" },
+    );
+    expect(out).toEqual({ connectionString: "not a url" });
   });
 });

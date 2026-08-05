@@ -41,6 +41,9 @@ describe("RegisterConnection", () => {
   beforeEach(() => {
     factory = {
       create: (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)),
+      // Registration never rebuilds; the member exists because the port
+      // declares it (0027 slice G).
+      rebuild: (previous) => previous,
       supported: () => ["null"],
     };
   });
@@ -71,7 +74,11 @@ describe("RegisterConnection", () => {
     const factorySpy = vi.fn().mockReturnValue(stubAdapter());
     const useCase = new RegisterConnection(
       registry,
-      { create: factorySpy, supported: () => ["null", "postgres"] },
+      {
+        create: factorySpy,
+        rebuild: (previous) => previous,
+        supported: () => ["null", "postgres"],
+      },
       () => "fixed-id",
     );
 
@@ -105,7 +112,11 @@ describe("RegisterConnection", () => {
     const { registry, records } = inMemoryRegistry();
     const useCase = new RegisterConnection(
       registry,
-      { create: () => stubAdapter(), supported: () => ["postgres"] },
+      {
+        create: () => stubAdapter(),
+        rebuild: (previous) => previous,
+        supported: () => ["postgres"],
+      },
       () => "fixed-id",
     );
 

@@ -8,6 +8,9 @@ function factory(drivers: readonly string[]): AdapterFactory {
     create: () => {
       throw new CapabilityError("not needed here");
     },
+    rebuild: () => {
+      throw new CapabilityError("not needed here");
+    },
     supported: () => drivers,
   };
 }

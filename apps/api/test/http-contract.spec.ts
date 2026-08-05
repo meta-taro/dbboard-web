@@ -351,6 +351,135 @@ describe("HTTP contract surface (0003)", () => {
     expect(dumped).not.toContain("app=");
   });
 
+  // ---- Editing a registered connection (0027 slice G) ---------------
+
+  it("PATCH /connections/:id renames without re-pointing the connection", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Before",
+        driver: "postgres",
+        host: "127.0.0.1",
+        port: 5432,
+        database: "app",
+        user: "reader",
+        password: "PW-RENAME-4d71",
+      });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({ label: "After" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: create.body.id,
+      label: "After",
+      driver: "postgres",
+      parts: { host: "127.0.0.1", port: 5432, database: "app", user: "reader" },
+    });
+  });
+
+  it("PATCH /connections/:id re-points the connection and echoes no credential", async () => {
+    // The blank password is the case worth having at this level: it is what
+    // an edit form submits for the box nobody typed in, and the whole of
+    // ADR-0080 is that it must reach the server and mean "keep". That the
+    // credential really is kept is pinned one layer down, in
+    // `carryCredential` and `PostgresAdapter.rebuildWith` — from out here
+    // there is deliberately nothing that reports a password. What this test
+    // proves is the other half: the round trip does not reject the blank
+    // box, and nothing leaks on the way back.
+    const PW = "PW-EDIT-SENTINEL-8b2e";
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Editable",
+        driver: "postgres",
+        host: "old.host",
+        port: 5432,
+        database: "app",
+        user: "reader",
+        password: PW,
+      });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({
+        host: "new.host",
+        port: 6543,
+        database: "app",
+        user: "writer",
+        password: "",
+        sslMode: "require",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.parts).toEqual({
+      host: "new.host",
+      port: 6543,
+      database: "app",
+      user: "writer",
+      sslMode: "require",
+    });
+
+    const list = await request(app.getHttpServer()).get("/connections");
+    const listed = (list.body.connections as Array<{ id: string; parts?: unknown }>).find(
+      (c) => c.id === create.body.id,
+    );
+    expect(listed?.parts).toEqual(res.body.parts);
+    expect(JSON.stringify(res.body)).not.toContain(PW);
+    expect(JSON.stringify(list.body)).not.toContain(PW);
+  });
+
+  it("PATCH /connections/:id cannot change the driver", async () => {
+    // Dropped by the same whitelist pipe that drops any undeclared field.
+    // Silently, on purpose: the field never reaches the use case, so there
+    // is no way for an edit to keep an id and a label while changing what
+    // the connection is.
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Fixed driver", driver: "null" });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({ label: "Still null", driver: "postgres" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.driver).toBe("null");
+  });
+
+  it("PATCH /connections/:id with an unknown id → 404 capability envelope", async () => {
+    const res = await request(app.getHttpServer())
+      .patch("/connections/never-existed")
+      .set("Content-Type", "application/json")
+      .send({ label: "Ghost" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({
+      category: "capability",
+      message: expect.stringContaining("unknown connection"),
+    });
+  });
+
+  it("PATCH /connections/:id with a TLS mode it cannot honour → 422", async () => {
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "TLS", driver: "null" });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({ sslMode: "verify-full" });
+
+    expect(res.status).toBe(422);
+  });
+
   it("DELETE /connections/:id → 204; idempotent on a missing id", async () => {
     const create = await request(app.getHttpServer())
       .post("/connections")

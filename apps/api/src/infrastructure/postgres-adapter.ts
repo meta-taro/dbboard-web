@@ -12,6 +12,7 @@ import {
   type TableSchema,
 } from "../domain/values";
 import {
+  carryCredential,
   resolvePostgresPoolOptions,
   type PostgresConnectionConfig,
 } from "./postgres-connection-config";
@@ -177,7 +178,40 @@ function isConnectionLevelError(e: unknown): boolean {
 }
 
 export class PostgresAdapter implements DatabaseAdapter {
-  constructor(private readonly pool: PgQueryRunner) {}
+  constructor(
+    private readonly pool: PgQueryRunner,
+    // The configuration this pool was built from, kept so the connection can
+    // be re-pointed without asking the user to retype the password (0027
+    // slice G). Optional because the tests inject a bare pool, and because a
+    // successor is only ever needed for adapters `createPostgresAdapter`
+    // made.
+    //
+    // No new exposure: the credential is already inside `pool`, and this
+    // field is as private. What it buys is a way to hand it forward — see
+    // `rebuildWith`, which is the only reader.
+    private readonly config?: PostgresConnectionConfig,
+  ) {}
+
+  /**
+   * A replacement adapter pointed at `next`, still authenticating as this
+   * one does when `next` names no password of its own.
+   *
+   * Web's answer to desktop's keyring lookup (ADR-0080 decision 3), and it
+   * lands in the same place: "the password is grafted back on inside the
+   * Rust process — it never crosses into the webview in either direction."
+   * Here the process is the API and the far side is the browser, but the
+   * property is the one that matters — an edit form can move a connection to
+   * a new host without the credential making a round trip to be sent back.
+   *
+   * A method rather than a `credential()` getter because of what it returns:
+   * an adapter. The secret goes from one private field to another and there
+   * is nothing to call that yields it. The caller still owns closing the
+   * adapter it replaced — this one does not, since a failed rebuild should
+   * leave the working connection working.
+   */
+  rebuildWith(next: PostgresConnectionConfig): PostgresAdapter {
+    return createPostgresAdapter(carryCredential(this.config ?? {}, next));
+  }
 
   getId(): string {
     return "postgres";
@@ -351,5 +385,8 @@ export function createPostgresAdapter(config: PostgresConnectionConfig): Postgre
   };
   const pool = new Pool(poolConfig);
   attachIdleClientErrorHandler(pool);
-  return new PostgresAdapter(pool);
+  // The config travels with the adapter, not with the registry record: the
+  // record is what `GET /connections` is projected from, and the config is
+  // the half of the connection that has a password in it (0027 slice G).
+  return new PostgresAdapter(pool, config);
 }

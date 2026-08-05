@@ -55,4 +55,20 @@ describe("InMemoryConnectionRegistry", () => {
     registry.add(c);
     expect(registry.list().map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
+
+  it("replaces a record in place when the same id is added again", () => {
+    // What makes `add` an upsert, and what UpdateConnection relies on
+    // (0027 slice G): editing the middle connection must not send it to
+    // the bottom of the sidebar.
+    registry.add(fakeRecord("a"));
+    const original = fakeRecord("b");
+    registry.add(original);
+    registry.add(fakeRecord("c"));
+
+    const edited = { ...original, label: "renamed" };
+    registry.add(edited);
+
+    expect(registry.list().map((r) => r.id)).toEqual(["a", "b", "c"]);
+    expect(registry.get("b")).toBe(edited);
+  });
 });

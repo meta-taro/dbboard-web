@@ -25,6 +25,9 @@ export interface ConnectionRecord {
 // in `infrastructure/in-memory-connection-registry.ts` is the Phase-2
 // baseline.
 export interface ConnectionRegistry {
+  // An upsert. Adding an id that is already present replaces the record and
+  // keeps its position in `list()` — sidebar order is registration order,
+  // and an edited connection should not move (0027 slice G).
   add(record: ConnectionRecord): void;
   list(): ConnectionRecord[];
   get(id: string): ConnectionRecord | undefined;

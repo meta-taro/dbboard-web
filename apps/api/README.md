@@ -87,6 +87,33 @@ filtered later. `parts` is omitted entirely for a connection with no address,
 such as the `null` driver. See the secret-leak guard in
 [`test/http-contract.spec.ts`](./test/http-contract.spec.ts).
 
+### Editing a connection
+
+`PATCH /connections/:id` re-points or renames a registered connection and
+answers with the same view `GET /connections` lists. It takes the fields
+`POST /connections` takes, minus `driver` — swapping the driver under a live
+id would keep the label while changing what the connection is, so that is a
+delete and an add.
+
+```jsonc
+{ "label": "staging", "host": "staging.internal", "port": 5432, "password": "" }
+```
+
+Two rules, both there to keep an edit from destroying something the request
+did not mention:
+
+- **A blank or absent password keeps the stored one.** An edit form has no
+  password to pre-fill — the API never sends one back — so the box it renders
+  is empty, and submitting it must not clear the credential. Removing a
+  password for good is done by deleting the connection and adding it again.
+  The credential is grafted onto the new configuration inside the process, by
+  the adapter that already holds it; it is not sent out so that it can be sent
+  back. This mirrors desktop's `dsn_with_stored_password` (ADR-0080).
+- **The other connection details are replaced as a set.** The form submits
+  every box it rendered, so a field the body omits was cleared. A body naming
+  no connection detail at all is a rename, and leaves the live pool alone
+  rather than dropping open sockets to re-authenticate identically.
+
 ### TLS
 
 TLS is on unless you turn it off, on both paths. An unqualified URL, a URL

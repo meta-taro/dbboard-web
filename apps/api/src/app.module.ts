@@ -37,6 +37,7 @@ import { ListTables } from "./usecase/list-tables.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
 import { SuggestSql } from "./usecase/suggest-sql.use-case";
+import { UpdateConnection } from "./usecase/update-connection.use-case";
 
 // Layered structure (per AI_AGENT_RULES.md §3):
 //   src/domain          — business rules, entities, value objects
@@ -115,6 +116,12 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
       provide: DeleteConnection,
       useFactory: (registry: InMemoryConnectionRegistry) => new DeleteConnection(registry),
       inject: [CONNECTION_REGISTRY],
+    },
+    {
+      provide: UpdateConnection,
+      useFactory: (registry: InMemoryConnectionRegistry, factory: StaticAdapterFactory) =>
+        new UpdateConnection(registry, factory),
+      inject: [CONNECTION_REGISTRY, ADAPTER_FACTORY],
     },
     {
       provide: ListDrivers,

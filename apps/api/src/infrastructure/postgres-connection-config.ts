@@ -2,6 +2,7 @@
 // runtime dep) so unit tests don't need to spin up the driver. The
 // adapter factory consumes the output and hands it to `new pg.Pool(...)`.
 
+import { ConnectionError } from "../domain/errors";
 import { hardenSslMode, type SslMode } from "../domain/ssl-mode";
 
 // Re-exported so callers that already reach for the Postgres config do not
@@ -86,6 +87,98 @@ export interface ResolvedPostgresPoolOptions {
 // node-pg does not implement the fallback at all, so this API resolved it
 // to no-TLS outright. A URL carrying it was asking for the one behaviour
 // ADR-0078 removes.
+
+/**
+ * `next`, with the password the connection is already using when `next`
+ * does not state one of its own.
+ *
+ * The web counterpart of desktop's `dsn_with_stored_password` (ADR-0080
+ * decision 3), and the reason an edit form is possible at all: the browser
+ * is shown where a connection points but never the credential, so a save
+ * that leaves the password box untouched has to be completed here. The graft
+ * happens inside this process, on the way to a new pool. The credential is
+ * not sent out so that it can be sent back.
+ *
+ * The only difference from desktop is where "already using" is read from.
+ * Desktop asks the OS keyring; web has none, so the source is the config the
+ * live adapter was built from — held privately by `PostgresAdapter`, which
+ * calls this on its own behalf and returns a successor rather than a secret.
+ *
+ * **A blank password is an omitted one, never a removal** (ADR-0080's
+ * consequence). A form that round-trips its inputs sends `""` for a box
+ * nobody typed in, and reading that as "connect without a password" would
+ * break every save that did not retype the credential. Dropping a password
+ * for good is done by deleting the connection and adding it again — rare,
+ * unambiguous, and impossible to trigger by accident.
+ */
+export function carryCredential(
+  previous: PostgresConnectionConfig,
+  next: PostgresConnectionConfig,
+): PostgresConnectionConfig {
+  if (statedCredential(next) !== undefined) return next;
+
+  const carried = storedCredential(previous);
+  if (carried === undefined) return next;
+
+  // Written where the resolver will read it. With a connectionString
+  // present `resolvePostgresPoolOptions` ignores the password field
+  // entirely, so a credential parked there would be one nothing uses.
+  if (next.connectionString === undefined) return { ...next, password: carried };
+
+  const grafted = urlWithPassword(next.connectionString, carried);
+  return grafted === undefined ? next : { ...next, connectionString: grafted };
+}
+
+// What `next` says about its own credential. Lenient about a malformed URL:
+// that is the caller's fresh input, and reporting it here would blame the
+// password carry for a DSN the user just mistyped. Left alone, it reaches
+// `resolvePostgresPoolOptions`, which names it for what it is.
+function statedCredential(config: PostgresConnectionConfig): string | undefined {
+  if (config.connectionString === undefined) return blankToUndefined(config.password);
+  try {
+    return blankToUndefined(decodeURIComponent(new URL(config.connectionString).password));
+  } catch {
+    return undefined;
+  }
+}
+
+// What the connection is using now. Strict, per ADR-0080 decision 3: a
+// stored value that cannot be read is an error, not a fall-through to
+// "there was no password" — that fall-through would quietly rebuild the
+// pool without a credential and report the resulting refusal as an
+// authentication problem at the far end.
+//
+// Precedence mirrors the resolver: with a connectionString present the
+// password field is not consulted, because the live pool did not consult it
+// either.
+function storedCredential(previous: PostgresConnectionConfig): string | undefined {
+  if (previous.connectionString === undefined) return blankToUndefined(previous.password);
+  try {
+    return blankToUndefined(decodeURIComponent(new URL(previous.connectionString).password));
+  } catch {
+    throw new ConnectionError(
+      "the stored connection string for this connection cannot be read, so its password cannot be reused — re-enter the connection details",
+    );
+  }
+}
+
+function urlWithPassword(text: string, password: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return undefined;
+  }
+  // The setter percent-encodes for us, which is the point of going through
+  // `URL` rather than splicing strings: a password containing `@`, `/` or
+  // `#` would otherwise re-parse as a different connection.
+  url.password = password;
+  return url.toString();
+}
+
+function blankToUndefined(value: string | undefined): string | undefined {
+  return value === undefined || value === "" ? undefined : value;
+}
 
 export function resolvePostgresPoolOptions(
   input: PostgresConnectionConfig,

@@ -7,6 +7,7 @@ import { DeleteConnection } from "../usecase/delete-connection.use-case";
 import { ListConnections } from "../usecase/list-connections.use-case";
 import { ListDrivers } from "../usecase/list-drivers.use-case";
 import { RegisterConnection } from "../usecase/register-connection.use-case";
+import { UpdateConnection } from "../usecase/update-connection.use-case";
 import { ConnectionsController } from "./connections.controller";
 
 function adapter(): DatabaseAdapter {
@@ -19,7 +20,7 @@ function adapter(): DatabaseAdapter {
 }
 
 function factory(drivers: readonly string[] = ["null"]): AdapterFactory {
-  return { create: () => adapter(), supported: () => drivers };
+  return { create: () => adapter(), rebuild: () => adapter(), supported: () => drivers };
 }
 
 function inMemRegistry(seed: ConnectionRecord[] = []): ConnectionRegistry {
@@ -41,6 +42,7 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory(), () => "fixed-id"),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
     );
     expect(controller.register({ label: "Local", driver: "null" })).toEqual({ id: "fixed-id" });
@@ -67,6 +69,7 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
     );
     const out = controller.list();
@@ -97,6 +100,7 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
     );
     await expect(controller.remove("missing")).resolves.toBeUndefined();
@@ -111,8 +115,48 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
       new ListDrivers(factory(["postgres", "null"])),
     );
     expect(controller.drivers()).toEqual({ drivers: ["postgres", "null"] });
+  });
+
+  it("PATCH /connections/:id answers with the edited connection, still without a credential", async () => {
+    const reg = inMemRegistry([
+      {
+        id: "2",
+        label: "Prod",
+        driver: "postgres",
+        adapter: adapter(),
+        parts: { host: "db.internal", port: 5432, database: "app", user: "reader" },
+      },
+    ]);
+    const controller = new ConnectionsController(
+      new RegisterConnection(reg, factory()),
+      new ListConnections(reg),
+      new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
+      new ListDrivers(factory()),
+    );
+
+    const out = await controller.update("2", {
+      label: "Staging",
+      host: "staging.internal",
+      port: 5432,
+      database: "app",
+      user: "reader",
+      // The blank box the form submits for a password nobody retyped. It
+      // has to survive the DTO and the controller to mean anything at the
+      // layer that acts on it (ADR-0080).
+      password: "",
+    });
+
+    expect(out).toEqual({
+      id: "2",
+      label: "Staging",
+      driver: "postgres",
+      parts: { host: "staging.internal", port: 5432, database: "app", user: "reader" },
+    });
+    expect(JSON.stringify(out)).not.toContain("password");
   });
 });

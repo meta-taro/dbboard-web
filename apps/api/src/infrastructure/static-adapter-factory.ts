@@ -2,7 +2,7 @@ import { CapabilityError } from "../domain/errors";
 import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.port";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
-import { createPostgresAdapter } from "./postgres-adapter";
+import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
 
 /**
  * The drivers this build can construct, and how.
@@ -17,9 +17,35 @@ import { createPostgresAdapter } from "./postgres-adapter";
  * because it is the driver anyone actually connects with, `null` last
  * because it connects to nothing.
  */
-const BUILDERS = new Map<string, (config: AdapterConfig) => DatabaseAdapter>([
-  ["postgres", (config) => createPostgresAdapter(config)],
-  ["null", () => new NullAdapter()],
+interface DriverBuilder {
+  create(config: AdapterConfig): DatabaseAdapter;
+  // How this driver re-points an existing connection. Split from `create`
+  // because only the driver knows what an edit may leave unsaid: postgres
+  // keeps the password the old pool holds, and a driver with no credential
+  // has nothing to keep (0027 slice G).
+  rebuild(previous: DatabaseAdapter, config: AdapterConfig): DatabaseAdapter;
+}
+
+const BUILDERS = new Map<string, DriverBuilder>([
+  [
+    "postgres",
+    {
+      create: (config) => createPostgresAdapter(config),
+      // Asked of the adapter, not performed on it. The factory never sees
+      // the credential — `rebuildWith` moves it from one private pool to
+      // the next and answers with an adapter.
+      //
+      // The guard is for the compiler, and unreachable in practice: a
+      // record's driver is the one its adapter was built from. Falling back
+      // to a plain create is the honest reading of "no previous postgres
+      // pool to carry anything from".
+      rebuild: (previous, config) =>
+        previous instanceof PostgresAdapter
+          ? previous.rebuildWith(config)
+          : createPostgresAdapter(config),
+    },
+  ],
+  ["null", { create: () => new NullAdapter(), rebuild: () => new NullAdapter() }],
 ]);
 
 // Each driver-branch validates the shape of `config` it needs; the factory
@@ -27,9 +53,17 @@ const BUILDERS = new Map<string, (config: AdapterConfig) => DatabaseAdapter>([
 // POST /connections lands as 404 rather than a hard 500.
 export class StaticAdapterFactory implements AdapterFactory {
   create(driver: string, config: AdapterConfig): DatabaseAdapter {
-    const build = BUILDERS.get(driver);
-    if (build === undefined) throw new CapabilityError(`unknown driver: ${driver}`);
-    return build(config);
+    return this.builderFor(driver).create(config);
+  }
+
+  rebuild(previous: DatabaseAdapter, driver: string, config: AdapterConfig): DatabaseAdapter {
+    return this.builderFor(driver).rebuild(previous, config);
+  }
+
+  private builderFor(driver: string): DriverBuilder {
+    const builder = BUILDERS.get(driver);
+    if (builder === undefined) throw new CapabilityError(`unknown driver: ${driver}`);
+    return builder;
   }
 
   supported(): readonly string[] {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { connectionPartsOf } from "../domain/connection-parts";
 import { AdapterConfig, AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRegistry } from "./connection-registry.port";
 
@@ -21,6 +22,12 @@ export interface RegisterConnectionOutput {
 // onto the ConnectionRecord. They live solely inside the adapter
 // instance — see `0004` § "The password / connection string is never
 // logged" and the GET /connections leak test.
+//
+// 0027 slice F narrows that from "the config is dropped" to "the credential
+// is dropped". Keeping none of it also meant nothing could describe an
+// existing connection, so no edit form could be prefilled (ADR-0080). The
+// record now keeps what `connectionPartsOf` returns, which is a type with no
+// password member — the config still goes nowhere near the record whole.
 export class RegisterConnection {
   constructor(
     private readonly registry: ConnectionRegistry,
@@ -34,7 +41,10 @@ export class RegisterConnection {
     const { label, driver, ...config } = input;
     const adapter = this.adapterFactory.create(driver, config);
     const id = this.newId();
-    this.registry.add({ id, label, driver, adapter });
+    // After `create`, deliberately: a config the factory rejects should raise
+    // before anything about it is written down.
+    const parts = connectionPartsOf(config);
+    this.registry.add({ id, label, driver, adapter, ...(parts && { parts }) });
     return { id };
   }
 }

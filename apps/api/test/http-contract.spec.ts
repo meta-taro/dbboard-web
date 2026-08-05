@@ -322,6 +322,33 @@ describe("HTTP contract surface (0003)", () => {
     const dumped = JSON.stringify(list.body);
     expect(dumped).not.toContain(PW);
     expect(dumped).not.toContain(URL_SENTINEL);
+
+    // 0027 slice F, on the same two fixtures rather than in a test of their
+    // own: "no password" and "the parts come back" are one property, and
+    // asserting them apart is how a response that satisfies neither ends up
+    // passing the half that was checked. The URL fixture is the interesting
+    // one — its host, port, database and user were recovered from a DSN whose
+    // password is one of the sentinels above.
+    const listed = list.body.connections as Array<{
+      label: string;
+      parts?: Record<string, unknown>;
+    }>;
+    expect(listed.find((c) => c.label === "Leak guard")?.parts).toEqual({
+      host: "127.0.0.1",
+      port: 1,
+      database: "db",
+      user: "u",
+    });
+    expect(listed.find((c) => c.label === "Leak guard 2")?.parts).toEqual({
+      host: "127.0.0.1",
+      port: 5432,
+      database: "db",
+      user: "u",
+    });
+    // The query parameter the URL fixture carries is dropped with the rest of
+    // the DSN. Only the five named parts survive, so a provider URL that
+    // encodes something private in a parameter cannot ride along.
+    expect(dumped).not.toContain("app=");
   });
 
   it("DELETE /connections/:id → 204; idempotent on a missing id", async () => {

@@ -31,10 +31,31 @@ export type { CategorisedError, ErrorCategory } from "./internal/i18n-error";
  */
 export type Driver = string;
 
+/**
+ * Where a registered connection points, minus the credential.
+ *
+ * Mirrors `ConnectionParts` on the API (`apps/api/src/domain/connection-parts.ts`),
+ * including the part that matters: there is no `password` member, and there is
+ * no `connectionString` either. The server does not send one, and a type that
+ * could hold one would invite a prefill that carries it.
+ *
+ * Every member is optional because what is known depends on how the connection
+ * was registered — a pasted URL may name no user, and a `null`-driver
+ * connection has no address at all, in which case `parts` is absent entirely.
+ */
+export interface ConnectionParts {
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  sslMode?: SslMode;
+}
+
 export interface ConnectionView {
   id: string;
   label: string;
   driver: string;
+  parts?: ConnectionParts;
 }
 
 /**

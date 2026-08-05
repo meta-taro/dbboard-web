@@ -261,6 +261,51 @@ banner says why. Falling back to `["postgres"]` would put an option in front
 of the user that this build may not support — the same defect in a smaller
 font.
 
+**The password is unrepresentable rather than filtered.** Slice F's parts type
+has no `password` member and no `connectionString` member, and the function
+that builds it takes a parameter type that names neither. So the split-fields
+branch cannot read a credential even if handed one — there is nothing to read
+it into. Only the URL branch has to discard anything, and it discards
+everything it is not explicitly asked for: host, port, database, user and
+`sslmode`, with the password and every other query parameter left behind. A
+filter over a wider shape would have been the alternative, and it fails the
+first time someone adds a field to the record and forgets the filter.
+
+**Parts are `undefined`, not `{}`, when there are none.** They are different
+facts. A `null`-driver connection has no address, and an empty object is a
+claim that there is a connection to describe with nothing in it. `GET
+/connections` therefore omits the key rather than sending `{}` or `null`, which
+also spares the browser a third case to branch on.
+
+**Parts mirror `resolvePostgresPoolOptions`' precedence exactly, and have to.**
+A `connectionString` supplants the split fields wholesale (libpq's rule, which
+the resolver already follows); an explicit `sslMode` outranks the URL's,
+because it is a claim about which option the select was on. Parts that resolved
+the same conflict differently would describe a connection nobody made — the
+prefilled edit form would then disagree with the live adapter.
+
+**`sslmode=prefer` in a pasted URL comes back as `require`.** The parts report
+the mode the connection will actually use, not the one that was typed. Slice A
+removed `prefer` as a possible outcome, so echoing it back would prefill a
+select with a mode the adapter does not implement — the same class of lie as
+the pre-slice-A default, one layer up.
+
+**A mode is reported only when one was stated.** Neither the field nor a URL
+parameter means no `sslMode` in the parts, even though the adapter will harden
+to `require`. Storing `require` unconditionally would attach a TLS claim to the
+`null` driver, which negotiates nothing.
+
+**The HTTP-level guard asserts both halves on one fixture.** "No password" and
+"the parts come back" are one property. Checked in separate tests, a response
+that satisfies neither still passes whichever half was written first — so the
+existing sentinel test in `test/http-contract.spec.ts` gained the parts
+assertions rather than getting a sibling.
+
+**The web's `ConnectionParts` is a type declaration with no test.** It mirrors
+the API's shape so `ConnectionView` describes what the server actually sends;
+nothing observable changes until slice G reads it. Recorded here rather than
+covered by a test that would only be asserting a mock's own shape.
+
 ## Log
 
 _(open)_

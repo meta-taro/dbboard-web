@@ -1,3 +1,4 @@
+import type { ConnectionParts } from "../domain/connection-parts";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 
 // A registered connection. `adapter` is the live instance the controllers
@@ -9,6 +10,14 @@ export interface ConnectionRecord {
   label: string;
   driver: string;
   adapter: DatabaseAdapter;
+  // Where this connection points, minus the credential (0027 slice F). The
+  // record used to remember nothing at all, which kept the password safe and
+  // also made an edit form impossible — ADR-0080's blocker exactly. A type
+  // with no password member resolves both at once.
+  //
+  // Optional because "no parts" is a real state, not a missing value: a
+  // `null`-driver connection has no address to describe.
+  parts?: ConnectionParts;
 }
 
 // A flat store keyed by id. Production swap could be a persistent store

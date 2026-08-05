@@ -23,7 +23,10 @@ function registry(records: ConnectionRecord[]): ConnectionRegistry {
 }
 
 describe("ListConnections", () => {
-  it("returns id / label / driver only — strips the adapter instance", () => {
+  // Retitled in 0027 slice F: the projection now also carries `parts` when
+  // the record has them (see below). What this test pins is unchanged — the
+  // adapter instance, which holds the live credential, never crosses out.
+  it("strips the adapter instance from every record it projects", () => {
     const records: ConnectionRecord[] = [
       { id: "a", label: "Local", driver: "null", adapter: adapter() },
       { id: "b", label: "Prod", driver: "null", adapter: adapter() },
@@ -40,6 +43,34 @@ describe("ListConnections", () => {
     for (const view of out.connections) {
       expect(view).not.toHaveProperty("adapter");
     }
+  });
+
+  it("passes the stored parts through so an edit form can be prefilled", () => {
+    const records: ConnectionRecord[] = [
+      {
+        id: "a",
+        label: "Prod",
+        driver: "postgres",
+        adapter: adapter(),
+        parts: { host: "db.internal", port: 5432, database: "app", user: "reader" },
+      },
+    ];
+    const out = new ListConnections(registry(records)).execute();
+    expect(out.connections[0]).toEqual({
+      id: "a",
+      label: "Prod",
+      driver: "postgres",
+      parts: { host: "db.internal", port: 5432, database: "app", user: "reader" },
+    });
+  });
+
+  it("omits parts entirely for a record that has none", () => {
+    const records: ConnectionRecord[] = [
+      { id: "a", label: "Local", driver: "null", adapter: adapter() },
+    ];
+    expect(new ListConnections(registry(records)).execute().connections[0]).not.toHaveProperty(
+      "parts",
+    );
   });
 
   it("returns an empty list when nothing is registered", () => {

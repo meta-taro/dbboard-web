@@ -57,10 +57,16 @@ describe("RegisterConnection", () => {
     expect(records[0]?.adapter.getId()).toBe("null");
   });
 
-  it("forwards the connection config to the factory but does NOT copy it onto the record", () => {
+  it("forwards the whole config to the factory but keeps only its non-secret half", () => {
     // The leak path 0004 § Tasks calls out: passwords / connection strings
     // travel through the use case to the factory, but they must never land
     // on the ConnectionRecord — only the adapter holds them.
+    //
+    // Rewritten in 0027 slice F, not deleted (baseline §7). The rule it pins
+    // is unchanged and the password assertion below is the same one; what
+    // changed is that the record no longer keeps *nothing*. Remembering none
+    // of the connection was what blocked the edit form (ADR-0080), so the
+    // non-secret parts are now kept and the credential still is not.
     const { registry, records } = inMemoryRegistry();
     const factorySpy = vi.fn().mockReturnValue(stubAdapter());
     const useCase = new RegisterConnection(
@@ -85,9 +91,55 @@ describe("RegisterConnection", () => {
       label: "Prod",
       driver: "postgres",
       adapter: expect.any(Object),
+      parts: { host: "host", database: "db", user: "u" },
     });
-    // Belt and braces: nothing on the record encodes the password.
+    // Belt and braces, and now load-bearing for the URL branch specifically:
+    // the DSN handed to the factory contains the password, so the parts had
+    // to be extracted from it and the credential dropped on the way past.
     expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
+    expect(records[0]?.parts).not.toHaveProperty("password");
+    expect(records[0]).not.toHaveProperty("connectionString");
+  });
+
+  it("stores the split fields as parts, minus the password", () => {
+    const { registry, records } = inMemoryRegistry();
+    const useCase = new RegisterConnection(
+      registry,
+      { create: () => stubAdapter(), supported: () => ["postgres"] },
+      () => "fixed-id",
+    );
+
+    useCase.execute({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      port: 5432,
+      database: "app",
+      user: "reader",
+      password: "SECRET-PW",
+      sslMode: "require",
+    });
+
+    expect(records[0]?.parts).toEqual({
+      host: "db.internal",
+      port: 5432,
+      database: "app",
+      user: "reader",
+      sslMode: "require",
+    });
+    expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
+  });
+
+  it("stores no parts for a connection that has none", () => {
+    // The `null` driver names no host. An empty parts object would claim
+    // there is a connection to describe.
+    const { registry, records } = inMemoryRegistry();
+    new RegisterConnection(registry, factory, () => "fixed-id").execute({
+      label: "local",
+      driver: "null",
+    });
+
+    expect(records[0]).not.toHaveProperty("parts");
   });
 
   it("propagates the factory's CapabilityError for unknown drivers", () => {

@@ -63,8 +63,28 @@ docker rm -f dev-pg
 }
 ```
 
-Secrets never reach `GET /connections`. Only `{ id, label, driver }` is
-exposed in the listing — see the secret-leak guard in
+Secrets never reach `GET /connections`. The listing carries `{ id, label,
+driver }` plus a `parts` object naming where the connection points — `host`,
+`port`, `database`, `user`, `sslMode` — and nothing else:
+
+```jsonc
+{
+  "connections": [
+    {
+      "id": "…",
+      "label": "dev",
+      "driver": "postgres",
+      "parts": { "host": "localhost", "port": 5432, "database": "postgres", "user": "postgres" },
+    },
+  ],
+}
+```
+
+The password is absent because `ConnectionParts` has no member to put it in,
+and a pasted `connectionString` is reduced to the same five fields on the way
+in — its password and any query parameters are discarded, not stored and
+filtered later. `parts` is omitted entirely for a connection with no address,
+such as the `null` driver. See the secret-leak guard in
 [`test/http-contract.spec.ts`](./test/http-contract.spec.ts).
 
 ### TLS

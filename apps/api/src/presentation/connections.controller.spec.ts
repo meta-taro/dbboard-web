@@ -47,8 +47,22 @@ describe("ConnectionsController", () => {
     expect(reg.list()).toHaveLength(1);
   });
 
-  it("GET /connections returns id/label/driver only — no adapter / no secrets", () => {
-    const reg = inMemRegistry([{ id: "1", label: "L", driver: "null", adapter: adapter() }]);
+  it("GET /connections returns the non-secret parts — no adapter, no credential", () => {
+    // Extended in 0027 slice F, not replaced (baseline §7). The original
+    // asserted the response was exactly `{ id, label, driver }`, which held
+    // only because nothing was remembered about the connection; that is what
+    // blocked the edit form (ADR-0080). The seeded record now carries parts,
+    // so the assertion has something to be wrong about.
+    const reg = inMemRegistry([
+      { id: "1", label: "L", driver: "null", adapter: adapter() },
+      {
+        id: "2",
+        label: "Prod",
+        driver: "postgres",
+        adapter: adapter(),
+        parts: { host: "db.internal", port: 5432, database: "app", user: "reader" },
+      },
+    ]);
     const controller = new ConnectionsController(
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
@@ -56,7 +70,24 @@ describe("ConnectionsController", () => {
       new ListDrivers(factory()),
     );
     const out = controller.list();
-    expect(out).toEqual({ connections: [{ id: "1", label: "L", driver: "null" }] });
+
+    expect(out).toEqual({
+      connections: [
+        { id: "1", label: "L", driver: "null" },
+        {
+          id: "2",
+          label: "Prod",
+          driver: "postgres",
+          parts: { host: "db.internal", port: 5432, database: "app", user: "reader" },
+        },
+      ],
+    });
+    // The whole response, not one view: a credential leaking through a field
+    // nobody thought to assert on is the failure mode this guards.
+    const serialised = JSON.stringify(out);
+    expect(serialised).not.toContain("password");
+    expect(serialised).not.toContain("connectionString");
+    expect(serialised).not.toContain("adapter");
   });
 
   it("DELETE /connections/:id is idempotent and does not throw on a missing id", async () => {

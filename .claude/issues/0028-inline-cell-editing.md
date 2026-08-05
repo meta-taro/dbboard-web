@@ -261,3 +261,71 @@ The browse button sits inside the table's `<summary>`, so it carries
 column probe on top of the browse. A test asserts the fetch count stays at one.
 
 `schema.browse-table` added across 11 locales.
+
+### Slices B and C — write-back SQL and row identity (2026-08-05)
+
+Landed together because they are two halves of one seam: B builds the statement,
+C decides what keys it.
+
+**B — `apps/api/src/domain/write-back.ts`** (27 tests). The web mirror of
+desktop's `crates/dbboard-core/src/write_back.rs`. It is `domain`: pure, no I/O,
+no Nest decorators, because this is the one statement in the product the user
+did not type and cannot proof-read before it runs, and the escaping has to be
+testable adversarially in isolation.
+
+Three refusals are throws rather than fallbacks, and each has a test:
+
+- `EmptyKey` — an `UPDATE` with no `WHERE` rewrites the table. There is no
+  degraded behaviour worth having here.
+- `NoEdits` — an empty `SET` is a syntax error, and there is nothing to write.
+- `UnsupportedKeyType` — a blob identity value has no safe literal form.
+  Comparing against its base64 text would match a different row, so the error
+  names the offending column instead.
+
+Two escaping decisions that a reader would otherwise be tempted to "fix":
+
+- `quoteIdent` and `quoteLiteral` escape **different** characters and are
+  deliberately not folded together. `quoteIdent("o'brien")` leaves the single
+  quote alone; doubling it would corrupt the name. Both directions are pinned.
+- `quoteLiteral` does **not** touch a backslash. Postgres treats it as an
+  ordinary character in a standard string literal
+  (`standard_conforming_strings` has defaulted on since 9.1), so doubling would
+  store two. MySQL is the dialect that needs it, and it arrives with ADR-0068.
+
+The `WHERE` key encodes each value by its **real type** — bare number, quoted
+text, `IS NULL` — because the identity values arrive typed from the row rather
+than round-tripped through text. Edited values go the other way: always a
+string literal, whatever they look like, so the engine coerces by the target
+column's type. A numeric-looking edit still goes out quoted; guessing its type
+here would be the client overriding the column's.
+
+**C — identity and grouping.** `resolveRowIdentity(schema)` reads
+`TableSchema.primary_key` and returns `null` when it is empty. It does not fall
+back to the per-column `primary_key` flags: the two agree in practice, but only
+`primary_key` is ordered, and for a composite key the wrong order is a
+different key. A test pins that the fallback is absent.
+
+`apps/web/app/utils/grid-edit.ts` (15 tests) holds the rule the module exists
+for: **a staged edit is keyed on the row's original index, never its display
+position.** Rung 3's `useResultSort` exposes `sortedRowOrder` as a permutation,
+so the third row of a sorted grid is not row 3 — keying on the display position
+would stage an edit against one row and write it to another, silently and with
+no way back. `cellKey` joins the two indices with a NUL, so `(1, 23)` and
+`(12, 3)` cannot collide; both the separator and the collision are tested.
+
+`buildRowUpdates` adds one refusal desktop does not have: a staged row index
+that is not in the current result throws, rather than reading a key from
+`undefined` and emitting an `UPDATE` keyed on garbage. It also refuses when a
+primary-key column is missing from the result columns, and the message names the
+fix ("browse with `SELECT *` to edit") because the cause is three screens away
+from the failure — which is why slice A's `selectTopN` emits `SELECT *` rather
+than a projection.
+
+Order of both outputs is deterministic (rows ascending by original index, edits
+by column index) so the payload does not depend on which cell the user clicked
+first.
+
+TDD note: the implementation of `grid-edit.ts` was written before its test — a
+§4/§20 chain break. It was parked outside the tree, the test was written and
+confirmed RED (module not found), then the implementation was restored to make
+it GREEN. Recorded rather than quietly retrofitted.

@@ -154,8 +154,7 @@
     "title": "연결",
     "empty": "등록된 연결이 없습니다.",
     "link-from-home": "연결 목록으로",
-    "add": {
-      "heading": "연결 등록",
+    "form": {
       "label-input": "레이블",
       "driver-input": "드라이버",
       "use-url": "대신 연결 URL 붙여넣기",
@@ -168,11 +167,21 @@
       "ssl-input": "암호화",
       "ssl-require": "필수",
       "ssl-disable": "사용 안 함",
-      "connection-string-input": "연결 문자열",
+      "connection-string-input": "연결 문자열"
+    },
+    "add": {
+      "heading": "연결 등록",
       "submit": "등록"
+    },
+    "edit": {
+      "heading": "연결 편집",
+      "submit": "저장",
+      "cancel": "취소",
+      "password-hint": "비워 두면 저장된 비밀번호를 그대로 사용합니다."
     },
     "row": {
       "id-label": "ID",
+      "edit": "편집",
       "delete": "삭제"
     }
   }

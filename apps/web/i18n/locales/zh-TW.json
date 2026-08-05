@@ -154,8 +154,7 @@
     "title": "連線",
     "empty": "尚未註冊連線。",
     "link-from-home": "前往連線",
-    "add": {
-      "heading": "註冊連線",
+    "form": {
       "label-input": "標籤",
       "driver-input": "驅動程式",
       "use-url": "改為貼上連線 URL",
@@ -168,11 +167,21 @@
       "ssl-input": "加密",
       "ssl-require": "必需",
       "ssl-disable": "已停用",
-      "connection-string-input": "連線字串",
+      "connection-string-input": "連線字串"
+    },
+    "add": {
+      "heading": "註冊連線",
       "submit": "註冊"
+    },
+    "edit": {
+      "heading": "編輯連線",
+      "submit": "儲存",
+      "cancel": "取消",
+      "password-hint": "留空則保留已儲存的密碼。"
     },
     "row": {
       "id-label": "ID",
+      "edit": "編輯",
       "delete": "刪除"
     }
   }

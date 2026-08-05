@@ -154,8 +154,7 @@
     "title": "Connessioni",
     "empty": "Nessuna connessione registrata.",
     "link-from-home": "Vai alle connessioni",
-    "add": {
-      "heading": "Registra una connessione",
+    "form": {
       "label-input": "Etichetta",
       "driver-input": "Driver",
       "use-url": "Incolla invece un URL di connessione",
@@ -168,11 +167,21 @@
       "ssl-input": "Crittografia",
       "ssl-require": "Obbligatoria",
       "ssl-disable": "Disattivata",
-      "connection-string-input": "Stringa di connessione",
+      "connection-string-input": "Stringa di connessione"
+    },
+    "add": {
+      "heading": "Registra una connessione",
       "submit": "Registra"
+    },
+    "edit": {
+      "heading": "Modifica una connessione",
+      "submit": "Salva",
+      "cancel": "Annulla",
+      "password-hint": "Lascia vuoto per mantenere la password salvata."
     },
     "row": {
       "id-label": "ID",
+      "edit": "Modifica",
       "delete": "Elimina"
     }
   }

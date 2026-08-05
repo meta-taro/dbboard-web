@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
+import ConnectionForm from "../../components/ConnectionForm.vue";
 import ErrorBanner from "../../components/ErrorBanner.vue";
-import { useConnections, type Driver, type RegisterInput } from "../../composables/useConnections";
+import {
+  useConnections,
+  type ConnectionView,
+  type RegisterInput,
+} from "../../composables/useConnections";
 import { useDrivers } from "../../composables/useDrivers";
-import { defaultPortFor } from "../../utils/default-port";
 import { fromCategorised } from "../../utils/display-error";
-import { readSslModeFromUrl, SSL_MODES, type SslMode } from "../../utils/ssl-mode";
 
 const { t } = useI18n();
-const { list, lastError, register, remove } = useConnections();
+const { list, lastError, register, update, remove } = useConnections();
 const { drivers, lastError: driversError } = useDrivers();
 
 // One banner, either source. A driver list that failed to load leaves the
@@ -16,131 +19,43 @@ const { drivers, lastError: driversError } = useDrivers();
 // with no explanation.
 const banner = computed(() => lastError.value ?? driversError.value);
 
-const labelInput = ref("");
+/**
+ * The connection being edited, or `null` when the form is registering a new
+ * one.
+ *
+ * One form at a time, in the same place on the page. Two sets of the same
+ * boxes on one screen would be two places to type the answer, one of which is
+ * wrong — and the shared component means the edit form is not a second form
+ * to keep in step, it is the same one opened on an existing record.
+ */
+const editing = ref<ConnectionView | null>(null);
 
-// No initial value: the options are server-owned (slice E), so the default
-// is whichever driver the factory lists first and it is not known yet.
-const driverInput = ref<Driver>("");
+// The form owns what the user typed; the page owns whether the server took
+// it. Resetting is therefore a call rather than a prop, made only once a
+// registration has actually gone through.
+const form = ref<InstanceType<typeof ConnectionForm> | null>(null);
 
-// Adopt a default when the list arrives, but only when the current value is
-// not on it. A late-arriving list must not undo a choice the user has
-// already made — the fetch can finish after the form is interactive.
-watch(
-  drivers,
-  (available) => {
-    if (available.length === 0) return;
-    if (!available.includes(driverInput.value)) driverInput.value = available[0]!;
-  },
-  { immediate: true },
-);
-
-// Field entry is the default and the URL is the way out of it (ADR-0073
-// decision 2). Providers hand out ready-made URLs, so pasting one has to
-// keep working; typing five fields is the case that happens more often.
-const useUrl = ref(false);
-
-const connectionStringInput = ref("");
-
-// HeidiSQL's order, which desktop adopted so that anyone arriving from it
-// finds the fields where they expect them.
-const hostInput = ref("");
-// `string | number` because `v-model` on `<input type="number">` hands back
-// a number once the box parses, and the empty string while it does not.
-const portInput = ref<string | number>("");
-const userInput = ref("");
-const passwordInput = ref("");
-const databaseInput = ref("");
-
-// Required by default, and the default is not a guess the API might
-// override — the same value is sent explicitly, so the select always
-// reports the connection that is about to be made (ADR-0079).
-const sslModeInput = ref<SslMode>("require");
-
-// Editing the URL moves the select to whatever that URL will actually get.
-// Only a URL that states a mode moves it: one that says nothing is not a
-// reason to discard a choice the user made here.
-watch(connectionStringInput, (text) => {
-  const stated = readSslModeFromUrl(text);
-  if (stated !== undefined) sslModeInput.value = stated;
-});
-
-// The null adapter connects to nothing and ignores every credential field.
-// Rendering them would be offering inputs whose effect is nil — the defect
-// ADR-0074 names, one level below the driver list. The empty case is the
-// same judgement: with no driver chosen there is nothing to hold a
-// credential.
-const needsCredential = computed(() => driverInput.value !== "" && driverInput.value !== "null");
-
-// A blank box means "not supplied", which is not the same as an empty
-// value: the API treats a supplied-but-empty user or database as a real
-// one and forwards it, where it means something different from letting the
-// server apply its own default.
-function supplied(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
+function startEdit(row: ConnectionView): void {
+  editing.value = row;
 }
 
-// Blank falls back to the driver's default (ADR-0073 decision 3).
-// Unparseable does too rather than sending NaN — `type="number"` already
-// makes that hard to reach, but a fallback the user can see beats a
-// payload the server cannot read.
-function resolvePort(driver: Driver): number | undefined {
-  const parsed = Number.parseInt(String(portInput.value).trim(), 10);
-  return Number.isNaN(parsed) ? defaultPortFor(driver) : parsed;
-}
-
-// One entry mode or the other, never a merge. The API prefers
-// `connectionString` when both arrive, so sending an abandoned host
-// alongside a URL would have it silently ignored — the form would be
-// showing one thing and sending another.
-function buildPayload(): RegisterInput {
-  const base = { label: labelInput.value.trim(), driver: driverInput.value };
-  if (!needsCredential.value) return base;
-  // The TLS choice belongs to both modes, so it is added to both rather
-  // than living inside either branch.
-  const secured = { ...base, sslMode: sslModeInput.value };
-  if (useUrl.value) {
-    return { ...secured, connectionString: supplied(connectionStringInput.value) };
+async function onSubmit(payload: RegisterInput): Promise<void> {
+  const target = editing.value;
+  if (target === null) {
+    await register(payload);
+    // Reset only on success — keep the form populated so the user can fix
+    // their input if the backend rejected it.
+    if (lastError.value === null) form.value?.reset();
+    return;
   }
-  return {
-    ...secured,
-    host: supplied(hostInput.value),
-    port: resolvePort(driverInput.value),
-    user: supplied(userInput.value),
-    password: supplied(passwordInput.value),
-    database: supplied(databaseInput.value),
-  };
-}
 
-async function onSubmit() {
-  if (labelInput.value.trim() === "") return;
-  // No driver means the list never loaded. Submitting would post a driver
-  // the factory cannot build and come back a 404 — refuse here instead,
-  // where the form can stay filled in.
-  if (driverInput.value === "") return;
-  const payload = buildPayload();
-  // `undefined` members would still serialise as absent, but stripping
-  // them here keeps the payload the tests assert on and the payload the
-  // server receives literally the same object.
-  await register(
-    Object.fromEntries(
-      Object.entries(payload).filter(([, value]) => value !== undefined),
-    ) as unknown as RegisterInput,
-  );
-  // Reset only on success — keep the form populated so the user can fix
-  // their input if the backend rejected it.
-  if (lastError.value === null) {
-    labelInput.value = "";
-    connectionStringInput.value = "";
-    hostInput.value = "";
-    portInput.value = "";
-    userInput.value = "";
-    passwordInput.value = "";
-    databaseInput.value = "";
-    // Back to the safe default, so the next connection does not inherit an
-    // opt-out from the last one.
-    sslModeInput.value = "require";
-  }
+  // `driver` is dropped rather than sent: `PATCH /connections/:id` has no
+  // such field, the DTO's whitelist would strip it, and sending one would be
+  // claiming an edit can do something it cannot. The form carries it because
+  // it is showing it.
+  const { driver: _driver, ...edited } = payload;
+  await update(target.id, edited);
+  if (lastError.value === null) editing.value = null;
 }
 </script>
 
@@ -150,98 +65,17 @@ async function onSubmit() {
 
     <ErrorBanner v-if="banner" data-testid="error-banner" :error="fromCategorised(banner, t)" />
 
-    <form data-testid="add-form" class="add-form" @submit.prevent="onSubmit">
-      <h3>{{ t("connections.add.heading") }}</h3>
-      <label>
-        {{ t("connections.add.label-input") }}
-        <input v-model="labelInput" data-testid="label-input" type="text" autocomplete="off" />
-      </label>
-      <label>
-        {{ t("connections.add.driver-input") }}
-        <select v-model="driverInput" data-testid="driver-input">
-          <!-- Named by the server, not here. Adding a driver to the API's
-               factory adds it below with no edit to this file. -->
-          <option v-for="driver in drivers" :key="driver" :value="driver">{{ driver }}</option>
-        </select>
-      </label>
-      <template v-if="needsCredential">
-        <label class="toggle">
-          <input v-model="useUrl" data-testid="use-url-toggle" type="checkbox" />
-          {{ t("connections.add.use-url") }}
-        </label>
-
-        <label v-if="useUrl">
-          {{ t("connections.add.connection-string-input") }}
-          <input
-            v-model="connectionStringInput"
-            data-testid="connection-string-input"
-            type="text"
-            autocomplete="off"
-          />
-        </label>
-
-        <fieldset v-else class="parts">
-          <legend>{{ t("connections.add.parts-heading") }}</legend>
-          <label>
-            {{ t("connections.add.host-input") }}
-            <input v-model="hostInput" data-testid="host-input" type="text" autocomplete="off" />
-          </label>
-          <label>
-            {{ t("connections.add.port-input") }}
-            <!-- Blank is legitimate: `resolvePort` fills the driver default. -->
-            <input
-              v-model="portInput"
-              data-testid="port-input"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              max="65535"
-              :placeholder="String(defaultPortFor(driverInput) ?? '')"
-              autocomplete="off"
-            />
-          </label>
-          <label>
-            {{ t("connections.add.user-input") }}
-            <input v-model="userInput" data-testid="user-input" type="text" autocomplete="off" />
-          </label>
-          <label>
-            {{ t("connections.add.password-input") }}
-            <input
-              v-model="passwordInput"
-              data-testid="password-input"
-              type="password"
-              autocomplete="off"
-            />
-          </label>
-          <label>
-            {{ t("connections.add.database-input") }}
-            <input
-              v-model="databaseInput"
-              data-testid="database-input"
-              type="text"
-              autocomplete="off"
-            />
-          </label>
-        </fieldset>
-
-        <!-- Outside the entry-mode branch: "is this encrypted" is the same
-             question whichever way the database was named. -->
-        <label>
-          {{ t("connections.add.ssl-input") }}
-          <select v-model="sslModeInput" data-testid="ssl-mode-input">
-            <option v-for="mode in SSL_MODES" :key="mode" :value="mode">
-              {{ t(`connections.add.ssl-${mode}`) }}
-            </option>
-          </select>
-        </label>
-      </template>
-
-      <!-- Nothing to connect with is a state the button should report,
-           rather than one the user discovers by pressing it. -->
-      <button type="submit" data-testid="add-submit" :disabled="drivers.length === 0">
-        {{ t("connections.add.submit") }}
-      </button>
-    </form>
+    <!-- One component, two modes. The edit form is not a second form kept
+         in step with this one; it is this one, opened on a record. -->
+    <ConnectionForm
+      ref="form"
+      :key="editing?.id ?? 'add'"
+      :mode="editing ? 'edit' : 'add'"
+      :drivers="drivers"
+      :initial="editing ?? undefined"
+      @submit="onSubmit"
+      @cancel="editing = null"
+    />
 
     <ul v-if="list.length" class="connection-list">
       <li v-for="row in list" :key="row.id" data-testid="connection-row" class="row">
@@ -262,8 +96,16 @@ async function onSubmit() {
           </NuxtLink>
           <button
             type="button"
+            data-testid="edit-button"
+            class="row-button"
+            @click="startEdit(row)"
+          >
+            {{ t("connections.row.edit") }}
+          </button>
+          <button
+            type="button"
             data-testid="delete-button"
-            class="delete-button"
+            class="row-button"
             @click="remove(row.id)"
           >
             {{ t("connections.row.delete") }}
@@ -280,97 +122,6 @@ async function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.add-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.add-form h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.add-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-}
-
-.add-form input,
-.add-form select {
-  /* Touch target >= 44 x 44 per Phase 1.5 DoD. */
-  min-height: 44px;
-  padding: 0 0.75rem;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  font-size: 1rem;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* The toggle reads as one control: the box and its wording sit on a line,
-   and the whole line is the 44px target rather than the box alone. */
-.add-form label.toggle {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-}
-
-.add-form label.toggle input[type="checkbox"] {
-  min-height: 24px;
-  width: 24px;
-  flex: none;
-}
-
-.parts {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.parts legend {
-  padding: 0 0.35rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.add-form button {
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 1rem;
-  border-radius: 4px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-/* Reads as unavailable rather than merely unresponsive: the button is
-   disabled only while the driver list is missing, which is a state the user
-   has no other way to see. */
-.add-form button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.add-form button:focus-visible,
-.add-form input:focus-visible,
-.add-form select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .connection-list {
@@ -434,7 +185,7 @@ async function onSubmit() {
   outline-offset: 2px;
 }
 
-.delete-button {
+.row-button {
   min-height: 44px;
   min-width: 44px;
   padding: 0 1rem;
@@ -445,7 +196,7 @@ async function onSubmit() {
   font-size: 0.9rem;
 }
 
-.delete-button:focus-visible {
+.row-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

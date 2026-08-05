@@ -84,6 +84,28 @@ export interface RegisterInput {
   sslMode?: SslMode;
 }
 
+/**
+ * What `PATCH /connections/:id` accepts: the registration fields minus
+ * `driver`, which is fixed once a connection exists.
+ *
+ * `password` is deliberately allowed to be the empty string. The API never
+ * sends a password back, so the edit form's box starts blank, and submitting
+ * that blank box has to mean "keep the credential you already have" rather
+ * than "remove it" (ADR-0080). Removing one for good is a delete and a
+ * re-add. `label` is optional here because an edit may re-point a connection
+ * without renaming it.
+ */
+export interface UpdateInput {
+  label?: string;
+  connectionString?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  database?: string;
+  sslMode?: SslMode;
+}
+
 export type ConnectionsState = "idle" | "loading" | "error";
 
 export interface UseConnectionsOptions {
@@ -140,6 +162,24 @@ export function useConnections(options?: UseConnectionsOptions) {
     }
   }
 
+  async function update(id: string, input: UpdateInput): Promise<void> {
+    state.value = "loading";
+    try {
+      await apiFetch<ConnectionView>(`${apiBase}/connections/${id}`, {
+        method: "PATCH",
+        body: input,
+      });
+      // The response is the edited view, and it is thrown away on purpose:
+      // `refresh` re-reads the whole list, which is what the page renders.
+      // Patching one row in place from the response would leave the rest of
+      // the list as stale as it was.
+      await refresh();
+    } catch (err: unknown) {
+      lastError.value = parseError(err);
+      state.value = "error";
+    }
+  }
+
   async function remove(id: string): Promise<void> {
     state.value = "loading";
     try {
@@ -161,6 +201,7 @@ export function useConnections(options?: UseConnectionsOptions) {
     lastError: readonly(lastError),
     refresh,
     register,
+    update,
     remove,
   };
 }

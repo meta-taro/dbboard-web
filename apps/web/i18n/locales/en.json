@@ -154,8 +154,7 @@
     "title": "Connections",
     "empty": "No connections registered yet.",
     "link-from-home": "Go to connections",
-    "add": {
-      "heading": "Register a connection",
+    "form": {
       "label-input": "Label",
       "driver-input": "Driver",
       "use-url": "Paste a connection URL instead",
@@ -168,11 +167,21 @@
       "ssl-input": "Encryption",
       "ssl-require": "Required",
       "ssl-disable": "Disabled",
-      "connection-string-input": "Connection string",
+      "connection-string-input": "Connection string"
+    },
+    "add": {
+      "heading": "Register a connection",
       "submit": "Register"
+    },
+    "edit": {
+      "heading": "Edit a connection",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "password-hint": "Leave blank to keep the stored password."
     },
     "row": {
       "id-label": "ID",
+      "edit": "Edit",
       "delete": "Delete"
     }
   }

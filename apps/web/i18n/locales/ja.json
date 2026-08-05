@@ -154,8 +154,7 @@
     "title": "接続",
     "empty": "接続が登録されていません。",
     "link-from-home": "接続一覧へ",
-    "add": {
-      "heading": "接続を登録",
+    "form": {
       "label-input": "ラベル",
       "driver-input": "ドライバ",
       "use-url": "代わりに接続 URL を貼り付ける",
@@ -168,11 +167,21 @@
       "ssl-input": "暗号化",
       "ssl-require": "必須",
       "ssl-disable": "無効",
-      "connection-string-input": "接続文字列",
+      "connection-string-input": "接続文字列"
+    },
+    "add": {
+      "heading": "接続を登録",
       "submit": "登録"
+    },
+    "edit": {
+      "heading": "接続を編集",
+      "submit": "保存",
+      "cancel": "キャンセル",
+      "password-hint": "空欄のままにすると、保存済みのパスワードをそのまま使います。"
     },
     "row": {
       "id-label": "ID",
+      "edit": "編集",
       "delete": "削除"
     }
   }

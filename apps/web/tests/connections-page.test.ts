@@ -8,11 +8,19 @@ import ConnectionsPage from "../app/pages/connections/index.vue";
 // re-created per-test in beforeEach so each test starts on a clean slate.
 const mocks = vi.hoisted(() => ({
   register: vi.fn(),
+  update: vi.fn(),
   remove: vi.fn(),
   refresh: vi.fn(),
 }));
 
-let listRef: Ref<Array<{ id: string; label: string; driver: string }>>;
+interface Row {
+  id: string;
+  label: string;
+  driver: string;
+  parts?: { host?: string; port?: number; user?: string; database?: string; sslMode?: string };
+}
+
+let listRef: Ref<Row[]>;
 let driversRef: Ref<string[]>;
 let driversErrorRef: Ref<{ category: string; message: string; i18nKey: string } | null>;
 let stateRef: Ref<"idle" | "loading" | "error">;
@@ -24,6 +32,7 @@ vi.mock("../app/composables/useConnections", () => ({
     state: stateRef,
     lastError: lastErrorRef,
     register: mocks.register,
+    update: mocks.update,
     remove: mocks.remove,
     refresh: mocks.refresh,
   }),
@@ -71,6 +80,7 @@ describe("ConnectionsPage", () => {
       i18nKey: string;
     } | null>(null);
     mocks.register.mockReset();
+    mocks.update.mockReset();
     mocks.remove.mockReset();
     mocks.refresh.mockReset();
   });
@@ -509,6 +519,111 @@ describe("ConnectionsPage", () => {
     await flushPromises();
 
     expect(mocks.register).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  // ---- 0027 slice G: editing a registered connection ----
+
+  it("opens the edit form on the row whose edit button was pressed", async () => {
+    listRef.value = [
+      { id: "abc", label: "Prod", driver: "postgres", parts: { host: "prod.example.com" } },
+      { id: "def", label: "Staging", driver: "postgres", parts: { host: "stg.example.com" } },
+    ];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.findAll("[data-testid='edit-button']")[1]!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='edit-form']").exists()).toBe(true);
+    expect((wrapper.find("[data-testid='host-input']").element as HTMLInputElement).value).toBe(
+      "stg.example.com",
+    );
+    // One form at a time: two sets of the same boxes on one screen is two
+    // places to type the answer and one of them is wrong.
+    expect(wrapper.find("[data-testid='add-form']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("calls update(id, …) with the driver left off", async () => {
+    listRef.value = [
+      { id: "abc", label: "Prod", driver: "postgres", parts: { host: "old.example.com" } },
+    ];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='edit-button']").trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid='host-input']").setValue("new.example.com");
+    await wrapper.find("[data-testid='edit-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    const [id, payload] = mocks.update.mock.calls[0]!;
+    expect(id).toBe("abc");
+    expect(payload).toMatchObject({ label: "Prod", host: "new.example.com" });
+    // `PATCH` has no driver field — the DTO would strip it anyway, and
+    // sending one would be claiming an edit can do something it cannot.
+    expect(payload).not.toHaveProperty("driver");
+    expect(mocks.register).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("closes the edit form once the save goes through", async () => {
+    listRef.value = [{ id: "abc", label: "Prod", driver: "postgres", parts: { host: "h" } }];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='edit-button']").trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid='edit-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='edit-form']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='add-form']").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("keeps the edit form open and filled in when the save is refused", async () => {
+    // Same reasoning as the add form's reset-on-success: closing here would
+    // discard what the user typed at the exact moment they need to fix it.
+    listRef.value = [{ id: "abc", label: "Prod", driver: "postgres", parts: { host: "h" } }];
+    mocks.update.mockImplementation(() => {
+      lastErrorRef.value = {
+        category: "connection",
+        message: "ECONNREFUSED",
+        i18nKey: "error.prefix.connection",
+      };
+    });
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='edit-button']").trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid='host-input']").setValue("unreachable");
+    await wrapper.find("[data-testid='edit-form']").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='edit-form']").exists()).toBe(true);
+    expect((wrapper.find("[data-testid='host-input']").element as HTMLInputElement).value).toBe(
+      "unreachable",
+    );
+    wrapper.unmount();
+  });
+
+  it("brings the add form back when the edit is cancelled", async () => {
+    listRef.value = [{ id: "abc", label: "Prod", driver: "postgres", parts: { host: "h" } }];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='edit-button']").trigger("click");
+    await flushPromises();
+    await wrapper.find("[data-testid='edit-cancel']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='edit-form']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='add-form']").exists()).toBe(true);
+    expect(mocks.update).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

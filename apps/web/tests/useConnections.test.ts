@@ -91,6 +91,85 @@ describe("useConnections", () => {
     wrapper.unmount();
   });
 
+  it("update(id, input) PATCHes the body and refreshes the list from the server", async () => {
+    mockFetch.mockResolvedValueOnce({
+      connections: [
+        {
+          id: "abc",
+          label: "Prod",
+          driver: "postgres",
+          parts: { host: "old.host", port: 5432, user: "reader" },
+        },
+      ],
+    });
+    mockFetch.mockResolvedValueOnce({
+      id: "abc",
+      label: "Prod",
+      driver: "postgres",
+      parts: { host: "new.host", port: 5432, user: "reader" },
+    });
+    mockFetch.mockResolvedValueOnce({
+      connections: [
+        {
+          id: "abc",
+          label: "Prod",
+          driver: "postgres",
+          parts: { host: "new.host", port: 5432, user: "reader" },
+        },
+      ],
+    });
+
+    const { Component, holder } = makeHarness();
+    const wrapper = mount(Component);
+    await flushPromises();
+    const api = holder.api!;
+
+    // The blank password is the case that matters: the server reads it as
+    // "keep the one you have" (ADR-0080), so the composable must send it
+    // rather than treat it as nothing to say.
+    await api.update("abc", { host: "new.host", port: 5432, user: "reader", password: "" });
+
+    expect(mockFetch).toHaveBeenNthCalledWith(2, "http://test/connections/abc", {
+      method: "PATCH",
+      body: { host: "new.host", port: 5432, user: "reader", password: "" },
+    });
+    // Re-read rather than trusting the PATCH response: the list is what the
+    // page renders, and the server is the only thing that knows what the
+    // record became.
+    expect(api.list.value).toEqual([
+      {
+        id: "abc",
+        label: "Prod",
+        driver: "postgres",
+        parts: { host: "new.host", port: 5432, user: "reader" },
+      },
+    ]);
+    expect(api.state.value).toBe("idle");
+    wrapper.unmount();
+  });
+
+  it("update() leaves the list alone and reports the error when the edit is refused", async () => {
+    const before = [{ id: "abc", label: "Prod", driver: "postgres" }];
+    mockFetch.mockResolvedValueOnce({ connections: before });
+    mockFetch.mockRejectedValueOnce({
+      data: { error: { category: "connection", message: "ECONNREFUSED" } },
+    });
+
+    const { Component, holder } = makeHarness();
+    const wrapper = mount(Component);
+    await flushPromises();
+    const api = holder.api!;
+
+    await api.update("abc", { host: "unreachable" });
+
+    expect(api.state.value).toBe("error");
+    expect(api.lastError.value?.category).toBe("connection");
+    // A refused edit changes nothing, so the row the user was editing is
+    // still the row they were editing.
+    expect(api.list.value).toEqual(before);
+    wrapper.unmount();
+  });
+
   it("remove(id) DELETEs the connection and refreshes the list", async () => {
     mockFetch.mockResolvedValueOnce({
       connections: [{ id: "abc", label: "Prod", driver: "postgres" }],

@@ -154,8 +154,7 @@
     "title": "Connexions",
     "empty": "Aucune connexion enregistrée.",
     "link-from-home": "Aller aux connexions",
-    "add": {
-      "heading": "Enregistrer une connexion",
+    "form": {
       "label-input": "Étiquette",
       "driver-input": "Pilote",
       "use-url": "Coller une URL de connexion à la place",
@@ -168,11 +167,21 @@
       "ssl-input": "Chiffrement",
       "ssl-require": "Obligatoire",
       "ssl-disable": "Désactivé",
-      "connection-string-input": "Chaîne de connexion",
+      "connection-string-input": "Chaîne de connexion"
+    },
+    "add": {
+      "heading": "Enregistrer une connexion",
       "submit": "Enregistrer"
+    },
+    "edit": {
+      "heading": "Modifier une connexion",
+      "submit": "Enregistrer",
+      "cancel": "Annuler",
+      "password-hint": "Laissez vide pour conserver le mot de passe enregistré."
     },
     "row": {
       "id-label": "ID",
+      "edit": "Modifier",
       "delete": "Supprimer"
     }
   }

@@ -154,8 +154,7 @@
     "title": "Verbindungen",
     "empty": "Noch keine Verbindungen registriert.",
     "link-from-home": "Zu den Verbindungen",
-    "add": {
-      "heading": "Verbindung registrieren",
+    "form": {
       "label-input": "Bezeichnung",
       "driver-input": "Treiber",
       "use-url": "Stattdessen eine Verbindungs-URL einfügen",
@@ -168,11 +167,21 @@
       "ssl-input": "Verschlüsselung",
       "ssl-require": "Erforderlich",
       "ssl-disable": "Deaktiviert",
-      "connection-string-input": "Verbindungszeichenfolge",
+      "connection-string-input": "Verbindungszeichenfolge"
+    },
+    "add": {
+      "heading": "Verbindung registrieren",
       "submit": "Registrieren"
+    },
+    "edit": {
+      "heading": "Verbindung bearbeiten",
+      "submit": "Speichern",
+      "cancel": "Abbrechen",
+      "password-hint": "Leer lassen, um das gespeicherte Passwort beizubehalten."
     },
     "row": {
       "id-label": "ID",
+      "edit": "Bearbeiten",
       "delete": "Löschen"
     }
   }

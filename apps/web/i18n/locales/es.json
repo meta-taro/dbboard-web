@@ -154,8 +154,7 @@
     "title": "Conexiones",
     "empty": "Aún no hay conexiones registradas.",
     "link-from-home": "Ir a las conexiones",
-    "add": {
-      "heading": "Registrar una conexión",
+    "form": {
       "label-input": "Etiqueta",
       "driver-input": "Controlador",
       "use-url": "Pegar una URL de conexión en su lugar",
@@ -168,11 +167,21 @@
       "ssl-input": "Cifrado",
       "ssl-require": "Obligatorio",
       "ssl-disable": "Desactivado",
-      "connection-string-input": "Cadena de conexión",
+      "connection-string-input": "Cadena de conexión"
+    },
+    "add": {
+      "heading": "Registrar una conexión",
       "submit": "Registrar"
+    },
+    "edit": {
+      "heading": "Editar una conexión",
+      "submit": "Guardar",
+      "cancel": "Cancelar",
+      "password-hint": "Déjalo en blanco para conservar la contraseña guardada."
     },
     "row": {
       "id-label": "ID",
+      "edit": "Editar",
       "delete": "Eliminar"
     }
   }

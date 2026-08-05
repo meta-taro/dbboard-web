@@ -633,3 +633,71 @@ The two failure modes are deliberately asymmetric. A failed **probe** degrades t
 
 - Desktop: ADR-0028, ADR-0031 in `dbboard/docs/decisions.md`; the two-type split read directly from `crates/dbboard-core/src/row.rs` and `src/schema.rs`. ADR-0028 ships with no HTTP route (`describe_table` is absent from `crates/dbboard-server`), so web's route is a unilateral surface and no handoff is owed.
 - Ticket: [`issues/0026-schema-depth.md`](./issues/0026-schema-depth.md) — the survey corrections in full. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 4.
+
+## 2026-08-05 — The connection form: a default that was worse than a missing control, and two ADRs that were right not to be mirrored
+
+**Context.** Ticket [`0027`](./issues/0027-connection-form.md), rung 5 of [`parity-ledger.md`](./parity-ledger.md) — desktop ADR-0073 (parts, not a hand-written DSN), ADR-0078 / 0079 (TLS as a form choice), ADR-0080 (the edit form asks what the add form asks), ADR-0074 (unsupported kinds disabled rather than refused). Re-deriving the four rows before writing code changed all four, and one of the corrections was a live security divergence the ledger did not record. What follows is the subset that constrains work after this rung.
+
+**Decision 1 — the adapter is hardened before the form gains a control, not after.**
+
+`resolvePostgresPoolOptions` defaulted an unspecified `sslmode` to `prefer`, and `prefer` resolved to `ssl: false`. Web therefore attempted no TLS at all unless the host ended in `.neon.tech` or `.supabase.co`, or the caller wrote `sslmode=require` by hand — on a client whose two named providers are hosted Postgres reached over the internet.
+
+That makes the obvious slice order wrong. ADR-0078 Decision 3 says `require` should emit **no** query parameter, because the adapter's hardening supplies the mode. Web had no hardening to lean on, so mirroring that decision first would have shipped a select whose default option reads **Required** over a plaintext connection — a control that reports the opposite of what it does, which is worse than the missing control it replaces. Slice A landed first for that reason, and every later slice's honesty rests on it.
+
+`hardenSslMode` lives in `domain/ssl-mode.ts`, not beside the Postgres adapter: `AdapterConfig` is a usecase-layer type and must not import infrastructure (§9), and the rule is not Postgres-specific — desktop applies the same one to MySQL.
+
+**Decision 2 — an explicit `disable` outranks a host-suffix guess, on every host.**
+
+`SSL_REQUIRED_HOST_SUFFIXES` used to force TLS on Neon and Supabase _including over an explicit opt-out_. Once the default is `require`, that override is the only thing the list can still do, and it is the one thing it should not: a user who typed `sslmode=disable` said something, and a suffix match did not. The list is gone, and the two tests that pinned the old behaviour were rewritten with a note rather than deleted (§7).
+
+The two spellings are validated differently on purpose. The `sslMode` **field** rejects `prefer`; a `sslmode` inside a pasted **URL** is merely hardened up to `require`. A field is a claim about which option the select was on, and the select has no such option; libpq's vocabulary keeps working where libpq's conventions apply.
+
+**Decision 3 — two of the four ADRs are `n/a`, and that is the finding, not an omission.**
+
+ADR-0073 composes a DSN in the frontend, with percent-encoding and IPv6 bracketing "in one place, under test", **because sqlx offers no parts-shaped path**. Web's resolver has had a split-fields branch since 0004 that hands `host` / `port` / `user` / `password` / `database` to `pg.Pool` individually. Sending parts as parts means no DSN is assembled from user input at all, so the failure ADR-0073 exists to handle — a password containing `@`, `/`, `#` or `?` cutting the authority at the wrong character — **cannot occur** rather than being handled correctly. Porting `composeDsn` would have been building the bug in order to solve it.
+
+ADR-0074 governs kinds declared in `connections.toml` that have no in-app form. Web has no `connections.toml`, no keyring, and no kind whose credential cannot be typed. Its transferable half was a real defect: the driver `<select>` restated `postgres` and `null` in the template while `StaticAdapterFactory` owned the list, so adding a driver hid it and offering a missing one produced a 404 banner **on submit** — exactly the "correct rule, wrong presentation" ADR-0074 removes.
+
+**Decision 4 — the driver list is a route, not a shared constant.**
+
+Slice E could have exported the list from a package both sides import, which is how the two copies of `hardenSslMode` are kept honest. That works for a **rule**. It does not work here, because the question is not "what does the vocabulary say" but "what can _this running server_ build". A constant compiled into the browser bundle answers the first and only looks like it answers the second — it goes stale the moment an API deploy adds a driver, which is the drift the slice removes. So the browser asks: `GET /connections/drivers`, nested under the already-unilateral `/connections/*` prefix so the contract stays at a zero diff.
+
+Consequently `Driver` is now `string`, not `"postgres" | "null"`. A union was a closed-world claim the browser is not in a position to make: the API can gain a driver without the web being rebuilt, and the compiler would then reject a value the server had just called valid. And an unloadable list **disables the form** rather than falling back to `["postgres"]` — a fallback puts an option in front of the user that this build may not support, which is the same defect in a smaller font.
+
+**Decision 5 — the password is unrepresentable, not filtered.**
+
+Web was blocked from prefilling an edit form for precisely desktop's reason: nothing remembered the host. `RegisterConnection` destructured the config and dropped it, which 0004 chose deliberately and pinned with a `GET /connections` leak test.
+
+Desktop's answer transfers intact, including the part that makes it safe: a parts type **with no password field and no connectionString field**, so a prefill payload built from it cannot leak one by oversight, because there is nowhere to put one. The split-fields branch cannot read a credential even if handed one. Only the URL branch discards anything, and it discards everything it is not explicitly asked for. A filter over a wider shape was the alternative, and it fails the first time someone adds a field to the record and forgets the filter.
+
+Parts are `undefined`, not `{}`, when there are none — a `null`-driver connection has no address, and an empty object claims there is a connection to describe with nothing in it. Parts also mirror the resolver's precedence exactly, and have to: a prefilled form that resolved the conflict differently would describe a connection nobody made.
+
+**Decision 6 — no keyring, so the rebuild starts from the adapter and answers with an adapter.**
+
+Desktop's `dsn_with_stored_password` (ADR-0080 decision 3) asks the OS keyring and grafts the password on inside the Rust process. Web has no keyring: the only copy of a live connection's credential is inside the adapter serving it. So `AdapterFactory` gained `rebuild(previous, driver, config)`, delegating for postgres to `PostgresAdapter.rebuildWith`, which returns **a successor adapter, never a secret**. The credential moves from one private field to another and no accessor yields it — the same property ADR-0080 states as "it never crosses into the webview in either direction", reached through different machinery because the storage is different.
+
+`UpdateConnection` builds the replacement before closing the old pool, so an edit the factory refuses costs nothing — least of all the connection being edited.
+
+**Decision 7 — a blank password box means keep, and the form says so.**
+
+The API never sends a credential back, so the box starts empty in edit mode. `carryCredential` reads blank and absent identically: keep. The form therefore emits **nothing at all** for an untouched box, which is the honest spelling of "the user said nothing about it", and the hint under the box states the rule rather than leaving the user to discover it. Removing a credential for good remains a delete and a re-add.
+
+**Decision 8 — one component, two modes, pinned by a test that compares them.**
+
+The acceptance criterion is that the edit form opens with the same inputs the add form renders. A second component satisfies the sentence and loses the point: two copies of the same eleven fields drift, and the one that drifts is the one used less. `ConnectionForm.vue` is mounted in both modes — desktop ADR-0080 decision 5 settles the same way — and the first test in `connection-form.test.ts` compares the rendered `data-testid` sets directly, so divergence fails rather than merely looks wrong.
+
+Two differences are deliberate. The **driver is shown, not offered**: repointing a live id at another engine would keep the label while changing what the connection is. The form still emits it (it is displaying it) and the page drops it before calling `update`, because `PATCH` has no such field. And **resetting belongs to the page**, not the form: only the page knows whether the server accepted, and a `:key` bump would have reset the driver select too — a real regression for anyone registering several connections against one engine.
+
+**Consequences.**
+
+- **TLS is on by default and can only be turned off deliberately.** The integration suite now opts out with `?sslmode=disable`, and that is the feature working, not a workaround for it. `.env.example`, `apps/api/README.md` and the curl example in `0004-postgres-adapter.md` carry the same opt-out.
+- `pnpm -r lint` is at zero warnings. `vue/html-self-closing` was set to `void: "any"` because Prettier rewrites `<input>` to `<input />` and the default rule warned about exactly that, so the warning could not be acted on. A rule nobody can satisfy trains people to skip the output.
+- Rung 6's write paths inherit a third constraint, alongside the real row index and the startup-packet timeout: **an edit rebuilds the adapter**, so anything caching a connection's adapter instance across requests must survive a swap.
+- `/connections/*` remains unilateral. `docs/api-contract.md` has a zero diff across the whole rung — three rungs running.
+
+**Reversibility.** Slices B-G are additive. Slice A is not: it changes what an existing configuration does, which is the point, and it is the one part of this rung that would need a deliberate decision to undo rather than a deletion.
+
+**Cross-references.**
+
+- Desktop: ADR-0073, ADR-0074, ADR-0078, ADR-0079, ADR-0080 in `dbboard/docs/decisions.md`; `harden_ssl_mode` and `dsn_with_stored_password` read directly from the Rust adapters.
+- Ticket: [`issues/0027-connection-form.md`](./issues/0027-connection-form.md) — the survey corrections in full, per-slice. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 5.

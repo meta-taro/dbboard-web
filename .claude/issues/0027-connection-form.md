@@ -1,6 +1,6 @@
 # 0027 — The connection form: parts, and a TLS choice that is not a lie
 
-**Status:** open (2026-08-05) · **Opened:** 2026-08-05 · **Rung 5** of
+**Status:** closed (2026-08-05) · **Opened:** 2026-08-05 · **Rung 5** of
 [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -140,29 +140,29 @@ depends on it.
 
 ## Acceptance
 
-- [ ] An unspecified `sslmode` resolves to `require`, on both the
+- [x] An unspecified `sslmode` resolves to `require`, on both the
       `connectionString` and split-fields paths.
-- [ ] An explicit `sslmode=prefer` in a pasted URL is rewritten up to `require`
+- [x] An explicit `sslmode=prefer` in a pasted URL is rewritten up to `require`
       rather than honoured as plaintext, and `prefer` is no longer an
       expressible outcome of the resolver.
-- [ ] An explicit `sslmode=disable` is honoured on every host, including
+- [x] An explicit `sslmode=disable` is honoured on every host, including
       `*.neon.tech` and `*.supabase.co` — a knowing opt-out is not overridden.
-- [ ] `POST /connections` accepts `sslMode` with exactly the two values the
+- [x] `POST /connections` accepts `sslMode` with exactly the two values the
       form can express, and rejects anything else at the DTO.
-- [ ] The form submits `host` / `port` / `user` / `password` / `database` as
+- [x] The form submits `host` / `port` / `user` / `password` / `database` as
       separate fields, with 5432 filled in for a blank port, and no DSN
       composed in the browser.
-- [ ] A pasted provider URL still registers, through the escape hatch.
-- [ ] The TLS select is visible in both entry modes, defaults to Required, and
+- [x] A pasted provider URL still registers, through the escape hatch.
+- [x] The TLS select is visible in both entry modes, defaults to Required, and
       in URL mode reports what the typed URL actually says.
-- [ ] The driver options are the drivers the factory supports; adding one to
+- [x] The driver options are the drivers the factory supports; adding one to
       the factory adds it to the form with no template edit.
-- [ ] `GET /connections` returns the non-secret parts and no password, pinned
+- [x] `GET /connections` returns the non-secret parts and no password, pinned
       by an extended leak test.
-- [ ] `PATCH /connections/:id` with a blank password keeps the stored one; the
+- [x] `PATCH /connections/:id` with a blank password keeps the stored one; the
       edit form opens with the same inputs the add form renders.
-- [ ] `docs/api-contract.md` has a zero diff across the whole rung.
-- [ ] 11-locale parity holds for every key added.
+- [x] `docs/api-contract.md` has a zero diff across the whole rung.
+- [x] 11-locale parity holds for every key added.
 
 ## Notes
 
@@ -354,4 +354,52 @@ blank rule, but it was not a genuine RED at the time it was authored.
 
 ## Log
 
-_(open)_
+**2026-08-05 — opened, surveyed, and closed.** Seven slices, eight commits.
+
+| Slice | Commit    | What landed                                                              |
+| ----- | --------- | ------------------------------------------------------------------------ |
+| A     | `7791aed` | TLS hardening in `domain/ssl-mode.ts`; `prefer` is no longer an outcome  |
+| B     | `a0c129a` | `sslMode` as a registration field, rejecting `prefer` at the DTO         |
+| C     | `bc9f502` | The parts form and the URL escape hatch, in 11 locales                   |
+| D     | `7a5e5c7` | The TLS select, visible in both entry modes                              |
+| E     | `3f898d2` | `GET /connections/drivers`; the options come from the factory            |
+| F     | `da5fd51` | Non-secret parts on the record and in `GET /connections`                 |
+| G1    | `2b3e86a` | `PATCH /connections/:id` and `carryCredential`                           |
+| G2    | `c6dad1f` | `ConnectionForm.vue` mounted in both modes; `connections.form.*` locales |
+
+**The rung's finding is the one that reordered it.** The ledger recorded a
+missing TLS control. The code had something worse: a default that resolved to
+plaintext, on a client whose two named providers are hosted Postgres. Mirroring
+ADR-0078's decision 3 first — `require` emits no query parameter, because the
+adapter hardens — would have shipped a select reading **Required** over a
+plaintext connection. Slice A therefore landed before any input rendered. Same
+shape as rung 4's finding one layer down: a ledger row can name the right
+destination and be silent about what has to already be true for it to mean
+anything.
+
+**Two of the five mirrored ADRs were not mirrored, and that is the correct
+outcome.** ADR-0073 composes a DSN in the frontend because sqlx offers no
+parts-shaped path; web's resolver has had one since 0004, so parts are sent as
+parts and the bug ADR-0073 handles cannot occur. ADR-0074 governs kinds
+declared in `connections.toml` with no in-app form; web has no such file and no
+such kind. Its transferable half — never offer what the server cannot build —
+became slice E, which is a route rather than a shared constant, because the
+question is what _this running server_ can build.
+
+**Web reached ADR-0080's safety property through different machinery.**
+Desktop's `dsn_with_stored_password` reads the OS keyring. Web has no keyring;
+the only copy of a live credential is inside the adapter serving it. So
+`AdapterFactory.rebuild` delegates to `PostgresAdapter.rebuildWith`, which
+answers with a successor adapter and never with a secret. The credential moves
+from one private field to another and no accessor yields it — "it never crosses
+into the webview in either direction", arrived at from the other end.
+
+**Verified at closeout.** `pnpm format:check`, `pnpm -r lint` (zero warnings),
+`pnpm -r typecheck`, `pnpm -r test` (57 API files, 78 web files) all green with
+Docker up, so `postgres-integration.spec.ts` really ran. `docs/api-contract.md`
+is byte-identical to its state at the start of the rung — `git diff
+86b324f..HEAD -- docs/api-contract.md` is empty — which is the posture rungs 3
+and 4 also held: `/connections/*` is unilateral and owes no handoff.
+
+**One chain-order slip, already recorded above** (`update-connection.dto.ts`
+written before its spec). Left in the notes rather than tidied out of them.

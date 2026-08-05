@@ -65,6 +65,7 @@
       "columns": "Échec du chargement des colonnes"
     },
     "insert-table": "Insérer l'identifiant de la table",
+    "browse-table": "Afficher les {n} premières lignes",
     "insert-column": "Insérer l'identifiant de la colonne"
   },
   "sidebar": {

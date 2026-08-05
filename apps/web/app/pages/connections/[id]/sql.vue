@@ -9,6 +9,7 @@ import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import SidebarSplitter from "../../../components/SidebarSplitter.vue";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
+import type { TableInfo } from "../../../composables/useSchemaBrowser";
 import { useSidebarWidth } from "../../../composables/useSidebarWidth";
 import { fromCategorised } from "../../../utils/display-error";
 
@@ -51,6 +52,16 @@ async function onRun() {
   // and-forget here — the editor surface stays responsive even if the
   // history fetch lags. Failures are also persisted (interceptor logs
   // status="error"), so refresh fires unconditionally.
+  await historyRef.value?.refresh();
+}
+
+async function onBrowse(payload: { sql: string; table: TableInfo }) {
+  // The statement lands in the editor before it runs. Nothing executes here
+  // that the user cannot see and re-run, and the source table travels with
+  // the run rather than being inferred from the text afterwards — that
+  // provenance is what decides whether the grid is editable (ticket 0028).
+  sqlInput.value = payload.sql;
+  await run(payload.sql, payload.table);
   await historyRef.value?.refresh();
 }
 
@@ -163,7 +174,11 @@ function onEditorKeydown(event: KeyboardEvent) {
       />
 
       <div class="sidebar-column">
-        <SchemaBrowser :connection-id="connectionId" @insert="onInsertIdentifier" />
+        <SchemaBrowser
+          :connection-id="connectionId"
+          @insert="onInsertIdentifier"
+          @browse="onBrowse"
+        />
         <HistorySidebar ref="historyRef" :connection-id="connectionId" @replay="onReplay" />
       </div>
     </div>

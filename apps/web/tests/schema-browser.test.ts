@@ -95,6 +95,59 @@ describe("SchemaBrowser", () => {
     wrapper.unmount();
   });
 
+  // Browse is the schema browser's second verb (ticket 0028 slice A). Insert
+  // hands the user a name to write SQL around; browse hands them a whole
+  // statement and the provenance the cell editor keys editability on.
+  it("emits browse with a bounded SELECT * and the source table", async () => {
+    mockFetch.mockResolvedValueOnce({
+      tables: [{ schema: "public", name: "users" }],
+    });
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='schema-browse-table']").trigger("click");
+    const emitted = wrapper.emitted("browse");
+    expect(emitted).toBeDefined();
+    expect(emitted![0]).toEqual([
+      {
+        sql: 'SELECT * FROM "public"."users" LIMIT 100;',
+        table: { schema: "public", name: "users" },
+      },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("carries the table through browse unqualified when the schema is null", async () => {
+    mockFetch.mockResolvedValueOnce({
+      tables: [{ schema: null, name: "kv" }],
+    });
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='schema-browse-table']").trigger("click");
+    const emitted = wrapper.emitted("browse");
+    expect(emitted![0]).toEqual([
+      { sql: 'SELECT * FROM "kv" LIMIT 100;', table: { schema: null, name: "kv" } },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("does not expand the table when browse is clicked", async () => {
+    // The button sits inside the <summary>, so a bare click would toggle the
+    // <details> and fire an unwanted column probe on top of the browse.
+    mockFetch.mockResolvedValueOnce({
+      tables: [{ schema: "public", name: "users" }],
+    });
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    await wrapper.find("[data-testid='schema-browse-table']").trigger("click");
+    await flushPromises();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
   it("lazy-loads columns on first table expand and caches the result on the second expand", async () => {
     mockFetch.mockResolvedValueOnce({
       tables: [{ schema: "public", name: "users" }],

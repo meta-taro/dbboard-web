@@ -201,4 +201,65 @@ describe("useQueryExecution", () => {
     expect(api.lastError.value?.category).toBe("query");
     wrapper.unmount();
   });
+  // Provenance (ticket 0028 slice A). Editability is decided by where a
+  // grid came from, never by reading its SQL — so the source table travels
+  // with the result, in the one place that owns the result.
+  describe("sourceTable", () => {
+    it("is null before anything has run", async () => {
+      const { Component, holder } = makeHarness("abc");
+      const wrapper = mount(Component);
+      expect(holder.api!.sourceTable.value).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("records the table a browse names", async () => {
+      mockFetch.mockResolvedValueOnce(okResult);
+      const { Component, holder } = makeHarness("abc");
+      const wrapper = mount(Component);
+      await holder.api!.run('SELECT * FROM "public"."users" LIMIT 100;', {
+        schema: "public",
+        name: "users",
+      });
+      await flushPromises();
+      expect(holder.api!.sourceTable.value).toEqual({ schema: "public", name: "users" });
+      wrapper.unmount();
+    });
+
+    it("clears when a run names no source", async () => {
+      // The typed-SQL path. A `SELECT` cannot be trusted to name the table
+      // it reads, so the previous browse's provenance must not survive it —
+      // otherwise the next grid would claim to be an editable view of a
+      // table it may not have touched.
+      mockFetch.mockResolvedValueOnce(okResult);
+      mockFetch.mockResolvedValueOnce(okResult);
+      const { Component, holder } = makeHarness("abc");
+      const wrapper = mount(Component);
+      await holder.api!.run("SELECT 1;", { schema: null, name: "kv" });
+      await flushPromises();
+      expect(holder.api!.sourceTable.value).not.toBeNull();
+
+      await holder.api!.run("SELECT 2;");
+      await flushPromises();
+      expect(holder.api!.sourceTable.value).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("stays in lockstep with a result a failed run left standing", async () => {
+      // `result` is deliberately left untouched on failure so the user keeps
+      // seeing the last good payload. Provenance describes that payload, so
+      // clearing it here would mislabel a grid that is still on screen.
+      mockFetch.mockResolvedValueOnce(okResult);
+      mockFetch.mockRejectedValueOnce(new Error("boom"));
+      const { Component, holder } = makeHarness("abc");
+      const wrapper = mount(Component);
+      await holder.api!.run("SELECT 1;", { schema: null, name: "kv" });
+      await flushPromises();
+
+      await holder.api!.run("SELECT bad;");
+      await flushPromises();
+      expect(holder.api!.result.value).toEqual(okResult);
+      expect(holder.api!.sourceTable.value).toEqual({ schema: null, name: "kv" });
+      wrapper.unmount();
+    });
+  });
 });

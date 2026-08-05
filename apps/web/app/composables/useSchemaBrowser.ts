@@ -17,6 +17,7 @@
  */
 import { onMounted, readonly, ref } from "vue";
 import { useRuntimeConfig } from "#imports";
+import { qualifiedName } from "../utils/sql-build";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
@@ -71,17 +72,8 @@ function resolveApiBase(explicit: string | undefined): string {
   return cfg.public.apiBaseUrl ?? "";
 }
 
-// SQL standard identifier quoting: wrap in "..." and double any embedded ".
-// Same rule the desktop client applies (see ADR-0011) and what Postgres
-// accepts for arbitrary identifiers.
-export function quoteIdent(raw: string): string {
-  return `"${raw.replace(/"/g, '""')}"`;
-}
-
 function buildLimitZeroSql(schema: string | null, table: string): string {
-  const qualified =
-    schema === null ? quoteIdent(table) : `${quoteIdent(schema)}.${quoteIdent(table)}`;
-  return `SELECT * FROM ${qualified} LIMIT 0`;
+  return `SELECT * FROM ${qualifiedName({ schema, name: table })} LIMIT 0`;
 }
 
 export function useSchemaBrowser(connectionId: string, options?: UseSchemaBrowserOptions) {

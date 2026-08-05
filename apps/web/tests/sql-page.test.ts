@@ -73,7 +73,7 @@ vi.mock("../app/components/SchemaBrowser.vue", () => ({
   default: defineComponent({
     name: "SchemaBrowser",
     props: ["connectionId"],
-    emits: ["insert"],
+    emits: ["insert", "browse"],
     setup(props) {
       mocks.schemaConstructed(props.connectionId);
       return () => h("aside", { "data-testid": "schema-browser" });
@@ -517,6 +517,71 @@ describe("SqlPage", () => {
     expect(textarea.element.value).toBe('SELECT * FROM "public"."users"');
     expect(textarea.element.selectionStart).toBe(textarea.element.value.length);
     expect(textarea.element.selectionEnd).toBe(textarea.element.value.length);
+    wrapper.unmount();
+  });
+  // Browse (ticket 0028 slice A). The generated statement is put in the
+  // editor before it runs, so nothing executes that the user cannot see and
+  // re-run — and the source table rides along as the second argument,
+  // because that provenance is what will decide editability.
+  it("loads a browsed statement into the editor and runs it with its source table", async () => {
+    mocks.run.mockResolvedValueOnce(undefined);
+
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    const schema = wrapper.findComponent({ name: "SchemaBrowser" });
+    schema.vm.$emit("browse", {
+      sql: 'SELECT * FROM "public"."users" LIMIT 100;',
+      table: { schema: "public", name: "users" },
+    });
+    await flushPromises();
+
+    const input = wrapper.find<HTMLTextAreaElement>("[data-testid='sql-input']").element;
+    expect(input.value).toBe('SELECT * FROM "public"."users" LIMIT 100;');
+    expect(mocks.run).toHaveBeenCalledTimes(1);
+    expect(mocks.run).toHaveBeenCalledWith('SELECT * FROM "public"."users" LIMIT 100;', {
+      schema: "public",
+      name: "users",
+    });
+    wrapper.unmount();
+  });
+
+  it("refreshes history after a browse, which is a run like any other", async () => {
+    mocks.run.mockResolvedValueOnce(undefined);
+
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    wrapper.findComponent({ name: "SchemaBrowser" }).vm.$emit("browse", {
+      sql: 'SELECT * FROM "t" LIMIT 100;',
+      table: { schema: null, name: "t" },
+    });
+    await flushPromises();
+
+    expect(mocks.sidebarRefresh).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("passes no source table when the user presses Run themselves", async () => {
+    // The typed-SQL path must stay provenance-free even right after a
+    // browse: whatever is in the box now is the user's text, and a `SELECT`
+    // cannot be trusted to name the table it reads.
+    mocks.run.mockResolvedValue(undefined);
+
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    wrapper.findComponent({ name: "SchemaBrowser" }).vm.$emit("browse", {
+      sql: 'SELECT * FROM "t" LIMIT 100;',
+      table: { schema: null, name: "t" },
+    });
+    await flushPromises();
+
+    await wrapper.find("[data-testid='sql-input']").setValue('SELECT * FROM "t" JOIN u USING (id)');
+    await wrapper.find("[data-testid='run-button']").trigger("click");
+    await flushPromises();
+
+    expect(mocks.run).toHaveBeenLastCalledWith('SELECT * FROM "t" JOIN u USING (id)');
     wrapper.unmount();
   });
 });

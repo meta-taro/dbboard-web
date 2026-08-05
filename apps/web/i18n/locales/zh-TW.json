@@ -65,6 +65,7 @@
       "columns": "載入欄位失敗"
     },
     "insert-table": "插入資料表識別碼",
+    "browse-table": "瀏覽前 {n} 列",
     "insert-column": "插入欄位識別碼"
   },
   "sidebar": {

@@ -65,6 +65,7 @@
       "columns": "カラムの読み込みに失敗しました"
     },
     "insert-table": "テーブル識別子を挿入",
+    "browse-table": "先頭 {n} 行を表示",
     "insert-column": "カラム識別子を挿入"
   },
   "sidebar": {

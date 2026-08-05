@@ -65,6 +65,7 @@
       "columns": "Failed to load columns"
     },
     "insert-table": "Insert table identifier",
+    "browse-table": "Browse first {n} rows",
     "insert-column": "Insert column identifier"
   },
   "sidebar": {

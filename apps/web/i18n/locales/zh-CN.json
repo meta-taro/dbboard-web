@@ -65,6 +65,7 @@
       "columns": "加载列失败"
     },
     "insert-table": "插入表标识符",
+    "browse-table": "浏览前 {n} 行",
     "insert-column": "插入列标识符"
   },
   "sidebar": {

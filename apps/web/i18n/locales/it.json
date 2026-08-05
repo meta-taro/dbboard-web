@@ -65,6 +65,7 @@
       "columns": "Impossibile caricare le colonne"
     },
     "insert-table": "Inserisci identificatore di tabella",
+    "browse-table": "Mostra le prime {n} righe",
     "insert-column": "Inserisci identificatore di colonna"
   },
   "sidebar": {

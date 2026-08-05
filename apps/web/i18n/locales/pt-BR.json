@@ -65,6 +65,7 @@
       "columns": "Falha ao carregar as colunas"
     },
     "insert-table": "Inserir identificador da tabela",
+    "browse-table": "Ver as primeiras {n} linhas",
     "insert-column": "Inserir identificador da coluna"
   },
   "sidebar": {

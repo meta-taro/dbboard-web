@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import ErrorBanner from "./ErrorBanner.vue";
-import {
-  quoteIdent,
-  useSchemaBrowser,
-  type ColumnInfo,
-  type TableInfo,
-} from "../composables/useSchemaBrowser";
+import { useSchemaBrowser, type ColumnInfo, type TableInfo } from "../composables/useSchemaBrowser";
 import { prefixed } from "../utils/display-error";
+import { BROWSE_ROWS, qualifiedName, quoteIdent, selectTopN } from "../utils/sql-build";
 
 interface Props {
   connectionId: string;
@@ -15,8 +11,13 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+// Two verbs, deliberately different in kind. `insert` hands the editor a
+// name to write SQL around; `browse` hands it a whole statement *plus* the
+// table it came from, because that provenance — not the SQL text — is what
+// decides whether the resulting grid is editable (ticket 0028).
 const emit = defineEmits<{
   (event: "insert", text: string): void;
+  (event: "browse", payload: { sql: string; table: TableInfo }): void;
 }>();
 
 const { t } = useI18n();
@@ -82,14 +83,12 @@ async function onToggleTable(table: TableInfo) {
   }
 }
 
-function tableInsertText(table: TableInfo): string {
-  return table.schema === null
-    ? quoteIdent(table.name)
-    : `${quoteIdent(table.schema)}.${quoteIdent(table.name)}`;
+function onInsertTable(table: TableInfo) {
+  emit("insert", qualifiedName(table));
 }
 
-function onInsertTable(table: TableInfo) {
-  emit("insert", tableInsertText(table));
+function onBrowseTable(table: TableInfo) {
+  emit("browse", { sql: selectTopN(table, BROWSE_ROWS), table });
 }
 
 function onInsertColumn(column: ColumnInfo) {
@@ -156,6 +155,15 @@ function defaultOf(column: ColumnInfo): string | null {
               <details data-testid="schema-table" class="table" @toggle="onToggleTable(table)">
                 <summary class="table-summary">
                   <span class="table-name">{{ table.name }}</span>
+                  <button
+                    type="button"
+                    data-testid="schema-browse-table"
+                    class="insert-button"
+                    :title="t('schema.browse-table', { n: BROWSE_ROWS })"
+                    @click.stop.prevent="onBrowseTable(table)"
+                  >
+                    &#9654;
+                  </button>
                   <button
                     type="button"
                     data-testid="schema-insert-table"

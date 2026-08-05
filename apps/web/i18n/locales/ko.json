@@ -65,6 +65,7 @@
       "columns": "컬럼을 불러오지 못했습니다"
     },
     "insert-table": "테이블 식별자 삽입",
+    "browse-table": "처음 {n}행 보기",
     "insert-column": "컬럼 식별자 삽입"
   },
   "sidebar": {

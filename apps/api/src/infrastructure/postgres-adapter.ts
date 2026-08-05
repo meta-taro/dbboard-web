@@ -6,8 +6,10 @@ import {
   NULL_CAPABILITIES,
   type Capabilities,
   type Column,
+  type ColumnInfo,
   type QueryResult,
   type TableInfo,
+  type TableSchema,
 } from "../domain/values";
 import {
   resolvePostgresPoolOptions,
@@ -21,7 +23,13 @@ import { pgOidToName, pgOidToValue } from "./postgres-type-mapping";
 // no native connection involved. Real `pg.Pool` satisfies this
 // structurally.
 export interface PgQueryRunner {
-  query(config: { text: string; rowMode?: "array" }): Promise<{
+  // `values` binds parameters, which moves pg onto the extended protocol.
+  // That is safe for the result decoding: pg requests text results unless
+  // `binary: true` is set (pg-protocol's `bind` writes the result-format
+  // code from that flag, and pg/lib/query.js leaves it unset), so
+  // `assertTextWireFormat` is not in conflict with binding. Only
+  // introspection uses it — user SQL still goes out unparameterised.
+  query(config: { text: string; rowMode?: "array"; values?: unknown[] }): Promise<{
     rows: unknown[];
     // `format` is `'text' | 'binary'` on the real wire path
     // (pg-protocol parser.js:216 — `int16() === 0 ? 'text' : 'binary'`),
@@ -40,6 +48,39 @@ const LIST_TABLES_SQL = `
   FROM pg_catalog.pg_tables
   WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
   ORDER BY schemaname, tablename
+`;
+
+// Columns of one table in ordinal order (desktop ADR-0028). Every text
+// column is cast to TEXT so the information_schema domain types
+// (sql_identifier, character_data) come back as plain strings rather than
+// as their domain OIDs, which `pgOidToName` would not recognise. The
+// schema and table names are bound, never interpolated: they arrive from
+// the client and reach a catalog view that has no quoting of its own.
+const DESCRIBE_COLUMNS_SQL = `
+  SELECT column_name::TEXT AS column_name,
+         data_type::TEXT AS data_type,
+         is_nullable::TEXT AS is_nullable,
+         column_default::TEXT AS column_default,
+         ordinal_position::INT4 AS ordinal_position
+  FROM information_schema.columns
+  WHERE table_schema = $1 AND table_name = $2
+  ORDER BY ordinal_position
+`;
+
+// Primary-key column names of one table in key order (desktop ADR-0028).
+// The join carries table_schema/table_name as well as the constraint name
+// because a constraint name is unique only within its schema.
+const DESCRIBE_PK_SQL = `
+  SELECT kcu.column_name::TEXT AS column_name
+  FROM information_schema.table_constraints tc
+  JOIN information_schema.key_column_usage kcu
+    ON kcu.constraint_name = tc.constraint_name
+   AND kcu.constraint_schema = tc.constraint_schema
+   AND kcu.table_schema = tc.table_schema
+   AND kcu.table_name = tc.table_name
+  WHERE tc.constraint_type = 'PRIMARY KEY'
+    AND tc.table_schema = $1 AND tc.table_name = $2
+  ORDER BY kcu.ordinal_position
 `;
 
 // Node-style errno codes for network-level failures. pg surfaces these
@@ -83,6 +124,43 @@ function assertTextWireFormat(fields: { name: string; format?: string }[]): void
   }
 }
 
+// One row of DESCRIBE_COLUMNS_SQL. Every field is text because the pool's
+// `getTypeParser` override returns raw strings for every OID — including
+// the INT4 ordinal, which is why it is parsed rather than used directly.
+interface DescribeColumnRow {
+  column_name: string;
+  data_type: string;
+  is_nullable: string | null;
+  column_default: string | null;
+  ordinal_position: string | number | null;
+}
+
+// `ordinal_position` is 1-based by the SQL standard. Anything else means a
+// catalog we do not understand, and sorting the UI by a silent NaN is
+// worse than refusing (desktop ADR-0028 Decision 3).
+function parseOrdinal(raw: unknown, columnName: string): number {
+  const ordinal = Number(raw);
+  if (!Number.isInteger(ordinal) || ordinal < 1) {
+    throw new QueryError(
+      `non-positive ordinal_position ${JSON.stringify(raw)} for column ${columnName}`,
+    );
+  }
+  return ordinal;
+}
+
+function columnFromRow(row: DescribeColumnRow, primaryKey: string[]): ColumnInfo {
+  return {
+    name: row.column_name,
+    declared_type: row.data_type,
+    // The SQL-standard spelling is "YES"/"NO"; compared case-insensitively
+    // because not every engine agrees on the case.
+    nullable: (row.is_nullable ?? "").toUpperCase() === "YES",
+    primary_key: primaryKey.includes(row.column_name),
+    ordinal: parseOrdinal(row.ordinal_position, row.column_name),
+    default_value: row.column_default,
+  };
+}
+
 function isConnectionLevelError(e: unknown): boolean {
   if (typeof e !== "object" || e === null) return false;
   const code = (e as { code?: unknown }).code;
@@ -106,7 +184,9 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   getCapabilities(): Capabilities {
-    return NULL_CAPABILITIES;
+    // Set alongside the method that implements it, per the port's contract:
+    // the flag and `describeTable` travel together.
+    return { ...NULL_CAPABILITIES, has_describe_table: true };
   }
 
   async listTables(): Promise<TableInfo[]> {
@@ -136,6 +216,50 @@ export class PostgresAdapter implements DatabaseAdapter {
         }),
       );
       return { columns, rows, rows_affected: result.rowCount ?? 0 };
+    } catch (e) {
+      throw this.translateError(e);
+    }
+  }
+
+  async describeTable(table: TableInfo): Promise<TableSchema> {
+    // An unqualified TableInfo means `public` — where unqualified DDL
+    // lands on Postgres. Resolving it here rather than in SQL keeps the
+    // bound value visible to the caller and to the tests.
+    const schema = table.schema ?? "public";
+    try {
+      const columnResult = await this.pool.query({
+        text: DESCRIBE_COLUMNS_SQL,
+        values: [schema, table.name],
+      });
+      // Binding parameters moves this onto the extended protocol, where a
+      // binary result format is at least expressible. The catalog values
+      // are decoded as text like everything else, so hold the same
+      // invariant here rather than assume the protocol switch is benign.
+      assertTextWireFormat(columnResult.fields);
+      const columnRows = columnResult.rows as DescribeColumnRow[];
+      // information_schema answers an unknown table with an empty set
+      // rather than an error. A table with no columns cannot be told apart
+      // from a missing one, so report the missing one.
+      if (columnRows.length === 0) {
+        throw new QueryError(`relation "${schema}.${table.name}" does not exist`);
+      }
+
+      const pkResult = await this.pool.query({
+        text: DESCRIBE_PK_SQL,
+        values: [schema, table.name],
+      });
+      assertTextWireFormat(pkResult.fields);
+      // Key order, not column order — it differs for composite keys and is
+      // unrecoverable once lost.
+      const primary_key = (pkResult.rows as Array<{ column_name: string }>).map(
+        (r) => r.column_name,
+      );
+
+      return {
+        table,
+        columns: columnRows.map((row) => columnFromRow(row, primary_key)),
+        primary_key,
+      };
     } catch (e) {
       throw this.translateError(e);
     }

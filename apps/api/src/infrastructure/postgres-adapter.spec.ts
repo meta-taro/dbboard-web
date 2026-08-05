@@ -23,8 +23,13 @@ describe("PostgresAdapter", () => {
     expect(new PostgresAdapter(stubPool()).getId()).toBe("postgres");
   });
 
-  it("advertises every capability as false (Phase 2 baseline, per 0007)", () => {
-    expect(new PostgresAdapter(stubPool()).getCapabilities()).toEqual(NULL_CAPABILITIES);
+  // Every other flag stays false — a flag is set by the rung that gives it
+  // something to promise, and only has_describe_table has one (0026).
+  it("advertises has_describe_table and nothing else", () => {
+    expect(new PostgresAdapter(stubPool()).getCapabilities()).toEqual({
+      ...NULL_CAPABILITIES,
+      has_describe_table: true,
+    });
   });
 
   describe("listTables", () => {
@@ -229,6 +234,159 @@ describe("PostgresAdapter", () => {
       // all: the emit happens on pg's socket callback, outside any
       // try/catch of ours.
       expect(() => listener?.(new Error("terminating connection"))).not.toThrow();
+    });
+  });
+
+  describe("describeTable (desktop ADR-0028)", () => {
+    // Every value arrives as a string: the pool's `getTypeParser` override
+    // returns raw text for every OID, so `ordinal_position` is "1", not 1.
+    const columnRow = (
+      name: string,
+      ordinal: string,
+      overrides: Record<string, string | null> = {},
+    ) => ({
+      column_name: name,
+      data_type: "integer",
+      is_nullable: "NO",
+      column_default: null,
+      ordinal_position: ordinal,
+      ...overrides,
+    });
+
+    function describingPool(columns: unknown[], pk: unknown[]) {
+      const query = vi.fn().mockImplementation((cfg: { text: string }) =>
+        Promise.resolve({
+          rows: /table_constraints/.test(cfg.text) ? pk : columns,
+          fields: [],
+          rowCount: 0,
+        }),
+      );
+      return { query, adapter: new PostgresAdapter(stubPool({ query })) };
+    }
+
+    it("binds schema and table rather than interpolating them", async () => {
+      const { query, adapter } = describingPool([columnRow("id", "1")], []);
+      await adapter.describeTable({ schema: "sales", name: "orders" });
+
+      for (const call of query.mock.calls) {
+        const cfg = call[0] as { text: string; values?: unknown[] };
+        expect(cfg.values).toEqual(["sales", "orders"]);
+        // The names must not reach the SQL text — that is the whole point
+        // of binding them.
+        expect(cfg.text).not.toMatch(/orders/);
+      }
+    });
+
+    it("assembles columns in ordinal order with per-column primary-key flags", async () => {
+      const { adapter } = describingPool(
+        [
+          columnRow("id", "1", {
+            column_default: "nextval('orders_id_seq'::regclass)",
+          }),
+          columnRow("note", "2", {
+            data_type: "text",
+            is_nullable: "YES",
+          }),
+        ],
+        [{ column_name: "id" }],
+      );
+
+      await expect(adapter.describeTable({ schema: "sales", name: "orders" })).resolves.toEqual({
+        table: { schema: "sales", name: "orders" },
+        columns: [
+          {
+            name: "id",
+            declared_type: "integer",
+            nullable: false,
+            primary_key: true,
+            ordinal: 1,
+            default_value: "nextval('orders_id_seq'::regclass)",
+          },
+          {
+            name: "note",
+            declared_type: "text",
+            nullable: true,
+            primary_key: false,
+            ordinal: 2,
+            default_value: null,
+          },
+        ],
+        primary_key: ["id"],
+      });
+    });
+
+    it("keeps composite primary keys in key order, not column order", async () => {
+      const { adapter } = describingPool(
+        [columnRow("a", "1"), columnRow("b", "2")],
+        [{ column_name: "b" }, { column_name: "a" }],
+      );
+      const out = await adapter.describeTable({ schema: "public", name: "pair" });
+      expect(out.primary_key).toEqual(["b", "a"]);
+      expect(out.columns.map((c) => c.primary_key)).toEqual([true, true]);
+    });
+
+    it("defaults an unqualified table to the public schema", async () => {
+      const { query, adapter } = describingPool([columnRow("id", "1")], []);
+      await adapter.describeTable({ schema: null, name: "orders" });
+      expect((query.mock.calls[0]?.[0] as { values: unknown[] }).values).toEqual([
+        "public",
+        "orders",
+      ]);
+    });
+
+    // information_schema answers an unknown table with an empty set, not an
+    // error. Reporting a table with no columns would be indistinguishable
+    // from a real one, so it becomes a 400 like the desktop's.
+    it("rejects a table with no columns as a missing relation", async () => {
+      const { adapter } = describingPool([], []);
+      await expect(adapter.describeTable({ schema: "sales", name: "ghost" })).rejects.toThrow(
+        /relation "sales\.ghost" does not exist/,
+      );
+      await expect(
+        adapter.describeTable({ schema: "sales", name: "ghost" }),
+      ).rejects.toBeInstanceOf(QueryError);
+    });
+
+    it("compares is_nullable case-insensitively", async () => {
+      const { adapter } = describingPool([columnRow("id", "1", { is_nullable: "yes" })], []);
+      const out = await adapter.describeTable({ schema: "public", name: "t" });
+      expect(out.columns[0]?.nullable).toBe(true);
+    });
+
+    // ordinal_position is 1-based by the SQL standard. Anything else means
+    // a catalog we do not understand; ordering the UI by a silent NaN would
+    // be worse than failing.
+    it("rejects a non-positive or unparseable ordinal", async () => {
+      for (const bad of ["0", "-1", "", "many"]) {
+        const { adapter } = describingPool([columnRow("id", bad)], []);
+        await expect(adapter.describeTable({ schema: "public", name: "t" })).rejects.toThrow(
+          /ordinal_position/,
+        );
+      }
+    });
+
+    // Binding parameters is what makes this path different from
+    // executeQuery — the guard has to hold on the extended protocol too.
+    it("still refuses a binary reply on the bound path (ADR-0070)", async () => {
+      const query = vi.fn().mockResolvedValue({
+        rows: [],
+        fields: [{ name: "column_name", dataTypeID: 25, format: "binary" }],
+        rowCount: 0,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.describeTable({ schema: "public", name: "t" })).rejects.toThrow(
+        /binary wire format/,
+      );
+    });
+
+    it("routes a dropped socket to ConnectionError, like the other paths", async () => {
+      const query = vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.describeTable({ schema: "public", name: "t" })).rejects.toBeInstanceOf(
+        ConnectionError,
+      );
     });
   });
 

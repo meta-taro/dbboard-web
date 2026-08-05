@@ -325,4 +325,96 @@ describe("Postgres adapter integration (testcontainers)", () => {
       await adapter.close();
     }
   }, 30_000);
+
+  // ---- ticket 0026: describeTable against a real catalog -------------
+
+  // Stubs can prove the assembly logic; only a live catalog can prove the
+  // query shape. Three things here are invisible to a stub: the
+  // information_schema domain types decode as strings because of the
+  // ::TEXT casts, `ordinal_position` arrives as a string under the
+  // identity type parser, and binding $1/$2 does not flip the result wire
+  // format to binary (which would trip the ADR-0070 guard).
+  describe("describeTable (ADR-0028)", () => {
+    async function withAdapter<T>(fn: (a: ReturnType<typeof createPostgresAdapter>) => Promise<T>) {
+      const host = container?.getHost();
+      const port = container?.getMappedPort(5432);
+      const adapter = createPostgresAdapter({
+        connectionString: `postgresql://test:test@${host}:${port}/test`,
+      });
+      try {
+        return await fn(adapter);
+      } finally {
+        await adapter.close();
+      }
+    }
+
+    it("reports nullability, defaults and a composite key in key order", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const setup = await runQuery(
+        "CREATE TABLE IF NOT EXISTS describe_fixture (" +
+          "  b int NOT NULL," +
+          "  a text NOT NULL," +
+          "  note varchar(20) DEFAULT 'hi'," +
+          "  PRIMARY KEY (a, b))",
+      );
+      expect(setup.status).toBe(200);
+
+      const schema = await withAdapter((a) =>
+        a.describeTable({ schema: "public", name: "describe_fixture" }),
+      );
+
+      expect(schema.table).toEqual({ schema: "public", name: "describe_fixture" });
+      // Declaration order, not key order — `b` is declared first.
+      expect(schema.columns.map((c) => [c.name, c.ordinal])).toEqual([
+        ["b", 1],
+        ["a", 2],
+        ["note", 3],
+      ]);
+      // Key order, which differs from declaration order here. That is the
+      // whole reason `primary_key` is a list and not a derived filter.
+      expect(schema.primary_key).toEqual(["a", "b"]);
+      expect(schema.columns.map((c) => c.primary_key)).toEqual([true, true, false]);
+      expect(schema.columns.map((c) => c.nullable)).toEqual([false, false, true]);
+      expect(schema.columns.map((c) => c.declared_type)).toEqual([
+        "integer",
+        "text",
+        "character varying",
+      ]);
+      // Raw DDL text, unparsed.
+      expect(schema.columns[2]?.default_value).toBe("'hi'::character varying");
+    });
+
+    it("reports an empty primary_key for a keyless table", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const setup = await runQuery("CREATE TABLE IF NOT EXISTS describe_keyless (x int)");
+      expect(setup.status).toBe(200);
+
+      const schema = await withAdapter((a) =>
+        a.describeTable({ schema: null, name: "describe_keyless" }),
+      );
+      expect(schema.primary_key).toEqual([]);
+      expect(schema.columns[0]?.primary_key).toBe(false);
+    });
+
+    // A quoted identifier keeps its case in the catalog, so the bound
+    // value must match exactly — an interpolated, lower-cased, or
+    // unquoted lookup would silently miss.
+    it("matches a case-sensitive identifier and one containing a quote", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      const setup = await runQuery('CREATE TABLE IF NOT EXISTS "Mixed""Case" (id int)');
+      expect(setup.status).toBe(200);
+
+      const schema = await withAdapter((a) =>
+        a.describeTable({ schema: null, name: 'Mixed"Case' }),
+      );
+      expect(schema.columns.map((c) => c.name)).toEqual(["id"]);
+    });
+
+    it("rejects an unknown table as a missing relation", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await expect(
+        withAdapter((a) => a.describeTable({ schema: "public", name: "no_such_table" })),
+      ).rejects.toThrow(/relation "public\.no_such_table" does not exist/);
+    });
+  });
 });

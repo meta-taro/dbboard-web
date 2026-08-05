@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 let listRef: Ref<Array<{ id: string; label: string; driver: string }>>;
+let driversRef: Ref<string[]>;
+let driversErrorRef: Ref<{ category: string; message: string; i18nKey: string } | null>;
 let stateRef: Ref<"idle" | "loading" | "error">;
 let lastErrorRef: Ref<{ category: string; message: string; i18nKey: string } | null>;
 
@@ -24,6 +26,16 @@ vi.mock("../app/composables/useConnections", () => ({
     register: mocks.register,
     remove: mocks.remove,
     refresh: mocks.refresh,
+  }),
+}));
+
+// The driver list is server-owned (0027 slice E), so the page reads it from
+// its own composable rather than restating it in the template. Mocked here
+// for the same reason useConnections is: these are page tests, not HTTP.
+vi.mock("../app/composables/useDrivers", () => ({
+  useDrivers: () => ({
+    drivers: driversRef,
+    lastError: driversErrorRef,
   }),
 }));
 
@@ -46,6 +58,12 @@ const mountOptions = {
 describe("ConnectionsPage", () => {
   beforeEach(() => {
     listRef = ref([]);
+    driversRef = ref<string[]>(["postgres", "null"]);
+    driversErrorRef = ref<{
+      category: string;
+      message: string;
+      i18nKey: string;
+    } | null>(null);
     stateRef = ref<"idle" | "loading" | "error">("idle");
     lastErrorRef = ref<{
       category: string;
@@ -419,6 +437,92 @@ describe("ConnectionsPage", () => {
     expect(banner.exists()).toBe(true);
     expect(banner.text()).toContain("error.prefix.type-conversion");
     expect(banner.text()).toContain("cannot convert NaN");
+    wrapper.unmount();
+  });
+  it("offers exactly the drivers the server reports, in that order", async () => {
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    const options = wrapper.findAll("[data-testid='driver-input'] option");
+    expect(options.map((o) => o.attributes("value"))).toEqual(["postgres", "null"]);
+    wrapper.unmount();
+  });
+
+  it("gains a driver the server gained, with no edit to the template", async () => {
+    // The point of the slice. Nothing in the page names `mysql`; it appears
+    // because the factory said so.
+    driversRef.value = ["postgres", "mysql", "null"];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    const options = wrapper.findAll("[data-testid='driver-input'] option");
+    expect(options.map((o) => o.attributes("value"))).toEqual(["postgres", "mysql", "null"]);
+    wrapper.unmount();
+  });
+
+  it("starts on the first driver the server reports, whatever that is", async () => {
+    driversRef.value = ["mysql", "postgres"];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Some DB");
+    await wrapper.find("[data-testid='add-form']").trigger("submit");
+    await flushPromises();
+
+    expect(mocks.register.mock.calls[0]![0]).toMatchObject({ driver: "mysql" });
+    wrapper.unmount();
+  });
+
+  it("keeps a driver the user picked when the list arrives late", async () => {
+    // The list is fetched, so it can land after the form is interactive.
+    // Re-defaulting on arrival would silently undo a deliberate choice.
+    driversRef.value = [];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    driversRef.value = ["postgres", "null"];
+    await flushPromises();
+    await wrapper.find("[data-testid='driver-input']").setValue("null");
+    driversRef.value = ["postgres", "null", "mysql"];
+    await flushPromises();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Fake");
+    await wrapper.find("[data-testid='add-form']").trigger("submit");
+    await flushPromises();
+
+    expect(mocks.register.mock.calls[0]![0]).toMatchObject({ driver: "null" });
+    wrapper.unmount();
+  });
+
+  it("offers nothing and refuses to submit while no driver list is known", async () => {
+    // Better an obviously unusable form than one that looks fine and 404s on
+    // submit — the presentation failure ADR-0074 is about.
+    driversRef.value = [];
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-testid='driver-input'] option")).toHaveLength(0);
+    expect(wrapper.find("[data-testid='add-submit']").attributes("disabled")).toBeDefined();
+
+    await wrapper.find("[data-testid='label-input']").setValue("Prod");
+    await wrapper.find("[data-testid='add-form']").trigger("submit");
+    await flushPromises();
+
+    expect(mocks.register).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("shows why the form is empty when the driver list could not be loaded", async () => {
+    driversRef.value = [];
+    driversErrorRef.value = {
+      category: "connection",
+      message: "network down",
+      i18nKey: "errors.connection",
+    };
+    const wrapper = mount(ConnectionsPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='error-banner']").exists()).toBe(true);
     wrapper.unmount();
   });
 });

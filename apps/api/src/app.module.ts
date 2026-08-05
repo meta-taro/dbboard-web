@@ -32,6 +32,7 @@ import { GetHealth } from "./usecase/get-health.use-case";
 import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
 import { ListConnectionTables } from "./usecase/list-connection-tables.use-case";
 import { ListConnections } from "./usecase/list-connections.use-case";
+import { ListDrivers } from "./usecase/list-drivers.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
@@ -114,6 +115,11 @@ import { SuggestSql } from "./usecase/suggest-sql.use-case";
       provide: DeleteConnection,
       useFactory: (registry: InMemoryConnectionRegistry) => new DeleteConnection(registry),
       inject: [CONNECTION_REGISTRY],
+    },
+    {
+      provide: ListDrivers,
+      useFactory: (factory: StaticAdapterFactory) => new ListDrivers(factory),
+      inject: [ADAPTER_FACTORY],
     },
     { provide: HISTORY_STORE, useClass: InMemoryHistoryStore },
     // AI provider (Phase 6 Slice 1). Returns `undefined` when no API

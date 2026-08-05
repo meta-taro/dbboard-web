@@ -5,6 +5,7 @@ import type { AdapterFactory } from "../usecase/adapter-factory.port";
 import type { ConnectionRecord, ConnectionRegistry } from "../usecase/connection-registry.port";
 import { DeleteConnection } from "../usecase/delete-connection.use-case";
 import { ListConnections } from "../usecase/list-connections.use-case";
+import { ListDrivers } from "../usecase/list-drivers.use-case";
 import { RegisterConnection } from "../usecase/register-connection.use-case";
 import { ConnectionsController } from "./connections.controller";
 
@@ -17,8 +18,8 @@ function adapter(): DatabaseAdapter {
   };
 }
 
-function factory(): AdapterFactory {
-  return { create: () => adapter() };
+function factory(drivers: readonly string[] = ["null"]): AdapterFactory {
+  return { create: () => adapter(), supported: () => drivers };
 }
 
 function inMemRegistry(seed: ConnectionRecord[] = []): ConnectionRegistry {
@@ -40,6 +41,7 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory(), () => "fixed-id"),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new ListDrivers(factory()),
     );
     expect(controller.register({ label: "Local", driver: "null" })).toEqual({ id: "fixed-id" });
     expect(reg.list()).toHaveLength(1);
@@ -51,6 +53,7 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new ListDrivers(factory()),
     );
     const out = controller.list();
     expect(out).toEqual({ connections: [{ id: "1", label: "L", driver: "null" }] });
@@ -63,8 +66,22 @@ describe("ConnectionsController", () => {
       new RegisterConnection(reg, factory()),
       new ListConnections(reg),
       new DeleteConnection(reg),
+      new ListDrivers(factory()),
     );
     await expect(controller.remove("missing")).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalledWith("missing");
+  });
+  it("GET /connections/drivers reports the factory's list, not a copy of it", () => {
+    // The form renders these as its `<option>`s. A driver missing here is a
+    // driver the user cannot pick; a driver here that the factory cannot
+    // build is a 404 on submit — the failure ADR-0074 is about.
+    const reg = inMemRegistry();
+    const controller = new ConnectionsController(
+      new RegisterConnection(reg, factory()),
+      new ListConnections(reg),
+      new DeleteConnection(reg),
+      new ListDrivers(factory(["postgres", "null"])),
+    );
+    expect(controller.drivers()).toEqual({ drivers: ["postgres", "null"] });
   });
 });

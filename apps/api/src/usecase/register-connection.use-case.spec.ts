@@ -41,6 +41,7 @@ describe("RegisterConnection", () => {
   beforeEach(() => {
     factory = {
       create: (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)),
+      supported: () => ["null"],
     };
   });
 
@@ -62,7 +63,11 @@ describe("RegisterConnection", () => {
     // on the ConnectionRecord — only the adapter holds them.
     const { registry, records } = inMemoryRegistry();
     const factorySpy = vi.fn().mockReturnValue(stubAdapter());
-    const useCase = new RegisterConnection(registry, { create: factorySpy }, () => "fixed-id");
+    const useCase = new RegisterConnection(
+      registry,
+      { create: factorySpy, supported: () => ["null", "postgres"] },
+      () => "fixed-id",
+    );
 
     useCase.execute({
       label: "Prod",

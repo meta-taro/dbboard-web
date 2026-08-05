@@ -32,4 +32,39 @@ describe("StaticAdapterFactory", () => {
     expect(() => new StaticAdapterFactory().create("mongo", {})).toThrowError(CapabilityError);
     expect(() => new StaticAdapterFactory().create("", {})).toThrowError(CapabilityError);
   });
+
+  it("lists the drivers it supports, with the real one first", () => {
+    // The order is the order the form offers them, so `postgres` leads and
+    // the do-nothing adapter trails.
+    expect([...new StaticAdapterFactory().supported()]).toEqual(["postgres", "null"]);
+  });
+
+  it("can create every driver it lists", () => {
+    // The anti-drift test. `supported()` exists so the form stops restating
+    // the driver list from memory; it is only worth trusting if a name on
+    // that list is a name `create` accepts. Both read one table, and this
+    // fails if a future edit gives them two.
+    const factory = new StaticAdapterFactory();
+    for (const driver of factory.supported()) {
+      const adapter = factory.create(driver, {
+        connectionString: "postgresql://u:p@127.0.0.1:1/db",
+      });
+      try {
+        expect(adapter.getId()).toBe(driver);
+      } finally {
+        void adapter.close?.();
+      }
+    }
+  });
+
+  it("does not mistake an inherited object property for a driver", () => {
+    // A lookup table keyed by a caller-supplied string is one prototype
+    // away from `create("constructor", …)` finding a function and calling
+    // it. `driver` arrives from the request body, so this is reachable.
+    expect(() => new StaticAdapterFactory().create("constructor", {})).toThrowError(
+      CapabilityError,
+    );
+    expect(() => new StaticAdapterFactory().create("toString", {})).toThrowError(CapabilityError);
+    expect(() => new StaticAdapterFactory().create("__proto__", {})).toThrowError(CapabilityError);
+  });
 });

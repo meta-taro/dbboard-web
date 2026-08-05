@@ -222,6 +222,45 @@ do one thing the default does not: override an explicit `disable`. Slice A
 stops doing that on purpose, which leaves the list with no behaviour, so it
 goes.
 
+**The driver list is a route, not a shared constant.** Slice E could have
+exported the list from a package both sides import, which is how the two
+copies of `hardenSslMode` are kept honest. That works for a rule; it does not
+work here, because the question is not "what does the vocabulary say" but
+"what can _this running server_ build". A constant compiled into the browser
+bundle answers the first and only looks like it answers the second — it would
+go stale the moment an API deploy adds a driver, which is precisely the drift
+the slice removes. So the browser asks.
+
+**It is `GET /connections/drivers`, not a field on `GET /capabilities`.**
+`/capabilities` is mirrored from desktop (`docs/api-contract.md`) and answers
+what the _current_ adapter can do; the drivers list is what adapters exist,
+which is a different question and one desktop does not ask over HTTP at all.
+Nesting it under the already-unilateral `/connections/*` prefix (PR #7) is what
+keeps the contract at a zero diff. The handler is declared above `@Delete(":id")`
+so a literal segment is never read as an id — nothing routes `GET /connections/:id`
+today, but slice G adds a sibling that would.
+
+**`StaticAdapterFactory` dispatches through a `Map`.** The switch became a
+lookup table so `supported()` and `create` read the same source — two lists
+that must agree is the bug being fixed, and rebuilding it one layer down
+would be no better. A `Map` rather than an object literal because `driver`
+arrives from the request body: on a plain object, `create("constructor", …)`
+finds a function on the prototype and calls it. Pinned by a test.
+
+**`Driver` is now `string`.** The union `"postgres" | "null"` was a
+closed-world claim the browser is not in a position to make — the API can
+gain a driver without the web being rebuilt, and the compiler would then
+reject a value the server had just called valid. The two places that reason
+about a specific driver (`defaultPortFor`, the credential-fields branch) keep
+working on names and fall through to a safe answer for one they do not
+recognise.
+
+**An unloadable driver list disables the form rather than guessing.** If the
+fetch fails the select is empty, the submit button is disabled, and the
+banner says why. Falling back to `["postgres"]` would put an option in front
+of the user that this build may not support — the same defect in a smaller
+font.
+
 ## Log
 
 _(open)_

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post } from "@nestjs/common";
 import { DeleteConnection } from "../usecase/delete-connection.use-case";
 import { ListConnections, type ListConnectionsOutput } from "../usecase/list-connections.use-case";
+import { ListDrivers, type ListDriversOutput } from "../usecase/list-drivers.use-case";
 import {
   RegisterConnection,
   type RegisterConnectionOutput,
@@ -13,6 +14,7 @@ export class ConnectionsController {
     private readonly registerConnection: RegisterConnection,
     private readonly listConnections: ListConnections,
     private readonly deleteConnection: DeleteConnection,
+    private readonly listDrivers: ListDrivers,
   ) {}
 
   @Post()
@@ -26,6 +28,14 @@ export class ConnectionsController {
   @Get()
   list(): ListConnectionsOutput {
     return this.listConnections.execute();
+  }
+
+  // Declared before any `:id` route so a literal path segment is never
+  // read as an id. Nothing routes `GET /connections/:id` today, but the
+  // ordering costs nothing and slice G adds a sibling that would.
+  @Get("drivers")
+  drivers(): ListDriversOutput {
+    return this.listDrivers.execute();
   }
 
   @Delete(":id")

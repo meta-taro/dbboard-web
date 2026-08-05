@@ -2,15 +2,37 @@
 import { computed, ref, watch } from "vue";
 import ErrorBanner from "../../components/ErrorBanner.vue";
 import { useConnections, type Driver, type RegisterInput } from "../../composables/useConnections";
+import { useDrivers } from "../../composables/useDrivers";
 import { defaultPortFor } from "../../utils/default-port";
 import { fromCategorised } from "../../utils/display-error";
 import { readSslModeFromUrl, SSL_MODES, type SslMode } from "../../utils/ssl-mode";
 
 const { t } = useI18n();
 const { list, lastError, register, remove } = useConnections();
+const { drivers, lastError: driversError } = useDrivers();
+
+// One banner, either source. A driver list that failed to load leaves the
+// form unusable, so saying nothing about it would be showing a broken form
+// with no explanation.
+const banner = computed(() => lastError.value ?? driversError.value);
 
 const labelInput = ref("");
-const driverInput = ref<Driver>("postgres");
+
+// No initial value: the options are server-owned (slice E), so the default
+// is whichever driver the factory lists first and it is not known yet.
+const driverInput = ref<Driver>("");
+
+// Adopt a default when the list arrives, but only when the current value is
+// not on it. A late-arriving list must not undo a choice the user has
+// already made — the fetch can finish after the form is interactive.
+watch(
+  drivers,
+  (available) => {
+    if (available.length === 0) return;
+    if (!available.includes(driverInput.value)) driverInput.value = available[0]!;
+  },
+  { immediate: true },
+);
 
 // Field entry is the default and the URL is the way out of it (ADR-0073
 // decision 2). Providers hand out ready-made URLs, so pasting one has to
@@ -44,8 +66,10 @@ watch(connectionStringInput, (text) => {
 
 // The null adapter connects to nothing and ignores every credential field.
 // Rendering them would be offering inputs whose effect is nil — the defect
-// ADR-0074 names, one level below the driver list.
-const needsCredential = computed(() => driverInput.value !== "null");
+// ADR-0074 names, one level below the driver list. The empty case is the
+// same judgement: with no driver chosen there is nothing to hold a
+// credential.
+const needsCredential = computed(() => driverInput.value !== "" && driverInput.value !== "null");
 
 // A blank box means "not supplied", which is not the same as an empty
 // value: the API treats a supplied-but-empty user or database as a real
@@ -90,6 +114,10 @@ function buildPayload(): RegisterInput {
 
 async function onSubmit() {
   if (labelInput.value.trim() === "") return;
+  // No driver means the list never loaded. Submitting would post a driver
+  // the factory cannot build and come back a 404 — refuse here instead,
+  // where the form can stay filled in.
+  if (driverInput.value === "") return;
   const payload = buildPayload();
   // `undefined` members would still serialise as absent, but stripping
   // them here keeps the payload the tests assert on and the payload the
@@ -120,11 +148,7 @@ async function onSubmit() {
   <section class="connections">
     <h2>{{ t("connections.title") }}</h2>
 
-    <ErrorBanner
-      v-if="lastError"
-      data-testid="error-banner"
-      :error="fromCategorised(lastError, t)"
-    />
+    <ErrorBanner v-if="banner" data-testid="error-banner" :error="fromCategorised(banner, t)" />
 
     <form data-testid="add-form" class="add-form" @submit.prevent="onSubmit">
       <h3>{{ t("connections.add.heading") }}</h3>
@@ -135,8 +159,9 @@ async function onSubmit() {
       <label>
         {{ t("connections.add.driver-input") }}
         <select v-model="driverInput" data-testid="driver-input">
-          <option value="postgres">postgres</option>
-          <option value="null">null</option>
+          <!-- Named by the server, not here. Adding a driver to the API's
+               factory adds it below with no edit to this file. -->
+          <option v-for="driver in drivers" :key="driver" :value="driver">{{ driver }}</option>
         </select>
       </label>
       <template v-if="needsCredential">
@@ -211,7 +236,9 @@ async function onSubmit() {
         </label>
       </template>
 
-      <button type="submit" data-testid="add-submit">
+      <!-- Nothing to connect with is a state the button should report,
+           rather than one the user discovers by pressing it. -->
+      <button type="submit" data-testid="add-submit" :disabled="drivers.length === 0">
         {{ t("connections.add.submit") }}
       </button>
     </form>
@@ -329,6 +356,14 @@ async function onSubmit() {
   color: var(--accent-contrast);
   font-size: 0.95rem;
   cursor: pointer;
+}
+
+/* Reads as unavailable rather than merely unresponsive: the button is
+   disabled only while the driver list is missing, which is a state the user
+   has no other way to see. */
+.add-form button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .add-form button:focus-visible,

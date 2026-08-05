@@ -12,7 +12,9 @@
 import type { Driver } from "../composables/useConnections";
 
 // `null` gets none: it connects to nothing, so a port for it would be a
-// number with no destination.
+// number with no destination. A driver this table has never heard of gets
+// none either — since slice E the server can offer one — and the port box
+// simply shows no placeholder rather than a number borrowed from elsewhere.
 //
 // Desktop's table has a MySQL row at 3306. Web has no MySQL adapter yet, so
 // mirroring the row would be inventing a default for a driver that cannot

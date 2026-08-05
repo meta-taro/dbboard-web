@@ -19,7 +19,17 @@ import type { SslMode } from "../utils/ssl-mode";
 
 export type { CategorisedError, ErrorCategory } from "./internal/i18n-error";
 
-export type Driver = "postgres" | "null";
+/**
+ * A driver name, which is a `string` and not a union of the two web knows
+ * about today.
+ *
+ * The set lives in `StaticAdapterFactory` on the server and is read at
+ * runtime through `useDrivers`. A union here would be a closed-world claim
+ * the browser is in no position to make: the API can gain a driver without
+ * the web being rebuilt, and the compiler would then reject a value the
+ * server had just said was valid.
+ */
+export type Driver = string;
 
 export interface ConnectionView {
   id: string;

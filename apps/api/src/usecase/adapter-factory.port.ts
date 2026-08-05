@@ -25,6 +25,13 @@ export interface AdapterConfig {
 // `POST /connections` route 404s rather than hard-erroring.
 export interface AdapterFactory {
   create(driver: string, config: AdapterConfig): DatabaseAdapter;
+
+  // The drivers `create` accepts, in the order a chooser should offer them.
+  // 0027 slice E: the connection form used to restate this list in its
+  // template, which was right only by coincidence — a driver added here and
+  // not there is unreachable, and one offered there and missing here is a
+  // 404 on submit. Asking is cheaper than keeping two lists in step.
+  supported(): readonly string[];
 }
 
 export const ADAPTER_FACTORY = Symbol("ADAPTER_FACTORY");

@@ -802,6 +802,15 @@ recorded here so a later rung does not "fix" it back.
 - **Web is no longer read-only.** Every later write path inherits this rung's
   rules: a declared key or nothing, provenance rather than SQL parsing,
   staging that survives a failed save.
+- **`has_execute` flipped here, not in 6b where the plan put it.** The ticket's
+  scope note said this rung adds "no new adapter method and no capability
+  flag", mirroring ADR-0042's own claim. That was wrong about web the moment
+  the route was written: `executeQuery` decodes a result set, an `UPDATE` has
+  none, and `rows_affected` is the only thing worth reading back — so
+  `DatabaseAdapter.execute` was added and the flag went with it, because a
+  method whose absence is the "unsupported" signal and a flag that advertises
+  it must not be able to disagree. Recorded here rather than quietly, because
+  the ledger had assigned that flag to another rung.
 - `useEditContext` and `useRowUpdate` both resolve the API base **at request
   time**, not at construction. `useRuntimeConfig()` throws when a component is
   mounted bare in `happy-dom`, and a page that never browses a table should

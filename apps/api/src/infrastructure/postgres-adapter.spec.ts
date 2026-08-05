@@ -25,12 +25,14 @@ describe("PostgresAdapter", () => {
   });
 
   // Every other flag stays false — a flag is set by the rung that gives it
-  // something to promise: has_describe_table by 0026, has_execute by 0028.
-  it("advertises has_describe_table and has_execute, and nothing else", () => {
+  // something to promise: has_describe_table by 0026, has_execute by 0028,
+  // has_table_ddl by 0029.
+  it("advertises has_describe_table, has_execute and has_table_ddl, and nothing else", () => {
     expect(new PostgresAdapter(stubPool()).getCapabilities()).toEqual({
       ...NULL_CAPABILITIES,
       has_describe_table: true,
       has_execute: true,
+      has_table_ddl: true,
     });
   });
 
@@ -436,6 +438,174 @@ describe("PostgresAdapter", () => {
         .mockRejectedValue(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
       const adapter = new PostgresAdapter(stubPool({ query }));
       await expect(adapter.describeTable({ schema: "public", name: "t" })).rejects.toBeInstanceOf(
+        ConnectionError,
+      );
+    });
+  });
+
+  describe("tableDdl (desktop ADR-0049)", () => {
+    // Four catalog queries, dispatched on a fragment unique to each. The
+    // defaults describe the smallest table that reconstructs: one column,
+    // no constraints, no indexes, no sequences.
+    function ddlPool(
+      rows: Partial<Record<"columns" | "constraints" | "indexes" | "sequences", unknown[]>> = {},
+      errors: Partial<Record<"sequences", unknown>> = {},
+    ) {
+      const columns = rows.columns ?? [
+        { name: "id", type_name: "integer", not_null: "true", default_expr: null },
+      ];
+      const query = vi.fn().mockImplementation((cfg: { text: string }) => {
+        if (/pg_sequence/.test(cfg.text)) {
+          if (errors.sequences) return Promise.reject(errors.sequences);
+          return Promise.resolve({ rows: rows.sequences ?? [], fields: [], rowCount: 0 });
+        }
+        if (/pg_get_indexdef/.test(cfg.text)) {
+          return Promise.resolve({ rows: rows.indexes ?? [], fields: [], rowCount: 0 });
+        }
+        if (/pg_get_constraintdef/.test(cfg.text)) {
+          return Promise.resolve({ rows: rows.constraints ?? [], fields: [], rowCount: 0 });
+        }
+        return Promise.resolve({ rows: columns, fields: [], rowCount: 0 });
+      });
+      return { query, adapter: new PostgresAdapter(stubPool({ query })) };
+    }
+
+    it("binds schema and table into every catalog query", async () => {
+      const { query, adapter } = ddlPool();
+      await adapter.tableDdl({ schema: "sales", name: "orders" });
+
+      expect(query.mock.calls.length).toBe(4);
+      for (const call of query.mock.calls) {
+        const cfg = call[0] as { text: string; values?: unknown[] };
+        expect(cfg.values).toEqual(["sales", "orders"]);
+        expect(cfg.text).not.toMatch(/orders/);
+      }
+    });
+
+    it("defaults an unqualified table to the public schema", async () => {
+      const { query, adapter } = ddlPool();
+      await adapter.tableDdl({ schema: null, name: "orders" });
+      expect((query.mock.calls[0]?.[0] as { values: unknown[] }).values).toEqual([
+        "public",
+        "orders",
+      ]);
+    });
+
+    it("assembles sequences, then the table, then standalone indexes", async () => {
+      const { adapter } = ddlPool({
+        columns: [
+          { name: "id", type_name: "integer", not_null: "true", default_expr: "nextval('s')" },
+          { name: "note", type_name: "text", not_null: "false", default_expr: null },
+        ],
+        constraints: [{ name: "orders_pkey", def: "PRIMARY KEY (id)" }],
+        indexes: [{ def: "CREATE INDEX orders_note_idx ON sales.orders USING btree (note)" }],
+        sequences: [
+          {
+            schema: "sales",
+            name: "s",
+            type_name: "bigint",
+            start: "1",
+            increment: "1",
+            min_value: "1",
+            max_value: "9223372036854775807",
+            cache: "1",
+            cycle: "false",
+          },
+        ],
+      });
+
+      expect(await adapter.tableDdl({ schema: "sales", name: "orders" })).toBe(
+        'CREATE SEQUENCE "sales"."s" AS bigint START WITH 1 INCREMENT BY 1 ' +
+          "MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1;\n" +
+          'CREATE TABLE "sales"."orders" (\n' +
+          "    \"id\" integer NOT NULL DEFAULT nextval('s'),\n" +
+          '    "note" text,\n' +
+          '    CONSTRAINT "orders_pkey" PRIMARY KEY (id)\n' +
+          ");\n" +
+          "CREATE INDEX orders_note_idx ON sales.orders USING btree (note);\n",
+      );
+    });
+
+    // `::TEXT` on the catalog booleans makes them "true"/"false" rather than
+    // the raw wire "t"/"f" the type-parser override would otherwise hand
+    // back. Both spellings decode, because the cast is easy to lose in a
+    // later edit of the SQL and a silently-nullable column is a dump that
+    // fails to load.
+    it("decodes catalog booleans in either spelling", async () => {
+      for (const yes of ["true", "t"]) {
+        const { adapter } = ddlPool({
+          columns: [{ name: "id", type_name: "integer", not_null: yes, default_expr: null }],
+          sequences: [
+            {
+              schema: "public",
+              name: "s",
+              type_name: "bigint",
+              start: "1",
+              increment: "1",
+              min_value: "1",
+              max_value: "10",
+              cache: "1",
+              cycle: yes,
+            },
+          ],
+        });
+        const ddl = await adapter.tableDdl({ schema: "public", name: "t" });
+        expect(ddl).toContain("NOT NULL");
+        expect(ddl).toContain("CACHE 1 CYCLE;");
+      }
+    });
+
+    // Aurora DSQL speaks pg-wire but models no `pg_sequence` (desktop
+    // ADR-0021). The missing catalog is itself the signal, so the read
+    // degrades to "no sequences" — on this SQLSTATE and no other.
+    it("degrades to no sequences when pg_sequence does not exist", async () => {
+      const { adapter } = ddlPool(
+        {},
+        { sequences: Object.assign(new Error("no rel"), { code: "42P01" }) },
+      );
+      const ddl = await adapter.tableDdl({ schema: "public", name: "t" });
+      expect(ddl).not.toContain("CREATE SEQUENCE");
+      expect(ddl).toContain('CREATE TABLE "public"."t"');
+    });
+
+    it("propagates any other failure of the sequence read", async () => {
+      const { adapter } = ddlPool(
+        {},
+        { sequences: Object.assign(new Error("permission denied"), { code: "42501" }) },
+      );
+      await expect(adapter.tableDdl({ schema: "public", name: "t" })).rejects.toBeInstanceOf(
+        QueryError,
+      );
+    });
+
+    it("rejects a table with no columns as a missing relation", async () => {
+      const { adapter } = ddlPool({ columns: [] });
+      await expect(adapter.tableDdl({ schema: "sales", name: "ghost" })).rejects.toThrow(
+        /relation "sales\.ghost" does not exist/,
+      );
+      await expect(adapter.tableDdl({ schema: "sales", name: "ghost" })).rejects.toBeInstanceOf(
+        QueryError,
+      );
+    });
+
+    it("still refuses a binary reply on the bound path (ADR-0070)", async () => {
+      const query = vi.fn().mockResolvedValue({
+        rows: [],
+        fields: [{ name: "name", dataTypeID: 25, format: "binary" }],
+        rowCount: 0,
+      });
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.tableDdl({ schema: "public", name: "t" })).rejects.toThrow(
+        /binary wire format/,
+      );
+    });
+
+    it("routes a dropped socket to ConnectionError, like the other paths", async () => {
+      const query = vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }));
+      const adapter = new PostgresAdapter(stubPool({ query }));
+      await expect(adapter.tableDdl({ schema: "public", name: "t" })).rejects.toBeInstanceOf(
         ConnectionError,
       );
     });

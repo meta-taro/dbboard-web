@@ -36,6 +36,20 @@ export interface DatabaseAdapter {
   // implements this also sets `has_execute` in getCapabilities(); the two
   // travel together.
   execute?(sql: string): Promise<number>;
+  // Optional DDL-reconstruction hook (desktop ADR-0049, dump). Returns the
+  // `CREATE TABLE` — plus any owned sequences and standalone indexes —
+  // needed to recreate `table` in an empty database, `;`-terminated and
+  // ready to concatenate into a dump.
+  //
+  // Not derivable from `describeTable`: that answers what the columns are,
+  // in the shape a grid needs, and drops constraints, indexes, defaults'
+  // exact text, and sequence bounds. A dump needs all of them.
+  //
+  // Optional on the same terms as the hooks above — absence is the "not
+  // supported" signal, and DumpDatabase turns it into a CapabilityError. An
+  // adapter that implements this also sets `has_table_ddl`; the two travel
+  // together.
+  tableDdl?(table: TableInfo): Promise<string>;
   // Optional teardown hook. Implementations that hold network resources
   // (PostgresAdapter's pg.Pool) implement this so DELETE /connections
   // can release the sockets before evicting the registry record.

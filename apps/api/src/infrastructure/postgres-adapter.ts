@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 import { Pool, type PoolConfig } from "pg";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import { assembleTableDdl } from "../domain/dump/table-ddl";
 import { CapabilityError, ConnectionError, QueryError } from "../domain/errors";
 import {
   NULL_CAPABILITIES,
@@ -84,6 +85,93 @@ const DESCRIBE_PK_SQL = `
   ORDER BY kcu.ordinal_position
 `;
 
+// The four DDL-reconstruction queries (desktop ADR-0049), ported verbatim
+// from `crates/dbboard-postgres/src/lib.rs`. Postgres has no stored DDL
+// text to read back the way SQLite's `sqlite_master` does, so a dump has to
+// rebuild the statement from `pg_catalog`.
+//
+// These read `pg_catalog` rather than `information_schema` on purpose:
+// `format_type` canonicalises the type, `pg_get_expr` returns the default
+// verbatim, and `pg_get_constraintdef` / `pg_get_indexdef` hand back whole
+// definitions already correctly quoted — richer than the views
+// DESCRIBE_COLUMNS_SQL uses, and the difference is exactly what a dump
+// needs. Schema and table are bound, never interpolated.
+//
+// Every text-typed expression is cast to TEXT for the same reason
+// DESCRIBE_COLUMNS_SQL does it, and the booleans are cast too: the pool's
+// `getTypeParser` override hands back the raw wire text, which for `bool`
+// is "t"/"f". `::TEXT` makes it "true"/"false" and the decoding readable.
+const DDL_COLUMNS_SQL = `
+  SELECT a.attname::TEXT AS name,
+         format_type(a.atttypid, a.atttypmod)::TEXT AS type_name,
+         a.attnotnull::TEXT AS not_null,
+         pg_get_expr(ad.adbin, ad.adrelid)::TEXT AS default_expr
+  FROM pg_catalog.pg_attribute a
+  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+  WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+  ORDER BY a.attnum
+`;
+
+// Primary-key first for conventional output; constraint order does not
+// affect the DDL's validity.
+const DDL_CONSTRAINTS_SQL = `
+  SELECT con.conname::TEXT AS name,
+         pg_get_constraintdef(con.oid)::TEXT AS def
+  FROM pg_catalog.pg_constraint con
+  JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = $1 AND c.relname = $2
+  ORDER BY (con.contype <> 'p'), con.conname
+`;
+
+// Standalone indexes only — one backing a constraint is recreated by the
+// constraint itself, and emitting both makes the dump fail to load.
+const DDL_INDEXES_SQL = `
+  SELECT pg_get_indexdef(idx.indexrelid)::TEXT AS def
+  FROM pg_catalog.pg_index idx
+  JOIN pg_catalog.pg_class ic ON ic.oid = idx.indexrelid
+  JOIN pg_catalog.pg_class tc ON tc.oid = idx.indrelid
+  JOIN pg_catalog.pg_namespace n ON n.oid = tc.relnamespace
+  WHERE n.nspname = $1 AND tc.relname = $2
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con
+                    WHERE con.conindid = idx.indexrelid)
+  ORDER BY ic.relname
+`;
+
+// Sequences owned by a column of the table (a SERIAL / GENERATED column's
+// backing sequence), emitted ahead of it so the nextval default resolves.
+// The bounds stay TEXT: bigint bounds reach past Number.MAX_SAFE_INTEGER.
+const DDL_SEQUENCES_SQL = `
+  SELECT sn.nspname::TEXT AS schema,
+         s.relname::TEXT AS name,
+         format_type(seq.seqtypid, NULL)::TEXT AS type_name,
+         seq.seqstart::TEXT AS start,
+         seq.seqincrement::TEXT AS increment,
+         seq.seqmin::TEXT AS min_value,
+         seq.seqmax::TEXT AS max_value,
+         seq.seqcache::TEXT AS cache,
+         seq.seqcycle::TEXT AS cycle
+  FROM pg_catalog.pg_class s
+  JOIN pg_catalog.pg_namespace sn ON sn.oid = s.relnamespace
+  JOIN pg_catalog.pg_sequence seq ON seq.seqrelid = s.oid
+  JOIN pg_catalog.pg_depend d ON d.objid = s.oid
+    AND d.classid = 'pg_class'::regclass AND d.deptype = 'a'
+  JOIN pg_catalog.pg_class t ON t.oid = d.refobjid
+  JOIN pg_catalog.pg_namespace tn ON tn.oid = t.relnamespace
+  WHERE s.relkind = 'S' AND tn.nspname = $1 AND t.relname = $2
+  ORDER BY s.relname
+`;
+
+// SQLSTATE undefined_table. Aurora DSQL models neither `pg_sequence` nor
+// the FK side of `pg_constraint` (desktop ADR-0021), so a catalog query can
+// legitimately find no such relation on a pg-wire engine that is not
+// PostgreSQL. Web has no engine-flavour detection to branch on, and the
+// missing catalog is itself the signal — so the sequence read degrades to
+// "no sequences" on exactly this code, and on nothing else.
+const UNDEFINED_TABLE = "42P01";
+
 // Node-style errno codes for network-level failures. pg surfaces these
 // verbatim when the underlying socket can't be established or the server
 // goes away mid-query.
@@ -147,6 +235,41 @@ function parseOrdinal(raw: unknown, columnName: string): number {
     );
   }
   return ordinal;
+}
+
+// One row of each DDL query. Every field is text for the same reason
+// DescribeColumnRow's are — the pool decodes nothing.
+interface DdlColumnRow {
+  name: string;
+  type_name: string;
+  not_null: string | null;
+  default_expr: string | null;
+}
+interface DdlConstraintRow {
+  name: string;
+  def: string;
+}
+interface DdlIndexRow {
+  def: string;
+}
+interface DdlSequenceRow {
+  schema: string;
+  name: string;
+  type_name: string;
+  start: string;
+  increment: string;
+  min_value: string;
+  max_value: string;
+  cache: string;
+  cycle: string | null;
+}
+
+// The DDL queries cast their booleans to TEXT, so "true"/"false" is what
+// arrives. "t"/"f" is accepted too: the cast is easy to lose in a later
+// edit of the SQL, and reading a NOT NULL column as nullable produces a
+// dump that fails to load — a failure worth being lenient to avoid.
+function catalogBoolean(raw: string | null): boolean {
+  return raw === "true" || raw === "t";
 }
 
 function columnFromRow(row: DescribeColumnRow, primaryKey: string[]): ColumnInfo {
@@ -220,7 +343,12 @@ export class PostgresAdapter implements DatabaseAdapter {
   getCapabilities(): Capabilities {
     // Set alongside the methods that implement them, per the port's
     // contract: each flag and its method travel together.
-    return { ...NULL_CAPABILITIES, has_describe_table: true, has_execute: true };
+    return {
+      ...NULL_CAPABILITIES,
+      has_describe_table: true,
+      has_execute: true,
+      has_table_ddl: true,
+    };
   }
 
   async listTables(): Promise<TableInfo[]> {
@@ -314,6 +442,76 @@ export class PostgresAdapter implements DatabaseAdapter {
       };
     } catch (e) {
       throw this.translateError(e);
+    }
+  }
+
+  async tableDdl(table: TableInfo): Promise<string> {
+    const schema = table.schema ?? "public";
+    const values = [schema, table.name];
+    try {
+      const columnRows = (await this.catalogRows<DdlColumnRow>(DDL_COLUMNS_SQL, values)).rows;
+      // Same reasoning as describeTable: `pg_attribute` answers an unknown
+      // relation with an empty set, and a table with no columns cannot be
+      // told apart from a missing one.
+      if (columnRows.length === 0) {
+        throw new QueryError(`relation "${schema}.${table.name}" does not exist`);
+      }
+
+      const constraintRows = (await this.catalogRows<DdlConstraintRow>(DDL_CONSTRAINTS_SQL, values))
+        .rows;
+      const indexRows = (await this.catalogRows<DdlIndexRow>(DDL_INDEXES_SQL, values)).rows;
+      const sequenceRows = await this.sequenceRows(values);
+
+      return assembleTableDdl({
+        schema,
+        table: table.name,
+        columns: columnRows.map((row) => ({
+          name: row.name,
+          type_name: row.type_name,
+          not_null: catalogBoolean(row.not_null),
+          default_expr: row.default_expr,
+        })),
+        constraints: constraintRows.map((row) => ({ name: row.name, def: row.def })),
+        indexes: indexRows.map((row) => row.def),
+        sequences: sequenceRows.map((row) => ({
+          schema: row.schema,
+          name: row.name,
+          type_name: row.type_name,
+          start: row.start,
+          increment: row.increment,
+          min_value: row.min_value,
+          max_value: row.max_value,
+          cache: row.cache,
+          cycle: catalogBoolean(row.cycle),
+        })),
+      });
+    } catch (e) {
+      throw this.translateError(e);
+    }
+  }
+
+  // A bound catalog read, guarded the way describeTable's are: binding puts
+  // the statement on the extended protocol, where a binary result format is
+  // at least expressible.
+  private async catalogRows<T>(text: string, values: unknown[]): Promise<{ rows: T[] }> {
+    const result = await this.pool.query({ text, values });
+    assertTextWireFormat(result.fields);
+    return { rows: result.rows as T[] };
+  }
+
+  // The one tolerant read. See UNDEFINED_TABLE.
+  private async sequenceRows(values: unknown[]): Promise<DdlSequenceRow[]> {
+    try {
+      return (await this.catalogRows<DdlSequenceRow>(DDL_SEQUENCES_SQL, values)).rows;
+    } catch (e) {
+      if (
+        e instanceof Error &&
+        (e as { code?: unknown }).code === UNDEFINED_TABLE &&
+        !(e instanceof QueryError)
+      ) {
+        return [];
+      }
+      throw e;
     }
   }
 

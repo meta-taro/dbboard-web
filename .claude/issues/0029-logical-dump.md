@@ -189,4 +189,52 @@ Slices land as separate commits. Each is RED before GREEN (baseline §4 / §20).
 
 ## Log
 
-_(slices append here)_
+### Slices A + B — literals, `INSERT`, page/count SELECTs
+
+`apps/api/src/domain/dump/{literal,insert,select}.ts` and their specs, 27
+tests. Two decisions worth carrying forward:
+
+- `valueLiteral` quotes every non-`NULL` non-blob value, per §1 above.
+- `buildSelectPage` throws `CursorError` on a `null` cursor value rather than
+  rendering `NULL` into the row-value comparison as desktop does. `(k) > (NULL)`
+  is `NULL`, which is not `TRUE`, so the page would come back empty and the
+  dump would stop early — a **silently truncated backup**. Refusing is the only
+  safe reading.
+
+### Slice C — `tableDdl`
+
+`assembleTableDdl` (`domain/dump/table-ddl.ts`, 10 tests), the
+`tableDdl?(table)` hook on `DatabaseAdapter`, the four catalog queries and the
+method on `PostgresAdapter` (9 unit tests), and 6 integration tests against a
+real Postgres. `has_table_ddl` now `true`, and the capabilities assertion moved
+with it.
+
+Three things the unit tests could not have settled, and the integration ones
+did:
+
+- **The round trip.** The fixture — `serial` PK, `varchar` unique, a
+  `numeric(10,2)` default, a composite `CHECK`, and a **partial** index — is
+  dropped and rebuilt from its own reconstructed DDL, and the rebuilt table
+  still rejects `qty = -1`. A partial index's `WHERE` clause surviving verbatim
+  is the specific thing `pg_get_indexdef`-verbatim buys.
+- **A whole script cannot go through `executeQuery`.** pg answers a
+  multi-statement string with an _array_ of results, so `result.fields` is
+  undefined and the read fails as a codeless error — which
+  `isConnectionLevelError` reads as connection-level, i.e. a **502, not a 400**.
+  Pre-existing and untouched here (the test replays statement by statement),
+  but it is the concrete reason ticket `0030` needs `splitStatements` before it
+  can execute anything, and the reason restore cannot simply post a `.sql` to
+  the query route.
+- **Renaming a table aside is not an empty database.** The first version of the
+  round-trip test renamed the fixture instead of dropping it; the replay
+  collided on `ddl_fixture_pkey`, because `ALTER TABLE … RENAME` leaves
+  constraint and index names alone. A dump is only ever loaded into an empty
+  target, and the test now models that.
+
+**Known gap, deliberate:** the emitted `CREATE SEQUENCE` carries no
+`ALTER SEQUENCE … OWNED BY`. A restored sequence is therefore standalone —
+correct for `nextval`, but no longer dropped with its table. Desktop's
+`table_ddl.rs` has the same gap, and `DDL_SEQUENCES_SQL` does not select
+`pg_depend.refobjsubid`, so closing it means changing the query on both sides.
+Mirroring desktop wins here (§19); if it is worth closing it is worth closing
+on the desktop first.

@@ -560,6 +560,132 @@ describe("Postgres adapter integration (testcontainers)", () => {
     });
   });
 
+  // ---- DDL reconstruction (ticket 0029, desktop ADR-0049) ----------
+  //
+  // The unit tests prove the assembly. Only a real catalog can prove the
+  // four queries: that they find the right rows, that `format_type` and
+  // `pg_get_constraintdef` return what the assembler assumes, that the
+  // sequence bounds arrive as exact strings, and — the part no stub can
+  // answer — that the statement Postgres itself hands back is one Postgres
+  // will accept again.
+  describe("tableDdl (ADR-0049)", () => {
+    async function withAdapter<T>(fn: (a: ReturnType<typeof createPostgresAdapter>) => Promise<T>) {
+      const host = container?.getHost();
+      const port = container?.getMappedPort(5432);
+      const adapter = createPostgresAdapter({
+        connectionString: `postgresql://test:test@${host}:${port}/test?sslmode=disable`,
+      });
+      try {
+        return await fn(adapter);
+      } finally {
+        await adapter.close();
+      }
+    }
+
+    it("reconstructs DDL that recreates the table", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      // Everything the four queries have to cover at once: an owned
+      // sequence (via serial), a non-trivial default, a composite check,
+      // a unique constraint, and a standalone partial index.
+      const setup = await runQuery(
+        "CREATE TABLE IF NOT EXISTS ddl_fixture (" +
+          "  id serial PRIMARY KEY," +
+          "  code varchar(20) NOT NULL UNIQUE," +
+          "  qty numeric(10,2) DEFAULT 0.00," +
+          "  note text," +
+          "  CONSTRAINT ddl_fixture_qty_check CHECK (qty >= 0))",
+      );
+      expect(setup.status).toBe(200);
+      const idx = await runQuery(
+        "CREATE INDEX IF NOT EXISTS ddl_fixture_note_idx ON ddl_fixture (note) WHERE note IS NOT NULL",
+      );
+      expect(idx.status).toBe(200);
+
+      const ddl = await withAdapter((a) => a.tableDdl({ schema: "public", name: "ddl_fixture" }));
+
+      expect(ddl).toContain('CREATE SEQUENCE "public"."ddl_fixture_id_seq"');
+      expect(ddl).toContain('CREATE TABLE "public"."ddl_fixture"');
+      expect(ddl).toContain(
+        `"id" integer NOT NULL DEFAULT nextval('ddl_fixture_id_seq'::regclass)`,
+      );
+      // format_type canonicalises the declared types.
+      expect(ddl).toContain('"code" character varying(20) NOT NULL');
+      expect(ddl).toContain('"qty" numeric(10,2)');
+      // pg_get_constraintdef output, emitted verbatim.
+      expect(ddl).toContain("PRIMARY KEY (id)");
+      expect(ddl).toContain("CHECK ((qty >= (0)::numeric))");
+      // The partial index's WHERE clause survives — reformatting it is how
+      // a reconstructor silently changes which rows an index covers.
+      expect(ddl).toContain("WHERE (note IS NOT NULL)");
+
+      // The real assertion: the script re-parses into an empty database,
+      // which is the only situation a dump is ever loaded into. Renaming
+      // the original aside instead would not be that — a renamed table
+      // keeps its constraint and index names, and the replay would collide
+      // on `ddl_fixture_pkey` for a reason the dump is not responsible for.
+      expect((await runQuery("DROP TABLE ddl_fixture")).status).toBe(200);
+      // One statement at a time. `executeQuery` decodes a single result
+      // set, and pg answers a multi-statement string with an array of them
+      // — so a whole script cannot go down that route. Splitting on the
+      // terminator is safe *here* because nothing this fixture generates
+      // contains one inside a literal; the general splitter is ticket 0030.
+      for (const stmt of ddl.split(";\n").filter((s) => s.trim() !== "")) {
+        expect((await runQuery(stmt)).status).toBe(200);
+      }
+
+      // And the recreated table accepts the same rows.
+      expect((await runQuery("INSERT INTO ddl_fixture (code) VALUES ('a')")).status).toBe(200);
+      expect((await runQuery("INSERT INTO ddl_fixture (code, qty) VALUES ('b', -1)")).status).toBe(
+        400,
+      );
+    });
+
+    it("emits no sequence section for a table that owns none", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      expect((await runQuery("CREATE TABLE IF NOT EXISTS ddl_plain (x int)")).status).toBe(200);
+      const ddl = await withAdapter((a) => a.tableDdl({ schema: null, name: "ddl_plain" }));
+      expect(ddl).not.toContain("CREATE SEQUENCE");
+      expect(ddl).toBe('CREATE TABLE "public"."ddl_plain" (\n    "x" integer\n);\n');
+    });
+
+    // The index behind a constraint is recreated by the constraint. Emitting
+    // both would make the script fail on the duplicate.
+    it("omits indexes that back a constraint", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      expect(
+        (await runQuery("CREATE TABLE IF NOT EXISTS ddl_keyed (id int PRIMARY KEY, u int UNIQUE)"))
+          .status,
+      ).toBe(200);
+      const ddl = await withAdapter((a) => a.tableDdl({ schema: null, name: "ddl_keyed" }));
+      expect(ddl).not.toContain("CREATE UNIQUE INDEX");
+      expect(ddl).toContain("PRIMARY KEY (id)");
+      expect(ddl).toContain("UNIQUE (u)");
+    });
+
+    it("matches a case-sensitive identifier rather than folding it", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      expect((await runQuery('CREATE TABLE IF NOT EXISTS "DdlMixed" (id int)')).status).toBe(200);
+      const ddl = await withAdapter((a) => a.tableDdl({ schema: null, name: "DdlMixed" }));
+      expect(ddl).toContain('CREATE TABLE "public"."DdlMixed"');
+    });
+
+    it("rejects an unknown table as a missing relation", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await expect(
+        withAdapter((a) => a.tableDdl({ schema: "public", name: "no_such_table" })),
+      ).rejects.toThrow(/relation "public\.no_such_table" does not exist/);
+    });
+
+    it("advertises has_table_ddl over the capabilities route", async (ctx) => {
+      if (skipReason || !app || !connectionId) return ctx.skip();
+      const res = await request(app.getHttpServer()).get(
+        `/connections/${connectionId}/capabilities`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.capabilities.has_table_ddl).toBe(true);
+    });
+  });
+
   // ---- inline cell editing (ticket 0028, desktop ADR-0063) ---------
   //
   // The unit tests prove the statement text; these prove a real Postgres

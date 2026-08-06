@@ -1,6 +1,6 @@
 # 0029 — Logical dump: reading a whole database back out as SQL
 
-**Status:** open (2026-08-05) · **Opened:** 2026-08-05 · **Rung 6b** (first of
+**Status:** closed (2026-08-06) · **Opened:** 2026-08-05 · **Rung 6b** (first of
 two tickets) of [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -238,3 +238,78 @@ correct for `nextval`, but no longer dropped with its table. Desktop's
 `pg_depend.refobjsubid`, so closing it means changing the query on both sides.
 Mirroring desktop wins here (§19); if it is worth closing it is worth closing
 on the desktop first.
+
+### Slice D — `DumpDatabase`
+
+`apps/api/src/usecase/dump-database.use-case.ts`, 24 tests. Split in two on
+purpose: `prepare(id, confirmed)` does everything that can refuse — resolve
+the connection, check `has_table_ddl`, list the tables, count the rows, apply
+the 500 000 gate — and `run(prepared)` is an async generator that cannot
+refuse, only comment. That boundary is what lets the route answer a refusal
+with a contract envelope and a 4xx, because nothing has been written yet when
+`prepare` rejects.
+
+Three things worth carrying:
+
+- **A per-table failure is a comment, never an exception** (ADR-0049
+  Decision 10). A read that throws mid-table emits
+  `-- !! failed to dump public.t: <reason>` and the loop moves to the next
+  table. The alternative — abort — turns one unreadable table into no backup
+  at all.
+- **`CursorError` from slice B surfaces here as one of those comments.** A
+  declared key holding a `null` means the read and the schema disagree; the
+  page is refused rather than resumed past, so the table is reported missing
+  instead of silently half-dumped. A test added in slice E pins this end to
+  end.
+- **Counting is best-effort.** A table whose count fails is still dumped; the
+  gate can only be as good as the numbers it got, and refusing to dump because
+  a count failed would be the wrong trade.
+
+### Slice E — route, download, i18n
+
+`GET /connections/:id/dump`, `DumpQueryDto`, `useDump`, `DumpButton`, and
+`dump.*` across all 11 locales. 23 API tests, 19 web tests.
+
+- **Every refusal happens before a header goes out.** `prepare` is awaited
+  before `setHeader`, so an unknown connection (404), an adapter without DDL
+  support (404) and the size gate (400) still travel as contract envelopes
+  through `ContractErrorFilter`. The controller spec asserts that no header
+  and no chunk were written on each of those paths — the assertion is the
+  point, because once one byte is out the status line is spent.
+- **`@Res()` rather than a returned value.** Nest's normal response handling
+  would serialise the generator's output into a string, which is exactly the
+  thing slice D was built not to do.
+- **Writes await `drain` and race `close`.** Without the first, a database
+  larger than memory becomes a heap of pending writes; without the second, a
+  socket that never drains holds the request — and the adapter connection —
+  open forever. A `false` return breaks the `for await`, which tears the
+  generator down at its suspension point.
+- **A failure after the first byte is named in the file**
+  (`-- !! dump aborted: <reason>`, newlines flattened so the comment cannot
+  become a statement) rather than truncating silently. A short dump that looks
+  complete is the worse outcome.
+- **The filename is sanitised** even though ids are registry-minted: the value
+  lands in a header that a browser turns into a path on disk.
+- **The size gate is a question on the client, not a failure.** `useDump` maps
+  a 400 on an unconfirmed request to a `confirm` state holding the server's
+  sentence verbatim — it names the row count — and only a repeat 400 after
+  confirmation becomes an error. Treating every 400 as an error would loop the
+  prompt.
+- **Browser-side buffering is unavoidable and does not matter.**
+  `response.blob()` holds the script before it reaches disk; short of the File
+  System Access API there is no alternative, and the side that would otherwise
+  hold a whole database in RAM — the server — stays streaming. The Nuxt h3
+  proxy uses `proxyRequest`, which preserves it.
+- `saveBlob` moved to `app/composables/internal/download.ts` and
+  `useResultExport` now shares it rather than repeating the anchor dance.
+
+### Closeout
+
+- `docs/api-contract.md` diff against `86b324f`: empty. Dump is a
+  `/connections/*` route, which is web-unilateral.
+- Gate green: `format:check`, `-r lint`, `-r typecheck`, `-r test`
+  (API 718 passed / 2 skipped, web 1044 passed). Docker was up, so the 51
+  `postgres-integration.spec.ts` tests really ran.
+- ADR: `.claude/decisions.md`, 2026-08-06.
+
+**Left for ticket `0030`:** restore. `has_atomic_restore` is still `false`.

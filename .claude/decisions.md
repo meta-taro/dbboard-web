@@ -836,3 +836,132 @@ the thing this ADR records deliberately.
 - Ticket: [`issues/0028-inline-cell-editing.md`](./issues/0028-inline-cell-editing.md)
   — the survey corrections and the per-slice log. Ledger:
   [`parity-ledger.md`](./parity-ledger.md) rung 6a.
+
+## 2026-08-06 — Logical dump: one literal form, a refusal that happens before the first byte, and a cursor that would rather stop than lie
+
+**Context.** Ticket [`0029`](./issues/0029-logical-dump.md), the first of rung
+6b's two tickets in [`parity-ledger.md`](./parity-ledger.md). Desktop's
+ADR-0049/0050 render a whole database back out as SQL; web needs the same
+output from a different shape — no in-process worker, no save dialog, no
+five-variant `Value`. Five of those differences changed the design, and none
+of them are visible from the desktop ADR. **Flips `has_table_ddl`.**
+
+**Decision 1 — one literal form for everything except `NULL` and blobs.**
+
+Desktop switches on a five-variant `Value` and renders `Integer` and `Real`
+bare. Web's `Value` is `null | number | string | BlobValue` — JSON has no
+integer type, and the distinction was collapsed at the contract boundary long
+before dump existed. Under that collapse sits the thing that decides this:
+`pgOidToValue` maps `BOOL` to `1` / `0`. Render that bare and
+`INSERT INTO t (flag) VALUES (1)` fails to load, because Postgres will not
+assign an `integer` to a `boolean`. The dump would be syntactically valid and
+semantically broken, which is the worst available outcome for a backup.
+
+So every `number` and every `string` is emitted single-quoted and the target
+column coerces it. This is not new here — it is the rule rung 6a already wrote
+into `write-back.ts`, adopted for the same reason and reusing the same
+`quoteLiteral`. Two things fall out: non-finite reals need no special case
+(`'NaN'` and `'Infinity'` are how Postgres spells them, so desktop's
+six-branch `real_literal` has no web counterpart), and a dumped `.sql` is
+Postgres-family only, because it relies on assignment casts from unknown
+literals. The dialect parameter arrives with MySQL in rung 7, on these
+functions rather than as a second copy of them.
+
+**Decision 2 — a `null` in a declared key stops the table instead of resuming
+past it.**
+
+Desktop renders the cursor value into the row-value comparison whatever it is.
+`(k) > (NULL)` evaluates to `NULL`, which is not `TRUE`, so the next page comes
+back empty and the dump moves on believing the table is finished. That is a
+silently truncated backup — the failure you discover during a restore.
+
+`buildSelectPage` throws `CursorError` instead, and `DumpDatabase` turns it
+into the per-table comment described below. A declared key holding a `null`
+means the read and the schema disagree; there is no reading of that where
+continuing is safe. This is the one place the mirror is deliberately stricter
+than desktop, and it is recorded here so a later rung does not "fix" it back.
+
+**Decision 3 — `prepare` and `run` are separate, because a refusal after the
+first byte is not a refusal.**
+
+`DumpDatabase.prepare(id, confirmed)` does everything that can say no —
+resolve the connection, check `has_table_ddl`, list tables, count rows, apply
+ADR-0049's 500 000-row gate — and `run(prepared)` is an async generator that
+cannot say no, only comment. The route awaits `prepare` before it sets a single
+header, so an unknown connection (404), an adapter without DDL support (404)
+and the size gate (400) all still travel as contract envelopes through
+`ContractErrorFilter`. The controller spec asserts no header and no chunk were
+written on each of those paths; once one byte is out, the status line is spent
+and the only honest channel left is a comment in the file.
+
+Which is what a post-header failure gets: `-- !! dump aborted: <reason>`, with
+newlines flattened so the comment cannot become a statement. Truncating
+silently would produce a short dump that looks complete.
+
+**Decision 4 — a per-table failure is a comment and the dump continues**
+(ADR-0049 Decision 10, kept). A read that throws emits
+`-- !! failed to dump public.t: <reason>` and the loop moves on. Aborting turns
+one unreadable table into no backup at all. Counting is best-effort for the
+same reason: a table whose count fails is still dumped, because refusing to
+back up a database because a count failed is the wrong trade.
+
+**Decision 5 — the size gate is a question, and over HTTP a question needs two
+requests.**
+
+Desktop asks in a modal and proceeds on OK. Web cannot: the answer has to reach
+the server. So the first request comes back 400 naming the row count, and
+`useDump` maps that — on an _unconfirmed_ request only — to a `confirm` state
+that shows the server's sentence verbatim next to the translated question. A
+repeat 400 after confirmation is a real error. Treating every 400 as an error
+would loop the prompt; treating every 400 as the gate would swallow real ones.
+
+**Decision 6 — the stream is the cancel channel, and there is no progress
+channel.**
+
+Desktop runs a worker with a cancel token and reports progress. Web has a
+client that can abort a download, which tears down the generator at its
+suspension point. Writes await `drain` (a database larger than memory would
+otherwise become a heap of pending writes) and race `close` (a socket that
+never drains would otherwise hold the request, and its adapter connection,
+open forever). This ticket does not invent a progress channel over a plain
+download.
+
+**Consequences.**
+
+- **`has_table_ddl` is `true`** for `PostgresAdapter`, `false` for
+  `NullAdapter`. The capability and the optional `tableDdl?(table)` method
+  travel together, as `has_execute` and `execute` do.
+- **A whole `.sql` script still cannot go through `executeQuery`.** pg answers
+  a multi-statement string with an _array_ of results, so `result.fields` is
+  undefined and the read fails as a codeless error — which
+  `isConnectionLevelError` reads as connection-level, i.e. a 502 rather than a 400. Pre-existing and untouched, but it is the concrete reason ticket `0030`
+  needs `splitStatements` before restore can execute anything.
+- **Known gap, deliberate:** the emitted `CREATE SEQUENCE` carries no
+  `ALTER SEQUENCE … OWNED BY`, so a restored sequence is standalone — correct
+  for `nextval`, but no longer dropped with its table. Desktop's `table_ddl.rs`
+  has the same gap and `DDL_SEQUENCES_SQL` does not select
+  `pg_depend.refobjsubid`. Mirroring wins here (§19); if it is worth closing it
+  is worth closing on the desktop first.
+- **A dump is not history.** No `HistoryRecordingInterceptor` on the route:
+  a dump's hundreds of generated `SELECT`s are statements nobody typed, and
+  desktop writes no entry either.
+- `saveBlob` moved to `app/composables/internal/download.ts`;
+  `useResultExport` shares it rather than repeating the anchor dance.
+- `dump.*` landed across all 11 locales in the same commit as the behaviour,
+  per the parity test that makes new keys all-or-nothing.
+- `/connections/*` remains unilateral and `docs/api-contract.md` has a zero
+  diff against `86b324f` — five rungs running.
+
+**Reversibility.** Reversible by deletion: every file is additive except the
+`saveBlob` extraction and the header mount in `sql.vue`. What is not reversible
+is `has_table_ddl` — a client that has seen it `true` will ask for a dump.
+
+**Cross-references.**
+
+- Desktop: ADR-0049 and ADR-0050 in `dbboard/docs/decisions.md`;
+  `crates/dbboard-core/src/dump/` and `crates/dbboard-postgres/src/table_ddl.rs`
+  read directly, per §19. Desktop pin `0ffb93f`.
+- Ticket: [`issues/0029-logical-dump.md`](./issues/0029-logical-dump.md) — the
+  survey, the divergence table and the per-slice log. Ledger:
+  [`parity-ledger.md`](./parity-ledger.md) rung 6b.
+- Next: ticket `0030`, restore (`has_atomic_restore`).

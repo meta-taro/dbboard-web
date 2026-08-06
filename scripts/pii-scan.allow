@@ -23,6 +23,11 @@
 # === BLOCKING-tier allows (keep narrow) ===================================
 # Canonical synthetic AWS key ids always carry the word EXAMPLE.
 AKIA[0-9A-Z]*EXAMPLE
+# The SSH tunnel specs need a literal PEM header, because the check under
+# test is "this is key material, not a path" (ADR-0069, ticket 0031 slice D).
+# Narrowed to a body of exactly `AAAA` between the two `\n` escapes, so no
+# real key can ever match: a key with content has content in the middle.
+-----BEGIN OPENSSH PRIVATE KEY-----.nAAAA.n-----END OPENSSH PRIVATE KEY-----
 
 # === Advisory-tier allows (documentation / test fixtures) ================
 # --- placeholder / example email addresses --------------------------------

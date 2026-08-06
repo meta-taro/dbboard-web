@@ -113,6 +113,16 @@
       "failed": "複製失敗"
     }
   },
+  "dump": {
+    "label": "資料庫傾印",
+    "download": "傾印資料庫",
+    "running": "正在傾印…",
+    "confirm": {
+      "prompt": "仍要繼續嗎？",
+      "accept": "仍要繼續",
+      "cancel": "取消"
+    }
+  },
   "ai": {
     "heading": "AI 助理",
     "section": {

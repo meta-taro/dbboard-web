@@ -113,6 +113,16 @@
       "failed": "コピーできませんでした"
     }
   },
+  "dump": {
+    "label": "データベースのダンプ",
+    "download": "データベースをダンプ",
+    "running": "ダンプ中…",
+    "confirm": {
+      "prompt": "このままダンプしますか？",
+      "accept": "ダンプする",
+      "cancel": "取り消し"
+    }
+  },
   "ai": {
     "heading": "AI アシスト",
     "section": {

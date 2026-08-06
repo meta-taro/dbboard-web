@@ -113,6 +113,16 @@
       "failed": "Falha ao copiar"
     }
   },
+  "dump": {
+    "label": "Dump do banco de dados",
+    "download": "Fazer dump do banco",
+    "running": "Fazendo dump…",
+    "confirm": {
+      "prompt": "Continuar mesmo assim?",
+      "accept": "Continuar mesmo assim",
+      "cancel": "Cancelar"
+    }
+  },
   "ai": {
     "heading": "Assistente de IA",
     "section": {

@@ -113,6 +113,16 @@
       "failed": "复制失败"
     }
   },
+  "dump": {
+    "label": "数据库转储",
+    "download": "转储数据库",
+    "running": "正在转储…",
+    "confirm": {
+      "prompt": "仍要继续吗？",
+      "accept": "仍要继续",
+      "cancel": "取消"
+    }
+  },
   "ai": {
     "heading": "AI 助手",
     "section": {

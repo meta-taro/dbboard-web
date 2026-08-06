@@ -113,6 +113,16 @@
       "failed": "No se pudo copiar"
     }
   },
+  "dump": {
+    "label": "Volcado de la base de datos",
+    "download": "Volcar la base de datos",
+    "running": "Volcando…",
+    "confirm": {
+      "prompt": "¿Volcar de todos modos?",
+      "accept": "Volcar de todos modos",
+      "cancel": "Cancelar"
+    }
+  },
   "ai": {
     "heading": "Asistente IA",
     "section": {

@@ -113,6 +113,16 @@
       "failed": "Copy failed"
     }
   },
+  "dump": {
+    "label": "Database dump",
+    "download": "Dump database",
+    "running": "Dumping…",
+    "confirm": {
+      "prompt": "Dump it anyway?",
+      "accept": "Dump anyway",
+      "cancel": "Cancel"
+    }
+  },
   "ai": {
     "heading": "AI assist",
     "section": {

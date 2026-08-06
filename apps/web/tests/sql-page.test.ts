@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   sidebarConstructed: vi.fn(),
   schemaConstructed: vi.fn(),
   aiPanelConstructed: vi.fn(),
+  dumpButtonConstructed: vi.fn(),
   loadEditContext: vi.fn(),
   editContextConstructed: vi.fn(),
 }));
@@ -127,6 +128,21 @@ vi.mock("../app/components/AiPanel.vue", () => ({
   }),
 }));
 
+// DumpButton stub. It reads the API base out of the runtime config while it
+// sets up, and this suite runs without a Nuxt instance. Its behaviour is
+// covered by dump-button.test.ts and use-dump.test.ts; here we only check the
+// mount and the id it is handed.
+vi.mock("../app/components/DumpButton.vue", () => ({
+  default: defineComponent({
+    name: "DumpButton",
+    props: ["connectionId", "apiBase"],
+    setup(props) {
+      mocks.dumpButtonConstructed(props.connectionId);
+      return () => h("div", { "data-testid": "dump-button" });
+    },
+  }),
+}));
+
 const mountOptions = {
   global: {
     stubs: {
@@ -153,6 +169,7 @@ describe("SqlPage", () => {
     mocks.sidebarConstructed.mockReset();
     mocks.schemaConstructed.mockReset();
     mocks.aiPanelConstructed.mockReset();
+    mocks.dumpButtonConstructed.mockReset();
     mocks.loadEditContext.mockReset();
     mocks.editContextConstructed.mockReset();
     // The sidebar remembers its width, so without a storage of its own per
@@ -460,6 +477,15 @@ describe("SqlPage", () => {
     await wrapper.find("[data-testid='sql-input']").setValue("SELECT 99");
     await flushPromises();
     expect(panel.props("currentSql")).toBe("SELECT 99");
+    wrapper.unmount();
+  });
+
+  it("mounts the dump button with the route id passed through (0029)", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='dump-button']").exists()).toBe(true);
+    expect(mocks.dumpButtonConstructed).toHaveBeenCalledWith("route-id");
     wrapper.unmount();
   });
 

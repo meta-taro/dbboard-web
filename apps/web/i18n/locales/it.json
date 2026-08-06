@@ -113,6 +113,16 @@
       "failed": "Copia non riuscita"
     }
   },
+  "dump": {
+    "label": "Dump del database",
+    "download": "Esegui il dump del database",
+    "running": "Dump in corso…",
+    "confirm": {
+      "prompt": "Procedere comunque?",
+      "accept": "Esegui comunque",
+      "cancel": "Annulla"
+    }
+  },
   "ai": {
     "heading": "Assistente IA",
     "section": {

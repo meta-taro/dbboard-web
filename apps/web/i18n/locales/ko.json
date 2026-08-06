@@ -113,6 +113,16 @@
       "failed": "복사하지 못했습니다"
     }
   },
+  "dump": {
+    "label": "데이터베이스 덤프",
+    "download": "데이터베이스 덤프",
+    "running": "덤프하는 중…",
+    "confirm": {
+      "prompt": "그래도 덤프할까요?",
+      "accept": "그래도 덤프",
+      "cancel": "취소"
+    }
+  },
   "ai": {
     "heading": "AI 어시스트",
     "section": {

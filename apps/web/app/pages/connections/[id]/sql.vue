@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from "vue";
 import { useRoute } from "vue-router";
 import AiPanel from "../../../components/AiPanel.vue";
+import DumpButton from "../../../components/DumpButton.vue";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultExportToolbar from "../../../components/ResultExportToolbar.vue";
 import ErrorBanner from "../../../components/ErrorBanner.vue";
@@ -147,10 +148,15 @@ function onEditorKeydown(event: KeyboardEvent) {
 <template>
   <section class="sql-page">
     <header class="header">
-      <h2>{{ t("sql.title") }}</h2>
-      <p class="connection-id">
-        <code>{{ connectionId }}</code>
-      </p>
+      <div class="header-text">
+        <h2>{{ t("sql.title") }}</h2>
+        <p class="connection-id">
+          <code>{{ connectionId }}</code>
+        </p>
+      </div>
+      <!-- A dump is of the connection, not of the grid, so it belongs to the
+           page header rather than the result toolbar. -->
+      <DumpButton :connection-id="connectionId" />
     </header>
 
     <ErrorBanner
@@ -240,6 +246,14 @@ function onEditorKeydown(event: KeyboardEvent) {
 }
 
 .header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.header-text {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

@@ -113,6 +113,16 @@
       "failed": "Échec de la copie"
     }
   },
+  "dump": {
+    "label": "Export SQL de la base de données",
+    "download": "Exporter la base en SQL",
+    "running": "Export en cours…",
+    "confirm": {
+      "prompt": "Exporter quand même ?",
+      "accept": "Exporter quand même",
+      "cancel": "Annuler"
+    }
+  },
   "ai": {
     "heading": "Assistant IA",
     "section": {

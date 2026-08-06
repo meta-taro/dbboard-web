@@ -11,6 +11,7 @@ import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
+import { ConnectionDumpController } from "./presentation/connection-dump.controller";
 import { ConnectionRowsController } from "./presentation/connection-rows.controller";
 import { ConnectionSchemaController } from "./presentation/connection-schema.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
@@ -24,6 +25,7 @@ import { ADAPTER_FACTORY } from "./usecase/adapter-factory.port";
 import { CONNECTION_REGISTRY } from "./usecase/connection-registry.port";
 import { DeleteConnection } from "./usecase/delete-connection.use-case";
 import { DescribeTable } from "./usecase/describe-table.use-case";
+import { DumpDatabase } from "./usecase/dump-database.use-case";
 import { ExecuteQuery } from "./usecase/execute-query.use-case";
 import { ExplainSql } from "./usecase/explain-sql.use-case";
 import { ExportHistory } from "./usecase/export-history.use-case";
@@ -62,6 +64,7 @@ import { UpdateRow } from "./usecase/update-row.use-case";
     ConnectionCapabilitiesController,
     ConnectionSchemaController,
     ConnectionRowsController,
+    ConnectionDumpController,
     HistoryController,
     AiController,
   ],
@@ -96,6 +99,12 @@ import { UpdateRow } from "./usecase/update-row.use-case";
       provide: DescribeTable,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new DescribeTable(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    {
+      provide: DumpDatabase,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new DumpDatabase(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     // The one write path (ticket 0028). Resolved per request like every

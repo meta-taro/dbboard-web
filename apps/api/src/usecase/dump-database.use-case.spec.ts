@@ -449,6 +449,37 @@ describe("DumpDatabase.run", () => {
     expect(adapter.sql.filter((s) => s.startsWith("SELECT *"))).toHaveLength(1);
   });
 
+  // A declared key is never null, so reaching here means the read and the
+  // schema disagree. buildSelectPage refuses the cursor rather than build
+  // `(k) > (NULL)`, which matches nothing — the rest of the table would go
+  // silently missing from a backup. The refusal is a per-table comment.
+  it("reports a null key value rather than resuming past it", async () => {
+    const adapter = new FakeAdapter({
+      tables: [table("a"), table("b")],
+      pk: { a: ["id"], b: ["id"] },
+      pages: {
+        a: [
+          page(
+            ["id", "note"],
+            Array.from({ length: READ_PAGE_ROWS }, (_, i) => [
+              i === READ_PAGE_ROWS - 1 ? null : i,
+              "x",
+            ]),
+          ),
+        ],
+        b: [page(["id", "note"], rowsOf(1))],
+      },
+    });
+    const dump = useCase(adapter);
+
+    const out = await collect(dump.run(await dump.prepare(undefined)));
+
+    expect(out).toContain("-- !! failed to dump public.a: cursor contains a null");
+    // The first page's rows still made it out, and table b is unaffected.
+    expect(out).toContain('INSERT INTO "public"."a"');
+    expect(out).toContain('INSERT INTO "public"."b"');
+  });
+
   it("names an unqualified table without a leading dot", async () => {
     const adapter = new FakeAdapter({ tables: [table("a", null)] });
     const dump = useCase(adapter);

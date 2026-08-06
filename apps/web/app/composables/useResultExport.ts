@@ -10,6 +10,7 @@
  * still works.
  */
 import { onBeforeUnmount, readonly, ref } from "vue";
+import { saveBlob } from "./internal/download";
 import type { Column, Value } from "./useQueryExecution";
 import { toCsvWithBom, toTsv } from "../utils/export";
 
@@ -58,18 +59,7 @@ export function useResultExport() {
     // charset=utf-8 alongside the BOM: the header is what a browser preview
     // reads, the BOM is what Excel reads. Neither one covers both.
     const blob = new Blob([toCsvWithBom(columns, rows)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    // Firefox historically ignored a click on a detached anchor.
-    document.body.append(anchor);
-    try {
-      anchor.click();
-    } finally {
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    }
+    saveBlob(blob, filename);
   }
 
   return { state: readonly(state), copyTsv, downloadCsv };

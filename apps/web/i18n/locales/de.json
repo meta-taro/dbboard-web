@@ -113,6 +113,16 @@
       "failed": "Kopieren fehlgeschlagen"
     }
   },
+  "dump": {
+    "label": "Datenbank-Dump",
+    "download": "Datenbank-Dump erstellen",
+    "running": "Dump läuft…",
+    "confirm": {
+      "prompt": "Trotzdem erstellen?",
+      "accept": "Trotzdem erstellen",
+      "cancel": "Abbrechen"
+    }
+  },
   "ai": {
     "heading": "KI-Assistent",
     "section": {

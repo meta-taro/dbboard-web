@@ -3,6 +3,7 @@ import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.p
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
 import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
+import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
 
 /**
  * The drivers this build can construct, and how.
@@ -13,8 +14,8 @@ import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
  * `switch`, it is that the keys are enumerable — `supported()` reads the same
  * table `create` dispatches on, so the two cannot report different sets.
  *
- * Insertion order is display order (Maps preserve it): `postgres` first
- * because it is the driver anyone actually connects with, `null` last
+ * Insertion order is display order (Maps preserve it): the drivers that
+ * reach a database first — `postgres`, then `turso` — and `null` last
  * because it connects to nothing.
  */
 interface DriverBuilder {
@@ -43,6 +44,19 @@ const BUILDERS = new Map<string, DriverBuilder>([
         previous instanceof PostgresAdapter
           ? previous.rebuildWith(config)
           : createPostgresAdapter(config),
+    },
+  ],
+  [
+    "turso",
+    {
+      create: (config) => createTursoAdapter(config),
+      // Same shape as postgres, and for the same reason: the credential —
+      // here a bearer token rather than a password — lives only inside the
+      // adapter, so the successor has to be asked of it.
+      rebuild: (previous, config) =>
+        previous instanceof TursoAdapter
+          ? previous.rebuildWith(config)
+          : createTursoAdapter(config),
     },
   ],
   ["null", { create: () => new NullAdapter(), rebuild: () => new NullAdapter() }],

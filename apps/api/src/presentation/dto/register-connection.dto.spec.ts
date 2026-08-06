@@ -55,6 +55,20 @@ describe("RegisterConnectionDto", () => {
     });
   });
 
+  it("accepts a turso body with an auth token", () => {
+    // Without the field declared, the global `whitelist: true` pipe strips
+    // it and the connection registers unauthenticated — a 401 on the first
+    // query, with nothing in the request to explain it.
+    const { dto, errors } = validate({
+      label: "Turso",
+      driver: "turso",
+      connectionString: "libsql://db-org.turso.io",
+      authToken: "eyJhbGciOi",
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.authToken).toBe("eyJhbGciOi");
+  });
+
   it("rejects port out of TCP range", () => {
     const { errors } = validate({ label: "x", driver: "postgres", host: "h", port: 70000 });
     expect(errors.map((e) => e.property)).toContain("port");

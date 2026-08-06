@@ -54,4 +54,10 @@ export class UpdateConnectionDto {
   @IsOptional()
   @IsIn(SSL_MODES)
   sslMode?: SslMode;
+
+  // No @IsNotEmpty, on the same terms as `password`: a Turso edit form
+  // never prefills the token box either, so "" is how it says "untouched".
+  @IsOptional()
+  @IsString()
+  authToken?: string;
 }

@@ -3,6 +3,18 @@ import { CapabilityError } from "../domain/errors";
 import { NullAdapter } from "./null-adapter";
 import { PostgresAdapter } from "./postgres-adapter";
 import { StaticAdapterFactory } from "./static-adapter-factory";
+import { TursoAdapter } from "./turso-adapter";
+
+// A config each driver accepts. Until 0031 the anti-drift test below could
+// hand every driver one postgres DSN, because there was only one driver
+// that read the field. A second real driver ends that: `postgresql://…` is
+// a scheme `createTursoAdapter` refuses, and a shared fixture would have
+// made the drift test fail for a reason that has nothing to do with drift.
+const CONFIG_FOR: Record<string, Record<string, unknown>> = {
+  postgres: { connectionString: "postgresql://u:p@127.0.0.1:1/db" },
+  turso: { connectionString: "libsql://db-org.turso.io", authToken: "token" },
+  null: {},
+};
 
 describe("StaticAdapterFactory", () => {
   it("returns a NullAdapter for the 'null' driver", () => {
@@ -28,15 +40,39 @@ describe("StaticAdapterFactory", () => {
     expect(() => new StaticAdapterFactory().create("postgres", {})).toThrowError(CapabilityError);
   });
 
+  it("returns a TursoAdapter for the 'turso' driver with a remote URL", () => {
+    // `createClient` is lazy for the remote transports, so no socket opens.
+    const adapter = new StaticAdapterFactory().create("turso", CONFIG_FOR["turso"]);
+    try {
+      expect(adapter).toBeInstanceOf(TursoAdapter);
+      expect(adapter.getId()).toBe("turso");
+    } finally {
+      void adapter.close?.();
+    }
+  });
+
+  it("raises CapabilityError when the turso driver is missing its URL", () => {
+    expect(() => new StaticAdapterFactory().create("turso", {})).toThrowError(CapabilityError);
+  });
+
+  it("raises CapabilityError when the turso driver is pointed at a local file", () => {
+    // The factory is what a request body reaches. A `file:` URL here would
+    // open a file on the API host, so the refusal has to survive at this
+    // level and not only in the adapter's own unit test.
+    expect(() =>
+      new StaticAdapterFactory().create("turso", { connectionString: "file:/etc/passwd" }),
+    ).toThrowError(CapabilityError);
+  });
+
   it("raises CapabilityError for unknown drivers (404 at the HTTP layer)", () => {
     expect(() => new StaticAdapterFactory().create("mongo", {})).toThrowError(CapabilityError);
     expect(() => new StaticAdapterFactory().create("", {})).toThrowError(CapabilityError);
   });
 
-  it("lists the drivers it supports, with the real one first", () => {
-    // The order is the order the form offers them, so `postgres` leads and
-    // the do-nothing adapter trails.
-    expect([...new StaticAdapterFactory().supported()]).toEqual(["postgres", "null"]);
+  it("lists the drivers it supports, with the real ones first", () => {
+    // The order is the order the form offers them, so the drivers that
+    // reach a database lead and the do-nothing adapter trails.
+    expect([...new StaticAdapterFactory().supported()]).toEqual(["postgres", "turso", "null"]);
   });
 
   it("can create every driver it lists", () => {
@@ -46,9 +82,11 @@ describe("StaticAdapterFactory", () => {
     // fails if a future edit gives them two.
     const factory = new StaticAdapterFactory();
     for (const driver of factory.supported()) {
-      const adapter = factory.create(driver, {
-        connectionString: "postgresql://u:p@127.0.0.1:1/db",
-      });
+      const config = CONFIG_FOR[driver];
+      // A driver added to the table without a fixture here would otherwise
+      // be tested with `undefined` and pass by accident.
+      expect(config, `no fixture config for driver "${driver}"`).toBeDefined();
+      const adapter = factory.create(driver, config);
       try {
         expect(adapter.getId()).toBe(driver);
       } finally {
@@ -79,6 +117,81 @@ describe("StaticAdapterFactory", () => {
       } finally {
         void before.close?.();
         void after.close?.();
+      }
+    });
+
+    it("carries a turso auth token forward when the edit omits it", () => {
+      // Same promise ADR-0080 makes about the postgres password: web keeps
+      // no keyring, so the only copy of a live connection's credential is
+      // inside the adapter serving it. An edit that re-points the URL must
+      // not silently drop the token and leave an unauthenticated adapter
+      // that 401s on its first query.
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("turso", {
+        connectionString: "libsql://old.turso.io",
+        authToken: "OLD-TOKEN",
+      });
+      const after = factory.rebuild(before, "turso", {
+        connectionString: "libsql://new.turso.io",
+      });
+      try {
+        expect(after).toBeInstanceOf(TursoAdapter);
+        expect(after).not.toBe(before);
+        expect((after as unknown as { secret?: string }).secret).toBe("OLD-TOKEN");
+      } finally {
+        void before.close?.();
+        void after.close?.();
+      }
+    });
+
+    it("replaces a turso auth token the edit does supply", () => {
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("turso", {
+        connectionString: "libsql://old.turso.io",
+        authToken: "OLD-TOKEN",
+      });
+      const after = factory.rebuild(before, "turso", {
+        connectionString: "libsql://new.turso.io",
+        authToken: "NEW-TOKEN",
+      });
+      try {
+        expect((after as unknown as { secret?: string }).secret).toBe("NEW-TOKEN");
+      } finally {
+        void before.close?.();
+        void after.close?.();
+      }
+    });
+
+    it("treats a blank turso auth token as 'keep', the way a blank password is treated", () => {
+      // The edit form never prefills a credential box, so it round-trips ""
+      // for the one nobody typed in. Taking that literally would replace a
+      // working token with an empty bearer header.
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("turso", {
+        connectionString: "libsql://old.turso.io",
+        authToken: "OLD-TOKEN",
+      });
+      const after = factory.rebuild(before, "turso", {
+        connectionString: "libsql://new.turso.io",
+        authToken: "",
+      });
+      try {
+        expect((after as unknown as { secret?: string }).secret).toBe("OLD-TOKEN");
+      } finally {
+        void before.close?.();
+        void after.close?.();
+      }
+    });
+
+    it("refuses a turso rebuild it cannot perform rather than returning a broken adapter", () => {
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("turso", CONFIG_FOR["turso"]);
+      try {
+        expect(() =>
+          factory.rebuild(before, "turso", { connectionString: ":memory:" }),
+        ).toThrowError(CapabilityError);
+      } finally {
+        void before.close?.();
       }
     });
 

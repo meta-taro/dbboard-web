@@ -20,6 +20,7 @@ const CONNECTION_FIELDS: Record<keyof AdapterConfig, true> = {
   user: true,
   password: true,
   sslMode: true,
+  authToken: true,
 };
 
 /**

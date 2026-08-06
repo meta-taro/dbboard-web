@@ -16,6 +16,15 @@ export interface AdapterConfig {
   // its own TLS handling inherits the two-mode vocabulary instead of
   // inventing a third spelling of the same choice.
   sslMode?: SslMode;
+  // 0031 slice A. Turso authenticates with a bearer token rather than with
+  // a user/password pair, and the token is not part of the URL. A field of
+  // its own rather than a reuse of `password`, because the two are not the
+  // same field wearing different labels: `password` is half of a credential
+  // pair the postgres branch resolves alongside `user`, and a form that
+  // labelled a Turso token "password" would be lying about what to paste
+  // in. It carries forward across an edit the way `password` does
+  // (ADR-0080) — see `TursoAdapter.rebuildWith`.
+  authToken?: string;
 }
 
 // Constructs an adapter from a driver discriminator + per-driver config.

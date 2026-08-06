@@ -29,6 +29,15 @@ describe("UpdateConnectionDto", () => {
     expect(dto.password).toBe("");
   });
 
+  it("accepts a blank auth token on the same terms as a blank password", () => {
+    // A Turso edit form has the same round-trip problem: the token box is
+    // never prefilled, so it submits "". Rejecting it would make renaming a
+    // Turso connection impossible without pasting the token again.
+    const { dto, errors } = validate({ connectionString: "libsql://new.turso.io", authToken: "" });
+    expect(errors).toHaveLength(0);
+    expect(dto.authToken).toBe("");
+  });
+
   it("rejects a blank label", () => {
     // Blank means "keep" for a password and "unfindable" for a name. A
     // connection with no label cannot be picked out of the sidebar.

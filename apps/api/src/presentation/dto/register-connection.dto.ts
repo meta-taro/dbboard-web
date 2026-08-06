@@ -64,4 +64,14 @@ export class RegisterConnectionDto {
   @IsOptional()
   @IsIn(SSL_MODES)
   sslMode?: SslMode;
+
+  // Turso's bearer token (0031 slice A). A field of its own rather than a
+  // reuse of `password` — see `AdapterConfig.authToken`. Declared here for
+  // the same reason every other config field is: the global
+  // `whitelist: true` pipe strips what is not declared, so an undeclared
+  // token would be dropped silently and the connection would register
+  // unauthenticated.
+  @IsOptional()
+  @IsString()
+  authToken?: string;
 }

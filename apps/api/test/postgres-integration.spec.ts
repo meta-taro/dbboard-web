@@ -4,6 +4,8 @@ import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresAdapter } from "../src/infrastructure/postgres-adapter";
 import { createApp } from "../src/main";
+import type { ConnectionRegistry } from "../src/usecase/connection-registry.port";
+import { RestoreDatabase } from "../src/usecase/restore-database.use-case";
 
 // Integration test for the Postgres adapter (ticket 0004 § Tests).
 //
@@ -935,6 +937,193 @@ describe("Postgres adapter integration (testcontainers)", () => {
       await withAdapter(async (adapter) => {
         await expect(adapter.executeInTransaction(["NOT SQL AT ALL"])).rejects.toThrow();
         await expect(adapter.executeInTransaction(["SELECT 1"])).resolves.toBeUndefined();
+      });
+    });
+  });
+
+  describe("RestoreDatabase end to end (ADR-0051)", () => {
+    // The use-case unit tests drive a fake adapter, which can prove the
+    // orchestration but not the thing the feature promises: that a real
+    // `.sql` file — ours or `pg_dump`'s — lands in a real database. Each
+    // test gets its own database, because "empty target" is the safety
+    // model and the shared `test` database is full of earlier fixtures.
+
+    // No connection is registered for these adapters: the use case is
+    // driven directly with its default adapter, so the registry is never
+    // consulted.
+    const noRegistry: ConnectionRegistry = {
+      add: () => undefined,
+      list: () => [],
+      get: () => undefined,
+      delete: () => false,
+    };
+
+    function urlFor(database: string): string {
+      return `postgresql://test:test@${container?.getHost()}:${container?.getMappedPort(
+        5432,
+      )}/${database}?sslmode=disable`;
+    }
+
+    // A fresh database per test. `CREATE DATABASE` cannot run inside a
+    // transaction, which is exactly why it goes through `execute` (simple
+    // protocol, unwrapped) on the original connection rather than through a
+    // restore.
+    async function withFreshDatabase<T>(
+      name: string,
+      fn: (
+        restore: RestoreDatabase,
+        adapter: ReturnType<typeof createPostgresAdapter>,
+      ) => Promise<T>,
+    ): Promise<T> {
+      const admin = createPostgresAdapter({ connectionString: urlFor("test") });
+      try {
+        await admin.execute(`DROP DATABASE IF EXISTS ${name}`);
+        await admin.execute(`CREATE DATABASE ${name}`);
+      } finally {
+        await admin.close();
+      }
+
+      const target = createPostgresAdapter({ connectionString: urlFor(name) });
+      try {
+        return await fn(new RestoreDatabase(target, noRegistry), target);
+      } finally {
+        await target.close();
+      }
+    }
+
+    async function scalar(
+      adapter: ReturnType<typeof createPostgresAdapter>,
+      sql: string,
+    ): Promise<unknown> {
+      return (await adapter.executeQuery(sql)).rows[0]?.[0];
+    }
+
+    // What `run_dump` emits: a header comment, then DDL and INSERTs per
+    // table. The header matters — it stays attached to the first statement,
+    // so classifying it as anything but `ddl` would be a real bug.
+    const DBBOARD_DUMP = [
+      "-- dbboard logical dump (postgres)",
+      "",
+      "-- public.note",
+      'CREATE TABLE "public"."note" (',
+      '    "id" integer NOT NULL,',
+      '    "body" text',
+      ");",
+      `INSERT INTO "public"."note" ("id", "body") VALUES ('1', 'first'), ('2', 'sec''ond');`,
+      "",
+    ].join("\n");
+
+    it("restores a dbboard dump into an empty database", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await withFreshDatabase("restore_own", async (restore, adapter) => {
+        const prepared = await restore.prepare(undefined, DBBOARD_DUMP);
+        expect(prepared.plan.existingTables).toEqual([]);
+
+        const outcome = await restore.run(prepared);
+
+        expect(outcome).toEqual({
+          statementsRun: 2,
+          ddlRun: 1,
+          dataRun: 1,
+          failures: [],
+          cancelled: false,
+          atomic: true,
+        });
+        await expect(scalar(adapter, "SELECT count(*) FROM note")).resolves.toBe(2);
+        // The `''` doubling survived Layer 1 and reached the engine intact.
+        await expect(scalar(adapter, "SELECT body FROM note WHERE id = 2")).resolves.toBe(
+          "sec'ond",
+        );
+      });
+    });
+
+    // `pg_dump --inserts` output, trimmed to the shapes that exercise the
+    // classifier: session `SET`s it opens with, a `SELECT pg_catalog.…`
+    // call, a dollar-quoted function body whose interior `;` must not split
+    // it, and its own transaction control — which the runner strips because
+    // it supplies the boundary itself.
+    const PG_DUMP = [
+      "SET statement_timeout = 0;",
+      "SET client_encoding = 'UTF8';",
+      "BEGIN;",
+      "CREATE TABLE public.item (id integer NOT NULL, label text);",
+      "INSERT INTO public.item VALUES (1, 'widget');",
+      "INSERT INTO public.item VALUES (2, 'gadget');",
+      "CREATE FUNCTION public.label_of(public.item) RETURNS text",
+      "    LANGUAGE plpgsql AS $$",
+      "BEGIN",
+      "    RETURN $1.label;",
+      "END;",
+      "$$;",
+      "SELECT pg_catalog.setval('public.item_id_seq'::regclass, 2, true);",
+      "COMMIT;",
+      "",
+    ].join("\n");
+
+    it("restores a pg_dump --inserts script into an empty database", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await withFreshDatabase("restore_pgdump", async (restore, adapter) => {
+        // The sequence `setval` refers to has to exist for the call to
+        // resolve; pg_dump would have created it above.
+        await adapter.execute("CREATE SEQUENCE public.item_id_seq");
+
+        const prepared = await restore.prepare(undefined, PG_DUMP);
+        // BEGIN and COMMIT are classified and then dropped; the function
+        // body's own BEGIN … END never reaches the classifier, because the
+        // dollar-quoted body kept it inside one statement.
+        expect(prepared.plan.statements.map((s) => s.kind)).toEqual([
+          "other",
+          "other",
+          "transaction_control",
+          "ddl",
+          "data",
+          "data",
+          "ddl",
+          "other",
+          "transaction_control",
+        ]);
+
+        const outcome = await restore.run(prepared, { confirmed: true, onError: "stop" });
+
+        expect(outcome.statementsRun).toBe(7);
+        expect(outcome.ddlRun).toBe(2);
+        expect(outcome.dataRun).toBe(2);
+        await expect(scalar(adapter, "SELECT count(*) FROM item")).resolves.toBe(2);
+        await expect(
+          scalar(adapter, "SELECT public.label_of(i) FROM item i WHERE id = 1"),
+        ).resolves.toBe("widget");
+      });
+    });
+
+    it("refuses a target that already has tables, then applies once confirmed", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await withFreshDatabase("restore_gate", async (restore, adapter) => {
+        await adapter.execute("CREATE TABLE occupied (id integer)");
+
+        const blocked = await restore.prepare(undefined, DBBOARD_DUMP);
+        expect(blocked.plan.existingTables).toEqual(["public.occupied"]);
+        await expect(restore.run(blocked)).rejects.toThrow(/1 existing table\(s\)/);
+        // Refused means nothing ran. `bool` decodes to Integer(1)/Integer(0).
+        await expect(scalar(adapter, "SELECT to_regclass('public.note') IS NULL")).resolves.toBe(1);
+
+        const outcome = await restore.run(blocked, { confirmed: true, onError: "stop" });
+
+        expect(outcome.statementsRun).toBe(2);
+        await expect(scalar(adapter, "SELECT count(*) FROM note")).resolves.toBe(2);
+      });
+    });
+
+    it("leaves the database untouched when a statement partway through fails", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      // The DoD case. Everything before the bad statement is valid and
+      // would have stuck on its own; the atomic path has to undo all of it.
+      await withFreshDatabase("restore_atomic", async (restore, adapter) => {
+        const script = `${DBBOARD_DUMP}\nINSERT INTO "public"."missing" ("id") VALUES ('1');\n`;
+        const prepared = await restore.prepare(undefined, script);
+
+        await expect(restore.run(prepared)).rejects.toThrow(/restore transaction failed/);
+
+        await expect(scalar(adapter, "SELECT to_regclass('public.note') IS NULL")).resolves.toBe(1);
       });
     });
   });

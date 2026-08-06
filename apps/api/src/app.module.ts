@@ -12,6 +12,7 @@ import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
 import { ConnectionDumpController } from "./presentation/connection-dump.controller";
+import { ConnectionRestoreController } from "./presentation/connection-restore.controller";
 import { ConnectionRowsController } from "./presentation/connection-rows.controller";
 import { ConnectionSchemaController } from "./presentation/connection-schema.controller";
 import { ConnectionTablesController } from "./presentation/connection-tables.controller";
@@ -39,6 +40,7 @@ import { ListDrivers } from "./usecase/list-drivers.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
+import { RestoreDatabase } from "./usecase/restore-database.use-case";
 import { SuggestSql } from "./usecase/suggest-sql.use-case";
 import { UpdateConnection } from "./usecase/update-connection.use-case";
 import { UpdateRow } from "./usecase/update-row.use-case";
@@ -65,6 +67,7 @@ import { UpdateRow } from "./usecase/update-row.use-case";
     ConnectionSchemaController,
     ConnectionRowsController,
     ConnectionDumpController,
+    ConnectionRestoreController,
     HistoryController,
     AiController,
   ],
@@ -105,6 +108,15 @@ import { UpdateRow } from "./usecase/update-row.use-case";
       provide: DumpDatabase,
       useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
         new DumpDatabase(adapter, registry),
+      inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
+    },
+    // The write-side counterpart of DumpDatabase (ticket 0030). Same
+    // per-request resolution: a restore always runs on the adapter the
+    // connection currently holds.
+    {
+      provide: RestoreDatabase,
+      useFactory: (adapter: NullAdapter, registry: InMemoryConnectionRegistry) =>
+        new RestoreDatabase(adapter, registry),
       inject: [DATABASE_ADAPTER, CONNECTION_REGISTRY],
     },
     // The one write path (ticket 0028). Resolved per request like every

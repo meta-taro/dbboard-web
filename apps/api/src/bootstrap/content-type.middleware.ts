@@ -11,18 +11,38 @@ import type { NextFunction, Request, Response } from "express";
 // the contract, so we let them through unconditionally.
 const BODY_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
+// The one exemption (0030 slice E): a restore posts a `.sql` script as its
+// body, so those two routes also accept `application/sql`. Matched on the
+// exact path rather than a substring so nothing else — `/restore/all`, a
+// future `/restore/history` — inherits a second media type by accident.
+//
+// This surface is web-only and not described by docs/api-contract.md, which
+// is why widening the guard here does not touch the contract: desktop reads
+// the file it was pointed at and never crosses HTTP (ADR-0051).
+const SQL_BODY_PATHS = /^\/connections\/[^/]+\/restore(\/plan)?\/?$/;
+
+export const SQL_MEDIA_TYPE = "application/sql";
+
 export function contentTypeGuard(req: Request, res: Response, next: NextFunction): void {
   if (!BODY_METHODS.has(req.method)) {
     next();
     return;
   }
   const header = req.headers["content-type"];
-  if (
-    typeof header === "string" &&
-    header.split(";")[0]?.trim().toLowerCase() === "application/json"
-  ) {
+  const mediaType =
+    typeof header === "string" ? header.split(";")[0]?.trim().toLowerCase() : undefined;
+
+  if (mediaType === "application/json") {
     next();
     return;
   }
-  res.status(415).type("text/plain").send("Unsupported Media Type — expected application/json");
+  if (mediaType === SQL_MEDIA_TYPE && SQL_BODY_PATHS.test(req.path ?? "")) {
+    next();
+    return;
+  }
+
+  const expected = SQL_BODY_PATHS.test(req.path ?? "")
+    ? `application/json or ${SQL_MEDIA_TYPE}`
+    : "application/json";
+  res.status(415).type("text/plain").send(`Unsupported Media Type — expected ${expected}`);
 }

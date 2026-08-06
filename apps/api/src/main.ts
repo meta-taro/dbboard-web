@@ -4,7 +4,8 @@ import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module";
 import { API_SECRET, BIND_HOST, MAX_BODY_BYTES, assertSafeBindConfig } from "./bootstrap/config";
-import { contentTypeGuard } from "./bootstrap/content-type.middleware";
+import { SQL_MEDIA_TYPE, contentTypeGuard } from "./bootstrap/content-type.middleware";
+import { RESTORE_BODY_LIMIT_BYTES } from "./domain/limits";
 import { ContractErrorFilter } from "./presentation/filters/contract-error.filter";
 import { RequestLevelRejectionFilter } from "./presentation/filters/request-level-rejection.filter";
 import { createBearerAuthMiddleware } from "./presentation/middleware/bearer-auth.middleware";
@@ -31,6 +32,12 @@ export async function createApp(overrides?: CreateAppOverrides): Promise<NestExp
   // recording interceptor.
   app.use(createBearerAuthMiddleware(secret));
   app.useBodyParser("json", { limit: MAX_BODY_BYTES });
+  // The restore body (0030 slice E). A second parser rather than a wider
+  // first one: it only claims `application/sql`, so the contract's 64 KiB
+  // cap on every JSON body stays exactly where it is, and a restore script
+  // gets its own far larger ceiling. `RESTORE_BODY_LIMIT_BYTES` is not
+  // contract-pinned — see domain/limits.ts for why.
+  app.useBodyParser("text", { type: SQL_MEDIA_TYPE, limit: RESTORE_BODY_LIMIT_BYTES });
   // class-validator failures → 422 (semantic). Malformed JSON falls
   // through to express.json's default 400; oversized bodies surface as
   // 413 via PayloadTooLargeError. The ContractErrorFilter is for

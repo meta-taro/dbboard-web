@@ -1,6 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { RESTORE_BODY_LIMIT_BYTES } from "../src/domain/limits";
 import { createApp } from "../src/main";
 
 describe("HTTP contract surface (0003)", () => {
@@ -478,6 +479,95 @@ describe("HTTP contract surface (0003)", () => {
       .send({ sslMode: "verify-full" });
 
     expect(res.status).toBe(422);
+  });
+
+  // ---- restore: the one non-JSON body (0030 slice E) -----------------
+
+  it("POST /connections/:id/restore/plan with application/sql reaches the handler", async () => {
+    // The guard's exemption is what this asserts: an unknown connection
+    // means the request got past 415 and into the use case.
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore/plan")
+      .set("Content-Type", "application/sql")
+      .send("CREATE TABLE t (id int);");
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      error: { category: "capability", message: expect.stringContaining("unknown connection") },
+    });
+  });
+
+  it("POST /connections/:id/restore with application/sql reaches the handler", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore")
+      .set("Content-Type", "application/sql")
+      .send("CREATE TABLE t (id int);");
+
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /connections/:id/restore with text/plain → 415 plain text", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore")
+      .set("Content-Type", "text/plain")
+      .send("CREATE TABLE t (id int);");
+
+    expect(res.status).toBe(415);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+  });
+
+  it("POST /query with application/sql → 415 (the exemption is restore-only)", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/query")
+      .set("Content-Type", "application/sql")
+      .send("SELECT 1");
+
+    expect(res.status).toBe(415);
+  });
+
+  it("POST /connections/:id/restore with an unrecognised on_error → 422", async () => {
+    // Reading anything-but-"continue" as "stop" (desktop's leniency over
+    // its own IPC) would hide the caller's typo behind a run that quietly
+    // used the other policy.
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore?on_error=abort")
+      .set("Content-Type", "application/sql")
+      .send("SELECT 1;");
+
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /connections/:id/restore with an unrecognised confirmed → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore?confirmed=1")
+      .set("Content-Type", "application/sql")
+      .send("SELECT 1;");
+
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /connections/:id/restore over the script cap → 413 plain text", async () => {
+    // The restore cap is its own, far above the contract's 64 KiB: a dump
+    // is not a query. See RESTORE_BODY_LIMIT_BYTES.
+    const over = "x".repeat(RESTORE_BODY_LIMIT_BYTES + 1024);
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/restore")
+      .set("Content-Type", "application/sql")
+      .send(over);
+
+    expect(res.status).toBe(413);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+  });
+
+  it("POST /query stays on the 64 KiB cap the contract pins", async () => {
+    // Guards the restore parser against widening the JSON one.
+    const big = "x".repeat(70 * 1024);
+    const res = await request(app.getHttpServer())
+      .post("/connections/never-existed/query")
+      .set("Content-Type", "application/json")
+      .send({ sql: big });
+
+    expect(res.status).toBe(413);
   });
 
   it("DELETE /connections/:id → 204; idempotent on a missing id", async () => {

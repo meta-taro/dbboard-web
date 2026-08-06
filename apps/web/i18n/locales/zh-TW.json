@@ -123,6 +123,27 @@
       "cancel": "取消"
     }
   },
+  "restore": {
+    "label": "資料庫還原",
+    "choose": "從 .sql 檔案還原",
+    "summary": "{statements} 條陳述式 · DDL {ddl} · 資料 {data}",
+    "unparsedWarn": "{count} 條陳述式無法解析，將原樣（盡力）執行。",
+    "nonemptyWarn": "此資料庫不是空的 — 已有 {tables} 張資料表。還原可能與現有資料衝突或產生重複。",
+    "confirmLabel": "我了解這會寫入一個非空的資料庫。",
+    "onError": {
+      "label": "發生錯誤時",
+      "stop": "首次失敗即停止",
+      "continue": "忽略失敗繼續"
+    },
+    "run": "還原",
+    "running": "正在還原…",
+    "cancel": "取消",
+    "cancelled": "已取消。伺服器已盡可能回復。",
+    "done": "已還原 {statements} 條陳述式。",
+    "doneAtomic": "已以單一原子批次還原 {statements} 條陳述式。",
+    "failures": "{count} 條陳述式失敗。",
+    "note": "還原會套用一個純 .sql 指令碼。支援的引擎會將整份指令碼作為單一原子批次（全有或全無）執行；其他引擎則依序逐條套用。"
+  },
   "ai": {
     "heading": "AI 助理",
     "section": {

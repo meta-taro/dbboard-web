@@ -123,6 +123,27 @@
       "cancel": "취소"
     }
   },
+  "restore": {
+    "label": "데이터베이스 복원",
+    "choose": ".sql 파일에서 복원",
+    "summary": "{statements}개 문 · DDL {ddl} · 데이터 {data}",
+    "unparsedWarn": "{count}개 문을 해석하지 못해 그대로(최선 노력) 실행됩니다.",
+    "nonemptyWarn": "이 데이터베이스는 비어 있지 않습니다 — 이미 {tables}개 테이블이 있습니다. 복원 시 기존 데이터와 충돌하거나 중복될 수 있습니다.",
+    "confirmLabel": "비어 있지 않은 데이터베이스에 기록한다는 점을 이해했습니다.",
+    "onError": {
+      "label": "오류 시",
+      "stop": "첫 실패에서 중단",
+      "continue": "실패를 무시하고 계속"
+    },
+    "run": "복원",
+    "running": "복원 중…",
+    "cancel": "취소",
+    "cancelled": "취소했습니다. 서버는 가능한 범위까지 롤백했습니다.",
+    "done": "{statements}개 문을 복원했습니다.",
+    "doneAtomic": "{statements}개 문을 하나의 원자적 배치로 복원했습니다.",
+    "failures": "{count}개 문이 실패했습니다.",
+    "note": "복원은 일반 .sql 스크립트를 적용합니다. 지원하는 엔진에서는 스크립트 전체를 하나의 원자적 배치(전부 아니면 전무)로 실행하고, 그렇지 않으면 각 문을 순서대로 적용합니다."
+  },
   "ai": {
     "heading": "AI 어시스트",
     "section": {

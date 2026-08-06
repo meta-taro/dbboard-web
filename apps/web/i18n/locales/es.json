@@ -123,6 +123,27 @@
       "cancel": "Cancelar"
     }
   },
+  "restore": {
+    "label": "Restauración de la base de datos",
+    "choose": "Restaurar desde un archivo .sql",
+    "summary": "{statements} sentencia(s) · {ddl} DDL · {data} datos",
+    "unparsedWarn": "No se pudieron analizar {count} sentencia(s) y se ejecutarán tal cual (mejor esfuerzo).",
+    "nonemptyWarn": "Esta base de datos no está vacía — ya tiene {tables} tabla(s). La restauración puede entrar en conflicto con los datos existentes o duplicarlos.",
+    "confirmLabel": "Entiendo que esto escribe en una base de datos que no está vacía.",
+    "onError": {
+      "label": "Si hay error",
+      "stop": "Detener en el primer fallo",
+      "continue": "Continuar pese a los fallos"
+    },
+    "run": "Restaurar",
+    "running": "Restaurando…",
+    "cancel": "Cancelar",
+    "cancelled": "Cancelado. El servidor revirtió lo que pudo.",
+    "done": "Se restauraron {statements} sentencia(s).",
+    "doneAtomic": "Se restauraron {statements} sentencia(s) como un único lote atómico.",
+    "failures": "Fallaron {count} sentencia(s).",
+    "note": "La restauración aplica un script .sql simple. Los motores que lo admiten ejecutan todo el script como un único lote atómico (todo o nada); los demás aplican cada sentencia en orden."
+  },
   "ai": {
     "heading": "Asistente IA",
     "section": {

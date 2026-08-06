@@ -123,6 +123,27 @@
       "cancel": "Cancel"
     }
   },
+  "restore": {
+    "label": "Database restore",
+    "choose": "Restore from .sql file",
+    "summary": "{statements} statement(s) · {ddl} DDL · {data} data",
+    "unparsedWarn": "{count} statement(s) could not be parsed and will run verbatim (best-effort).",
+    "nonemptyWarn": "This database is not empty — it already has {tables} table(s). Restoring may conflict with or duplicate existing data.",
+    "confirmLabel": "I understand this writes into a non-empty database.",
+    "onError": {
+      "label": "On error",
+      "stop": "Stop at first failure",
+      "continue": "Continue past failures"
+    },
+    "run": "Restore",
+    "running": "Restoring…",
+    "cancel": "Cancel",
+    "cancelled": "Cancelled. The server rolled back what it could.",
+    "done": "Restored {statements} statement(s).",
+    "doneAtomic": "Restored {statements} statement(s) as one atomic batch.",
+    "failures": "{count} statement(s) failed.",
+    "note": "The restore applies a plain .sql script. Engines that support it run the whole script as one atomic batch (all-or-nothing); others apply each statement in order."
+  },
   "ai": {
     "heading": "AI assist",
     "section": {

@@ -123,6 +123,27 @@
       "cancel": "Annuler"
     }
   },
+  "restore": {
+    "label": "Restauration de la base de données",
+    "choose": "Restaurer depuis un fichier .sql",
+    "summary": "{statements} instruction(s) · {ddl} DDL · {data} données",
+    "unparsedWarn": "{count} instruction(s) n'ont pas pu être analysées et seront exécutées telles quelles (au mieux).",
+    "nonemptyWarn": "Cette base de données n'est pas vide — elle contient déjà {tables} table(s). La restauration peut entrer en conflit avec les données existantes ou les dupliquer.",
+    "confirmLabel": "Je comprends que cette opération écrit dans une base de données non vide.",
+    "onError": {
+      "label": "En cas d'erreur",
+      "stop": "Arrêter au premier échec",
+      "continue": "Poursuivre malgré les échecs"
+    },
+    "run": "Restaurer",
+    "running": "Restauration…",
+    "cancel": "Annuler",
+    "cancelled": "Annulé. Le serveur a annulé ce qu'il a pu.",
+    "done": "{statements} instruction(s) restaurée(s).",
+    "doneAtomic": "{statements} instruction(s) restaurée(s) en un seul lot atomique.",
+    "failures": "{count} instruction(s) en échec.",
+    "note": "La restauration applique un simple script .sql. Les moteurs qui le permettent exécutent tout le script comme un seul lot atomique (tout ou rien) ; les autres appliquent chaque instruction dans l'ordre."
+  },
   "ai": {
     "heading": "Assistant IA",
     "section": {

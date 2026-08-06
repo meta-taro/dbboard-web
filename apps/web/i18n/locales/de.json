@@ -123,6 +123,27 @@
       "cancel": "Abbrechen"
     }
   },
+  "restore": {
+    "label": "Datenbank wiederherstellen",
+    "choose": "Aus .sql-Datei wiederherstellen",
+    "summary": "{statements} Anweisung(en) · {ddl} DDL · {data} Daten",
+    "unparsedWarn": "{count} Anweisung(en) konnten nicht geparst werden und laufen unverändert (Best Effort).",
+    "nonemptyWarn": "Diese Datenbank ist nicht leer — sie enthält bereits {tables} Tabelle(n). Die Wiederherstellung kann mit vorhandenen Daten kollidieren oder sie duplizieren.",
+    "confirmLabel": "Mir ist bewusst, dass hier in eine nicht leere Datenbank geschrieben wird.",
+    "onError": {
+      "label": "Bei Fehler",
+      "stop": "Beim ersten Fehler anhalten",
+      "continue": "Über Fehler hinweg fortfahren"
+    },
+    "run": "Wiederherstellen",
+    "running": "Wird wiederhergestellt…",
+    "cancel": "Abbrechen",
+    "cancelled": "Abgebrochen. Der Server hat zurückgerollt, was möglich war.",
+    "done": "{statements} Anweisung(en) wiederhergestellt.",
+    "doneAtomic": "{statements} Anweisung(en) als ein atomarer Stapel wiederhergestellt.",
+    "failures": "{count} Anweisung(en) fehlgeschlagen.",
+    "note": "Die Wiederherstellung wendet ein einfaches .sql-Skript an. Engines, die das unterstützen, führen das gesamte Skript als einen atomaren Stapel aus (alles oder nichts); andere wenden jede Anweisung der Reihe nach an."
+  },
   "ai": {
     "heading": "KI-Assistent",
     "section": {

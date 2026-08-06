@@ -123,6 +123,27 @@
       "cancel": "Annulla"
     }
   },
+  "restore": {
+    "label": "Ripristino del database",
+    "choose": "Ripristina da un file .sql",
+    "summary": "{statements} istruzione/i · {ddl} DDL · {data} dati",
+    "unparsedWarn": "{count} istruzione/i non sono state analizzate e verranno eseguite così come sono (best effort).",
+    "nonemptyWarn": "Questo database non è vuoto — contiene già {tables} tabella/e. Il ripristino può entrare in conflitto con i dati esistenti o duplicarli.",
+    "confirmLabel": "Ho capito che questa operazione scrive in un database non vuoto.",
+    "onError": {
+      "label": "In caso di errore",
+      "stop": "Fermarsi al primo errore",
+      "continue": "Proseguire nonostante gli errori"
+    },
+    "run": "Ripristina",
+    "running": "Ripristino in corso…",
+    "cancel": "Annulla",
+    "cancelled": "Annullato. Il server ha annullato ciò che poteva.",
+    "done": "Ripristinate {statements} istruzione/i.",
+    "doneAtomic": "Ripristinate {statements} istruzione/i come un unico batch atomico.",
+    "failures": "{count} istruzione/i non riuscite.",
+    "note": "Il ripristino applica un semplice script .sql. I motori che lo supportano eseguono l'intero script come un unico batch atomico (tutto o niente); gli altri applicano ogni istruzione in ordine."
+  },
   "ai": {
     "heading": "Assistente IA",
     "section": {

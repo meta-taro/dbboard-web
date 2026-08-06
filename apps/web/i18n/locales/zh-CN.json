@@ -123,6 +123,27 @@
       "cancel": "取消"
     }
   },
+  "restore": {
+    "label": "数据库恢复",
+    "choose": "从 .sql 文件恢复",
+    "summary": "{statements} 条语句 · DDL {ddl} · 数据 {data}",
+    "unparsedWarn": "{count} 条语句无法解析，将按原样（尽力）执行。",
+    "nonemptyWarn": "该数据库不是空的 — 已有 {tables} 张表。恢复可能与现有数据冲突或产生重复。",
+    "confirmLabel": "我明白这会写入一个非空数据库。",
+    "onError": {
+      "label": "出错时",
+      "stop": "首次失败即停止",
+      "continue": "忽略失败继续"
+    },
+    "run": "恢复",
+    "running": "正在恢复…",
+    "cancel": "取消",
+    "cancelled": "已取消。服务器已尽可能回滚。",
+    "done": "已恢复 {statements} 条语句。",
+    "doneAtomic": "已作为一个原子批次恢复 {statements} 条语句。",
+    "failures": "{count} 条语句失败。",
+    "note": "恢复会应用一个普通的 .sql 脚本。支持的引擎会将整个脚本作为一个原子批次（全部成功或全部回滚）执行；其他引擎则按顺序逐条应用。"
+  },
   "ai": {
     "heading": "AI 助手",
     "section": {

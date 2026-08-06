@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   schemaConstructed: vi.fn(),
   aiPanelConstructed: vi.fn(),
   dumpButtonConstructed: vi.fn(),
+  restorePanelConstructed: vi.fn(),
   loadEditContext: vi.fn(),
   editContextConstructed: vi.fn(),
 }));
@@ -143,6 +144,19 @@ vi.mock("../app/components/DumpButton.vue", () => ({
   }),
 }));
 
+// RestorePanel stub, for the same reason as the DumpButton one above. Its
+// behaviour is covered by restore-panel.test.ts and use-restore.test.ts.
+vi.mock("../app/components/RestorePanel.vue", () => ({
+  default: defineComponent({
+    name: "RestorePanel",
+    props: ["connectionId", "apiBase"],
+    setup(props) {
+      mocks.restorePanelConstructed(props.connectionId);
+      return () => h("div", { "data-testid": "restore-panel" });
+    },
+  }),
+}));
+
 const mountOptions = {
   global: {
     stubs: {
@@ -170,6 +184,7 @@ describe("SqlPage", () => {
     mocks.schemaConstructed.mockReset();
     mocks.aiPanelConstructed.mockReset();
     mocks.dumpButtonConstructed.mockReset();
+    mocks.restorePanelConstructed.mockReset();
     mocks.loadEditContext.mockReset();
     mocks.editContextConstructed.mockReset();
     // The sidebar remembers its width, so without a storage of its own per
@@ -486,6 +501,15 @@ describe("SqlPage", () => {
 
     expect(wrapper.find("[data-testid='dump-button']").exists()).toBe(true);
     expect(mocks.dumpButtonConstructed).toHaveBeenCalledWith("route-id");
+    wrapper.unmount();
+  });
+
+  it("mounts the restore panel with the route id passed through (0030)", async () => {
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='restore-panel']").exists()).toBe(true);
+    expect(mocks.restorePanelConstructed).toHaveBeenCalledWith("route-id");
     wrapper.unmount();
   });
 

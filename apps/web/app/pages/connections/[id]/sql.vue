@@ -6,6 +6,7 @@ import DumpButton from "../../../components/DumpButton.vue";
 import HistorySidebar from "../../../components/HistorySidebar.vue";
 import ResultExportToolbar from "../../../components/ResultExportToolbar.vue";
 import ErrorBanner from "../../../components/ErrorBanner.vue";
+import RestorePanel from "../../../components/RestorePanel.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import SidebarSplitter from "../../../components/SidebarSplitter.vue";
@@ -155,8 +156,10 @@ function onEditorKeydown(event: KeyboardEvent) {
         </p>
       </div>
       <!-- A dump is of the connection, not of the grid, so it belongs to the
-           page header rather than the result toolbar. -->
+           page header rather than the result toolbar. Restore is its inverse
+           and sits beside it for the same reason. -->
       <DumpButton :connection-id="connectionId" />
+      <RestorePanel :connection-id="connectionId" />
     </header>
 
     <ErrorBanner

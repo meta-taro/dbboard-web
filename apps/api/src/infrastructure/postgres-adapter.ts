@@ -42,7 +42,22 @@ export interface PgQueryRunner {
     fields: { name: string; dataTypeID: number; format?: string }[];
     rowCount: number | null;
   }>;
+  // Check out a single connection, for work that must stay on one session.
+  // A transaction cannot go through `query` above: the pool hands each call
+  // whichever backend is free, so `BEGIN` and `COMMIT` could land on
+  // different sessions and the statements between them on a third.
+  connect(): Promise<PgTransactionClient>;
   end(): Promise<void>;
+}
+
+// The one-connection slice `executeInTransaction` needs. `pg.PoolClient`
+// satisfies it structurally, and a stub is two functions.
+export interface PgTransactionClient {
+  query(config: { text: string }): Promise<unknown>;
+  // Return the connection to the pool. `destroy` closes it instead, which
+  // is what a connection with an unresolved transaction needs — see
+  // `executeInTransaction`.
+  release(destroy?: boolean): void;
 }
 
 const LIST_TABLES_SQL = `
@@ -348,6 +363,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       has_describe_table: true,
       has_execute: true,
       has_table_ddl: true,
+      has_atomic_restore: true,
     };
   }
 
@@ -397,6 +413,60 @@ export class PostgresAdapter implements DatabaseAdapter {
       // gate needs in order to refuse rather than assume.
       return result.rowCount ?? 0;
     } catch (e) {
+      throw this.translateError(e);
+    }
+  }
+
+  /**
+   * Apply `statements` as one transaction — all of them commit, or none do.
+   *
+   * The all-or-nothing guarantee ADR-0051 rests on for `has_atomic_restore`
+   * engines: a restore that fails halfway leaves the target as it was rather
+   * than half-populated, which is what makes it safe to point at a database
+   * that already has something in it.
+   *
+   * Everything runs on one checked-out connection. Going through the pool's
+   * `query` would be a silent bug: the pool hands each call whichever backend
+   * is free, so `COMMIT` could execute on a session that never saw `BEGIN`.
+   *
+   * The statements go out unbound, on the simple protocol, exactly as they
+   * arrived from the splitter. A restore script is already-composed SQL text
+   * — there is nothing to bind, and binding would move pg to the extended
+   * protocol, which carries one command per round trip.
+   */
+  async executeInTransaction(statements: readonly string[]): Promise<void> {
+    // An empty batch would open and commit an empty transaction; skip it.
+    if (statements.length === 0) return;
+
+    let client: PgTransactionClient;
+    try {
+      client = await this.pool.connect();
+    } catch (e) {
+      throw this.translateError(e);
+    }
+
+    try {
+      await client.query({ text: "BEGIN" });
+      for (const sql of statements) {
+        await client.query({ text: sql });
+      }
+      await client.query({ text: "COMMIT" });
+      client.release();
+    } catch (e) {
+      // Roll back before releasing, and report the statement's failure
+      // rather than the rollback's — the first error is the one that
+      // explains what went wrong, and a rollback failure only ever adds a
+      // second symptom of the same cause.
+      //
+      // A connection whose ROLLBACK did not land may still hold an open
+      // transaction, and returning that to the pool poisons the next
+      // caller's session. Destroy it instead; pg opens a fresh one.
+      try {
+        await client.query({ text: "ROLLBACK" });
+        client.release();
+      } catch {
+        client.release(true);
+      }
       throw this.translateError(e);
     }
   }

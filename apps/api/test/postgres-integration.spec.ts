@@ -868,4 +868,74 @@ describe("Postgres adapter integration (testcontainers)", () => {
       expect(res.body.error.category).toBe("query");
     });
   });
+
+  describe("executeInTransaction (atomic restore, ADR-0051)", () => {
+    // The unit tests prove the adapter sends BEGIN / … / COMMIT to one
+    // checked-out connection. Only a real engine can prove the thing that
+    // actually matters — that a failed batch leaves nothing behind. This is
+    // the guarantee `has_atomic_restore` makes to the restore runner, and
+    // the reason it is safe to point a restore at a populated database.
+    async function withAdapter<T>(fn: (a: ReturnType<typeof createPostgresAdapter>) => Promise<T>) {
+      const host = container?.getHost();
+      const port = container?.getMappedPort(5432);
+      const adapter = createPostgresAdapter({
+        connectionString: `postgresql://test:test@${host}:${port}/test?sslmode=disable`,
+      });
+      try {
+        return await fn(adapter);
+      } finally {
+        await adapter.close();
+      }
+    }
+
+    async function tableExists(name: string): Promise<boolean> {
+      const res = await runQuery(`SELECT to_regclass('public.${name}') IS NOT NULL`);
+      expect(res.status).toBe(200);
+      return firstCell(res.body) === 1;
+    }
+
+    it("commits every statement in the batch", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      await withAdapter((adapter) =>
+        adapter.executeInTransaction([
+          "CREATE TABLE txn_commit (id integer PRIMARY KEY, note text)",
+          "INSERT INTO txn_commit VALUES (1, 'first')",
+          "INSERT INTO txn_commit VALUES (2, 'second')",
+        ]),
+      );
+
+      const res = await runQuery("SELECT count(*) FROM txn_commit");
+      expect(res.status).toBe(200);
+      expect(firstCell(res.body)).toBe(2);
+    });
+
+    it("leaves nothing behind when a statement partway through fails", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      // The CREATE and the first INSERT are perfectly valid and would each
+      // have taken effect on their own. The duplicate key at the end must
+      // undo both.
+      await expect(
+        withAdapter((adapter) =>
+          adapter.executeInTransaction([
+            "CREATE TABLE txn_rollback (id integer PRIMARY KEY)",
+            "INSERT INTO txn_rollback VALUES (1)",
+            "INSERT INTO txn_rollback VALUES (1)",
+          ]),
+        ),
+      ).rejects.toThrow(/duplicate key/i);
+
+      await expect(tableExists("txn_rollback")).resolves.toBe(false);
+    });
+
+    it("leaves the connection usable after a rolled-back batch", async (ctx) => {
+      if (skipReason) return ctx.skip();
+      // The rollback path releases the pooled connection. If it were
+      // returned still inside a transaction, the next statement on it would
+      // fail or silently join the aborted one.
+      await withAdapter(async (adapter) => {
+        await expect(adapter.executeInTransaction(["NOT SQL AT ALL"])).rejects.toThrow();
+        await expect(adapter.executeInTransaction(["SELECT 1"])).resolves.toBeUndefined();
+      });
+    });
+  });
 });

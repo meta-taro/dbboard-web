@@ -6,7 +6,18 @@ import {
   createPostgresAdapter,
   PostgresAdapter,
   type PgQueryRunner,
+  type PgTransactionClient,
 } from "./postgres-adapter";
+
+// A checked-out connection, recording every statement it was sent so a
+// transaction test can assert the BEGIN / … / COMMIT order.
+function stubClient(overrides: Partial<PgTransactionClient> = {}): PgTransactionClient {
+  return {
+    query: vi.fn().mockResolvedValue({ rows: [], fields: [], rowCount: 0 }),
+    release: vi.fn(),
+    ...overrides,
+  };
+}
 
 // The adapter takes a narrow `PgQueryRunner` instead of `pg.Pool` so
 // these tests can inject a stub without any network involved. Production
@@ -14,9 +25,15 @@ import {
 function stubPool(overrides: Partial<PgQueryRunner> = {}): PgQueryRunner {
   return {
     query: vi.fn().mockResolvedValue({ rows: [], fields: [], rowCount: 0 }),
+    connect: vi.fn().mockResolvedValue(stubClient()),
     end: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
+}
+
+// The statements a `PgTransactionClient` stub was sent, in order.
+function sentTo(client: PgTransactionClient): string[] {
+  return vi.mocked(client.query).mock.calls.map((call) => (call[0] as { text: string }).text);
 }
 
 describe("PostgresAdapter", () => {
@@ -26,13 +43,117 @@ describe("PostgresAdapter", () => {
 
   // Every other flag stays false — a flag is set by the rung that gives it
   // something to promise: has_describe_table by 0026, has_execute by 0028,
-  // has_table_ddl by 0029.
-  it("advertises has_describe_table, has_execute and has_table_ddl, and nothing else", () => {
+  // has_table_ddl by 0029, has_atomic_restore by 0030.
+  it("advertises describe_table, execute, table_ddl and atomic_restore, and nothing else", () => {
     expect(new PostgresAdapter(stubPool()).getCapabilities()).toEqual({
       ...NULL_CAPABILITIES,
       has_describe_table: true,
       has_execute: true,
       has_table_ddl: true,
+      has_atomic_restore: true,
+    });
+  });
+
+  describe("executeInTransaction (atomic restore, desktop ADR-0051)", () => {
+    it("wraps the batch in BEGIN and COMMIT on one checked-out connection", async () => {
+      const client = stubClient();
+      const adapter = new PostgresAdapter(stubPool({ connect: vi.fn().mockResolvedValue(client) }));
+
+      await adapter.executeInTransaction(["CREATE TABLE t (a int)", "INSERT INTO t VALUES (1)"]);
+
+      expect(sentTo(client)).toEqual([
+        "BEGIN",
+        "CREATE TABLE t (a int)",
+        "INSERT INTO t VALUES (1)",
+        "COMMIT",
+      ]);
+    });
+
+    it("goes through a checked-out connection, never the pool", async () => {
+      // A pool routes each `query` to whichever backend is free, so BEGIN
+      // and COMMIT could land on different sessions. This is the whole
+      // reason the port needs `connect()`.
+      const poolQuery = vi.fn();
+      const adapter = new PostgresAdapter(stubPool({ query: poolQuery }));
+
+      await adapter.executeInTransaction(["INSERT INTO t VALUES (1)"]);
+
+      expect(poolQuery).not.toHaveBeenCalled();
+    });
+
+    it("returns the connection to the pool once the batch commits", async () => {
+      const client = stubClient();
+      const adapter = new PostgresAdapter(stubPool({ connect: vi.fn().mockResolvedValue(client) }));
+
+      await adapter.executeInTransaction(["SELECT 1"]);
+
+      expect(client.release).toHaveBeenCalledWith();
+    });
+
+    it("rolls back and applies nothing when a statement fails", async () => {
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 0 }) // BEGIN
+        .mockResolvedValueOnce({ rowCount: 0 }) // first statement
+        .mockRejectedValueOnce(Object.assign(new Error("syntax error"), { code: "42601" })) // second
+        .mockResolvedValueOnce({ rowCount: 0 }); // ROLLBACK
+      const client = stubClient({ query });
+      const adapter = new PostgresAdapter(stubPool({ connect: vi.fn().mockResolvedValue(client) }));
+
+      await expect(
+        adapter.executeInTransaction(["CREATE TABLE t (a int)", "OOPS"]),
+      ).rejects.toThrow(QueryError);
+
+      expect(sentTo(client)).toEqual(["BEGIN", "CREATE TABLE t (a int)", "OOPS", "ROLLBACK"]);
+      expect(client.release).toHaveBeenCalledWith();
+    });
+
+    it("discards the connection when the rollback itself fails", async () => {
+      // A connection whose ROLLBACK did not land may still hold an open
+      // transaction. Returning it to the pool would hand the next caller a
+      // poisoned session, so it is destroyed instead.
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 0 }) // BEGIN
+        .mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "42601" })) // the statement
+        .mockRejectedValueOnce(new Error("connection terminated")); // ROLLBACK
+      const client = stubClient({ query });
+      const adapter = new PostgresAdapter(stubPool({ connect: vi.fn().mockResolvedValue(client) }));
+
+      await expect(adapter.executeInTransaction(["OOPS"])).rejects.toThrow(QueryError);
+
+      expect(client.release).toHaveBeenCalledWith(true);
+    });
+
+    it("reports the statement's failure, not the rollback's", async () => {
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 0 })
+        .mockRejectedValueOnce(
+          Object.assign(new Error(`relation "t" does not exist`), { code: "42P01" }),
+        )
+        .mockRejectedValueOnce(new Error("connection terminated"));
+      const adapter = new PostgresAdapter(
+        stubPool({ connect: vi.fn().mockResolvedValue(stubClient({ query })) }),
+      );
+
+      await expect(adapter.executeInTransaction(["INSERT INTO t VALUES (1)"])).rejects.toThrow(
+        /relation "t" does not exist/,
+      );
+    });
+
+    it("does not open a transaction for an empty batch", async () => {
+      const connect = vi.fn();
+      await new PostgresAdapter(stubPool({ connect })).executeInTransaction([]);
+      expect(connect).not.toHaveBeenCalled();
+    });
+
+    it("translates a failure to check out a connection", async () => {
+      const adapter = new PostgresAdapter(
+        stubPool({ connect: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")) }),
+      );
+
+      await expect(adapter.executeInTransaction(["SELECT 1"])).rejects.toThrow(ConnectionError);
     });
   });
 

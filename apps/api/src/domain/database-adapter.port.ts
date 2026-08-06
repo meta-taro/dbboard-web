@@ -36,6 +36,26 @@ export interface DatabaseAdapter {
   // implements this also sets `has_execute` in getCapabilities(); the two
   // travel together.
   execute?(sql: string): Promise<number>;
+  // Optional atomic-batch hook (desktop ADR-0051 restore). Runs every
+  // statement in one transaction: they all commit, or the target is left
+  // exactly as it was. Returns nothing — a restore discards result rows,
+  // and a per-statement affected count means little when the unit of
+  // success is the batch.
+  //
+  // Separate from `execute` rather than a flag on it because the guarantee
+  // is different in kind, and so is the engine support. Cloudflare D1's
+  // HTTP API has `execute` but no multi-statement transaction, so it will
+  // implement one and not the other — which is exactly what
+  // `has_atomic_restore` tells the restore runner, so it can fall back to
+  // running statements one at a time with a failure policy.
+  //
+  // An empty batch is a no-op, not an error: opening and committing an
+  // empty transaction would be a pointless round trip.
+  //
+  // Optional on the same terms as the hooks above — absence is the "not
+  // supported" signal. An adapter that implements this also sets
+  // `has_atomic_restore` in getCapabilities(); the two travel together.
+  executeInTransaction?(statements: readonly string[]): Promise<void>;
   // Optional DDL-reconstruction hook (desktop ADR-0049, dump). Returns the
   // `CREATE TABLE` — plus any owned sequences and standalone indexes —
   // needed to recreate `table` in an empty database, `;`-terminated and

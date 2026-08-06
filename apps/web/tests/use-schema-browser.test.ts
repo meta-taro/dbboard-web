@@ -12,11 +12,11 @@ const mockFetch = vi.mocked(apiFetch);
 
 type SchemaApi = ReturnType<typeof useSchemaBrowser>;
 
-function makeHarness(connectionId: string, apiBase = "http://test") {
+function makeHarness(connectionId: string, apiBase = "http://test", driver?: string) {
   const holder: { api: SchemaApi | null } = { api: null };
   const Component = defineComponent({
     setup() {
-      holder.api = useSchemaBrowser(connectionId, { apiBase });
+      holder.api = useSchemaBrowser(connectionId, { apiBase, driver });
       return () => h("div");
     },
   });
@@ -154,6 +154,80 @@ describe("useSchemaBrowser", () => {
     expect(mockFetch).toHaveBeenLastCalledWith("http://test/connections/abc/query", {
       method: "POST",
       body: { sql: 'SELECT * FROM "weird""schema"."weird""table" LIMIT 0' },
+    });
+    wrapper.unmount();
+  });
+
+  it("back-quotes the LIMIT 0 probe for a mysql connection", async () => {
+    // Reachable despite MySQL advertising `has_describe_table`: the
+    // capability probe degrades to `false` when it cannot be answered, and
+    // then this is the only path left. An ANSI-quoted probe would fail
+    // there with a syntax error and the sidebar would report the table as
+    // having no columns it could read.
+    mockFetch.mockResolvedValueOnce({ tables: [{ schema: "shop", name: "orders" }] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+    mockFetch.mockResolvedValueOnce({ columns: [], rows: [], rows_affected: 0 });
+
+    const { Component, holder } = makeHarness("abc", "http://test", "mysql");
+    const wrapper = mount(Component);
+    await flushPromises();
+
+    await holder.api!.loadColumns("shop", "orders");
+    expect(mockFetch).toHaveBeenLastCalledWith("http://test/connections/abc/query", {
+      method: "POST",
+      body: { sql: "SELECT * FROM `shop`.`orders` LIMIT 0" },
+    });
+    wrapper.unmount();
+  });
+
+  it("keeps ANSI quoting when no driver was supplied", async () => {
+    // The page renders the sidebar before the connection list has arrived,
+    // so `undefined` is a state the composable is really constructed in.
+    mockFetch.mockResolvedValueOnce({ tables: [] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+    mockFetch.mockResolvedValueOnce({ columns: [], rows: [], rows_affected: 0 });
+
+    const { Component, holder } = makeHarness("abc", "http://test", undefined);
+    const wrapper = mount(Component);
+    await flushPromises();
+
+    await holder.api!.loadColumns(null, "orders");
+    expect(mockFetch).toHaveBeenLastCalledWith("http://test/connections/abc/query", {
+      method: "POST",
+      body: { sql: 'SELECT * FROM "orders" LIMIT 0' },
+    });
+    wrapper.unmount();
+  });
+
+  it("reads a driver that only arrives after mount", async () => {
+    // The page learns the driver from an in-flight `GET /connections`, which
+    // resolves after this composable is constructed. Reading the option once
+    // at setup would pin ANSI for the whole session and quietly break every
+    // MySQL sidebar whose connection list was a tick slower than the page.
+    let driver: string | undefined = undefined;
+    const holder: { api: SchemaApi | null } = { api: null };
+    const Component = defineComponent({
+      setup() {
+        holder.api = useSchemaBrowser("abc", {
+          apiBase: "http://test",
+          driver: () => driver,
+        });
+        return () => h("div");
+      },
+    });
+
+    mockFetch.mockResolvedValueOnce({ tables: [] });
+    mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+    mockFetch.mockResolvedValueOnce({ columns: [], rows: [], rows_affected: 0 });
+
+    const wrapper = mount(Component);
+    await flushPromises();
+    driver = "mysql";
+
+    await holder.api!.loadColumns("shop", "orders");
+    expect(mockFetch).toHaveBeenLastCalledWith("http://test/connections/abc/query", {
+      method: "POST",
+      body: { sql: "SELECT * FROM `shop`.`orders` LIMIT 0" },
     });
     wrapper.unmount();
   });

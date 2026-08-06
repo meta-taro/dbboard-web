@@ -8,7 +8,7 @@ Guidance for Claude Code and other AI agents working on this repository.
 
 - **Frontend:** Nuxt (Vue 3, TypeScript)
 - **Backend:** NestJS (Node.js, TypeScript)
-- **Databases:** Neon (PostgreSQL), Supabase, Turso / libSQL, Cloudflare D1
+- **Databases:** Neon (PostgreSQL), Supabase, Turso / libSQL, Cloudflare D1, MySQL / MariaDB
 - **Package manager:** pnpm (npm and yarn are forbidden — see [AI_AGENT_RULES.md](./AI_AGENT_RULES.md))
 
 ```

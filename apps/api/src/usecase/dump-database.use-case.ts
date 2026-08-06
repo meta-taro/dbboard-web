@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import { dialectFor } from "../domain/dialect";
 import { CapabilityError, QueryError } from "../domain/errors";
 import { buildCount, buildSelectPage } from "../domain/dump/select";
 import { buildInsert } from "../domain/dump/insert";
@@ -134,13 +135,18 @@ export class DumpDatabase {
   ): AsyncIterable<string> {
     const name = displayName(table);
     const keyed = keyColumns.length > 0;
+    // The dump is read from one adapter and meant to be loaded back into the
+    // same engine, so one dialect covers both halves: the pages this reads and
+    // the `INSERT`s it writes. Taking it from the adapter rather than from the
+    // request is what stops a SQLite-wire connection emitting `::bytea`.
+    const dialect = dialectFor(adapter.getId());
     let cursor: Value[] | undefined;
 
     for (;;) {
       let result;
       try {
         result = await adapter.executeQuery(
-          buildSelectPage(table, keyColumns, READ_PAGE_ROWS, cursor),
+          buildSelectPage(table, keyColumns, READ_PAGE_ROWS, dialect, cursor),
         );
       } catch (e) {
         yield failureComment(name, e);
@@ -151,7 +157,12 @@ export class DumpDatabase {
 
       const columns = result.columns.map((column) => column.name);
       for (let i = 0; i < result.rows.length; i += INSERT_BATCH_ROWS) {
-        const statement = buildInsert(table, columns, result.rows.slice(i, i + INSERT_BATCH_ROWS));
+        const statement = buildInsert(
+          table,
+          columns,
+          result.rows.slice(i, i + INSERT_BATCH_ROWS),
+          dialect,
+        );
         if (statement) yield `${statement}\n`;
       }
 
@@ -181,7 +192,7 @@ export class DumpDatabase {
   // table would block backing up everything else.
   private async countRows(adapter: DatabaseAdapter, table: TableInfo): Promise<number> {
     try {
-      const result = await adapter.executeQuery(buildCount(table));
+      const result = await adapter.executeQuery(buildCount(table, dialectFor(adapter.getId())));
       return toRowCount(result.rows[0]?.[0]);
     } catch {
       return 0;

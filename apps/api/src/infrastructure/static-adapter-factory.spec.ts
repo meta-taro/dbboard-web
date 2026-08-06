@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { dialectForDriver } from "../domain/dialect";
 import { CapabilityError } from "../domain/errors";
 import { D1Adapter } from "./d1-adapter";
+import { MySqlAdapter } from "./mysql-adapter";
 import { NullAdapter } from "./null-adapter";
 import { PostgresAdapter } from "./postgres-adapter";
 import { StaticAdapterFactory } from "./static-adapter-factory";
@@ -18,6 +20,10 @@ const CONFIG_FOR: Record<string, Record<string, unknown>> = {
   // reason `AdapterConfig` grew fields for them — a driver whose fixture
   // looks nothing like its neighbours' is the table earning its keep.
   d1: { accountId: "acct", databaseId: "dbid", authToken: "token" },
+  // Back to a URL, and deliberately not postgres' one: the schemes are
+  // disjoint in both directions, so this fixture also proves the two
+  // URL-shaped drivers are not interchangeable.
+  mysql: { connectionString: "mysql://u:p@127.0.0.1:3306/db" },
   null: {},
 };
 
@@ -104,6 +110,34 @@ describe("StaticAdapterFactory", () => {
     ).toThrowError(CapabilityError);
   });
 
+  it("returns a MySqlAdapter for the 'mysql' driver with a connectionString", () => {
+    // `createPool` is lazy the way `pg.Pool` is: the pool exists, no socket
+    // does, so an unreachable host is safe to construct against.
+    const adapter = new StaticAdapterFactory().create("mysql", CONFIG_FOR["mysql"]);
+    try {
+      expect(adapter).toBeInstanceOf(MySqlAdapter);
+      expect(adapter.getId()).toBe("mysql");
+    } finally {
+      void adapter.close?.();
+    }
+  });
+
+  it("raises CapabilityError when the mysql driver is missing connection info", () => {
+    expect(() => new StaticAdapterFactory().create("mysql", {})).toThrowError(CapabilityError);
+  });
+
+  it("raises CapabilityError when the mysql driver is handed another engine's URL", () => {
+    // The mirror of turso's `file:` refusal, and the reason `CONFIG_FOR`
+    // stopped sharing one DSN: a postgres URL reaching the mysql builder is
+    // a mis-set driver field, and it has to be a 404 rather than a pool
+    // quietly dialling 5432 with the wrong protocol.
+    expect(() =>
+      new StaticAdapterFactory().create("mysql", {
+        connectionString: "postgresql://u:p@127.0.0.1:5432/db",
+      }),
+    ).toThrowError(CapabilityError);
+  });
+
   it("raises CapabilityError for unknown drivers (404 at the HTTP layer)", () => {
     expect(() => new StaticAdapterFactory().create("mongo", {})).toThrowError(CapabilityError);
     expect(() => new StaticAdapterFactory().create("", {})).toThrowError(CapabilityError);
@@ -116,6 +150,7 @@ describe("StaticAdapterFactory", () => {
       "postgres",
       "turso",
       "d1",
+      "mysql",
       "null",
     ]);
   });
@@ -137,6 +172,19 @@ describe("StaticAdapterFactory", () => {
       } finally {
         void adapter.close?.();
       }
+    }
+  });
+
+  it("has a dialect for every driver it lists", () => {
+    // The second anti-drift test, and the one with a bug behind it. Slice B
+    // added `d1` — a SQLite-wire driver that advertises `has_table_ddl`, so
+    // it can be dumped — while the dump path still rendered every blob as
+    // `'\xHEX'::bytea`. That is Postgres syntax SQLite cannot read, and
+    // nothing failed, because a driver missing from the dialect table
+    // silently inherits the ANSI fallback. The fallback is only right for
+    // identifiers; literals it gets wrong quietly.
+    for (const driver of new StaticAdapterFactory().supported()) {
+      expect(dialectForDriver(driver), `no dialect for driver "${driver}"`).not.toBeNull();
     }
   });
 
@@ -237,6 +285,27 @@ describe("StaticAdapterFactory", () => {
         ).toThrowError(CapabilityError);
       } finally {
         void before.close?.();
+      }
+    });
+
+    it("carries a mysql password forward when the edited URL omits it", () => {
+      // MySQL's credential lives where postgres' does when it arrives as a
+      // DSN — inside the URL — so the carry has to happen at that level:
+      // re-point the host, keep the userinfo the edit dropped.
+      const factory = new StaticAdapterFactory();
+      const before = factory.create("mysql", {
+        connectionString: "mysql://u:OLD-PW@127.0.0.1:3306/db",
+      });
+      const after = factory.rebuild(before, "mysql", {
+        connectionString: "mysql://u@127.0.0.2:3306/db",
+      });
+      try {
+        expect(after).toBeInstanceOf(MySqlAdapter);
+        expect(after).not.toBe(before);
+        expect((after as unknown as { secret?: string }).secret).toBe("OLD-PW");
+      } finally {
+        void before.close?.();
+        void after.close?.();
       }
     });
 

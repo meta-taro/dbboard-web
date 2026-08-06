@@ -7,6 +7,7 @@
  * statement loads faster. The column list is always written out, so the dump
  * survives a target whose column order differs.
  */
+import type { SqlDialect } from "../dialect";
 import type { TableInfo } from "../values/table-info";
 import type { Value } from "../values/value";
 import { qualifiedTable, quoteIdent } from "../write-back";
@@ -27,16 +28,21 @@ export function buildInsert(
   table: TableInfo,
   columns: string[],
   rows: readonly Value[][],
+  dialect: SqlDialect,
 ): string | null {
   if (columns.length === 0 || rows.length === 0) return null;
 
-  const columnList = columns.map(quoteIdent).join(", ");
+  // Spelled out rather than passed by reference: `map(quoteIdent)` would hand
+  // the callback the array index as the dialect argument.
+  const columnList = columns.map((column) => quoteIdent(column, dialect)).join(", ");
   const tuples = rows
     .map((row) => {
-      const cells = columns.map((_, i) => (i < row.length ? valueLiteral(row[i]!) : "NULL"));
+      const cells = columns.map((_, i) =>
+        i < row.length ? valueLiteral(row[i]!, dialect) : "NULL",
+      );
       return `(${cells.join(", ")})`;
     })
     .join(", ");
 
-  return `INSERT INTO ${qualifiedTable(table)} (${columnList}) VALUES ${tuples};`;
+  return `INSERT INTO ${qualifiedTable(table, dialect)} (${columnList}) VALUES ${tuples};`;
 }

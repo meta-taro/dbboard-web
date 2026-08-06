@@ -10,6 +10,7 @@ import RestorePanel from "../../../components/RestorePanel.vue";
 import ResultGrid from "../../../components/ResultGrid.vue";
 import SchemaBrowser from "../../../components/SchemaBrowser.vue";
 import SidebarSplitter from "../../../components/SidebarSplitter.vue";
+import { useConnections } from "../../../composables/useConnections";
 import { useEditContext } from "../../../composables/useEditContext";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 import type { TableInfo } from "../../../composables/useSchemaBrowser";
@@ -21,6 +22,13 @@ const route = useRoute();
 const connectionId = String(route.params.id);
 
 const { result, sourceTable, state, lastError, run } = useQueryExecution(connectionId);
+
+// Which dialect the sidebar quotes identifiers in comes from the connection's
+// driver (ADR-0072), and there is no `GET /connections/:id` to ask — so the
+// page reads it out of the list. `undefined` until that fetch lands, which
+// the browser resolves to ANSI rather than guessing.
+const { list: connections } = useConnections();
+const driver = computed(() => connections.value.find((c) => c.id === connectionId)?.driver);
 
 // Whether the grid is editable, and against what (ticket 0028). Read back
 // from `sourceTable` after every run rather than set from the browse payload:
@@ -232,6 +240,7 @@ function onEditorKeydown(event: KeyboardEvent) {
       <div class="sidebar-column">
         <SchemaBrowser
           :connection-id="connectionId"
+          :driver="driver"
           @insert="onInsertIdentifier"
           @browse="onBrowse"
         />

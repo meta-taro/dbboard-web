@@ -23,17 +23,21 @@
  *
  * No user text is ever concatenated unescaped.
  *
- * Two deliberate narrowings against the desktop original, both from ADR-0063:
+ * The dialect parameter these functions promised in rung 6 arrived in rung 7
+ * slice C, on the same functions rather than as a second copy of them. It is
+ * **required**, not defaulted: a default is how the caller that forgot gets
+ * Postgres escaping silently, which is the failure mode the dump path already
+ * demonstrated once (see {@link SqlDialect}'s note on the fallback).
  *
- * - **No dialect parameter.** Desktop carries `SqlDialect` because it ships
- *   SQLite and MySQL too; web ships the Postgres family only. Backslash
- *   doubling and back-tick identifiers are MySQL's, and they arrive with the
- *   MySQL adapter (ADR-0068) in rung 7 — as a parameter on these same
- *   functions, not as a second copy of them.
- * - **No `rowid` row identity.** ADR-0063 decision 2 keeps only the declared
- *   primary key; the SQLite-rowid variant would be unreachable here, so
- *   `RowKey` is a plain array rather than a union.
+ * One deliberate narrowing against the desktop original remains, from
+ * ADR-0063: **no `rowid` row identity.** Decision 2 keeps only the declared
+ * primary key, so `RowKey` is a plain array rather than a union. Web now does
+ * ship SQLite-family adapters — Turso and D1, rung 7 slices A and B — and the
+ * narrowing survives them because it was never about which engines were
+ * present. A `rowid` key needs the browse query to have selected `rowid`
+ * explicitly, and `selectTopN` emits `SELECT *`, which does not include it.
  */
+import { type SqlDialect } from "./dialect";
 import type { TableInfo } from "./values/table-info";
 import type { TableSchema } from "./values/table-schema";
 import type { Value } from "./values/value";
@@ -95,37 +99,61 @@ export class WriteBackError extends Error {
 }
 
 /**
- * Quote a SQL identifier, doubling any embedded double quote.
+ * Quote a SQL identifier for `dialect`, doubling the embedded delimiter.
+ *
+ * SQLite and Postgres use the standard double quote; MySQL uses back-ticks
+ * and doubles an embedded back-tick. Each dialect doubles **only its own**
+ * delimiter (ADR-0072 decision 2): a `"` inside a back-quoted MySQL
+ * identifier is an ordinary character, and escaping it there would rename the
+ * column.
  *
  * Distinct from {@link quoteLiteral} on purpose: the two escape different
  * characters, and using one where the other belongs is exactly the mistake
  * this module exists to make impossible.
  */
-export function quoteIdent(ident: string): string {
-  return `"${ident.replace(/"/g, '""')}"`;
+export function quoteIdent(ident: string, dialect: SqlDialect): string {
+  return dialect === "mysql"
+    ? `\`${ident.replace(/`/g, "``")}\``
+    : `"${ident.replace(/"/g, '""')}"`;
 }
 
 /**
- * Quote a SQL string literal, doubling any embedded single quote.
+ * Quote a SQL string literal for `dialect`, doubling any embedded single
+ * quote.
  *
- * A backslash is left alone: Postgres treats it as an ordinary character in a
- * standard string literal (`standard_conforming_strings` has been on by
- * default since 9.1), so doubling it here would store two.
+ * On SQLite and Postgres a backslash is an ordinary character in a standard
+ * string literal (`standard_conforming_strings` has been on by default since
+ * Postgres 9.1), so doubling it there would store two. MySQL treats it as an
+ * escape character unless the server runs with `NO_BACKSLASH_ESCAPES`, so it
+ * has to be doubled — and doubled **first**, before the quote escaping, or
+ * the backslashes this step adds would themselves be re-escaped by it
+ * (ADR-0068 decision 1).
  */
-export function quoteLiteral(text: string): string {
-  return `'${text.replace(/'/g, "''")}'`;
+export function quoteLiteral(text: string, dialect: SqlDialect): string {
+  const escaped =
+    dialect === "mysql"
+      ? text.replace(/\\/g, "\\\\").replace(/'/g, "''")
+      : text.replace(/'/g, "''");
+  return `'${escaped}'`;
 }
 
-/** The `UPDATE` target: `"schema"."name"`, or `"name"` when unqualified. */
-export function qualifiedTable(table: TableInfo): string {
-  return table.schema
-    ? `${quoteIdent(table.schema)}.${quoteIdent(table.name)}`
-    : quoteIdent(table.name);
+/**
+ * The `UPDATE` target: `"schema"."name"`, or `"name"` when unqualified.
+ *
+ * SQLite has no schema namespace, so the name stands alone there even if a
+ * `schema` slipped into the `TableInfo` — which it should not, since both
+ * SQLite-wire adapters report `schema: null` from `listTables`. Desktop draws
+ * the same line for the same reason.
+ */
+export function qualifiedTable(table: TableInfo, dialect: SqlDialect): string {
+  return table.schema && dialect !== "sqlite"
+    ? `${quoteIdent(table.schema, dialect)}.${quoteIdent(table.name, dialect)}`
+    : quoteIdent(table.name, dialect);
 }
 
 /** A staged edit as a SQL literal. */
-function editLiteral(value: CellValue): string {
-  return value.kind === "null" ? "NULL" : quoteLiteral(value.text);
+function editLiteral(value: CellValue, dialect: SqlDialect): string {
+  return value.kind === "null" ? "NULL" : quoteLiteral(value.text, dialect);
 }
 
 /**
@@ -135,12 +163,12 @@ function editLiteral(value: CellValue): string {
  * primary key is never null, but the predicate has to be correct for the
  * unique-key fallback this shape leaves room for.
  */
-function keyPredicate(key: KeyColumn): string {
-  const ident = quoteIdent(key.column);
+function keyPredicate(key: KeyColumn, dialect: SqlDialect): string {
+  const ident = quoteIdent(key.column, dialect);
   const value = key.value;
   if (value === null) return `${ident} IS NULL`;
   if (typeof value === "number") return `${ident} = ${value}`;
-  if (typeof value === "string") return `${ident} = ${quoteLiteral(value)}`;
+  if (typeof value === "string") return `${ident} = ${quoteLiteral(value, dialect)}`;
   if (isBlobValue(value)) {
     throw new WriteBackError(
       WriteBackErrorKind.UnsupportedKeyType,
@@ -165,7 +193,7 @@ function keyPredicate(key: KeyColumn): string {
  * @throws {WriteBackError} `NoEdits` when nothing changed, `EmptyKey` when
  * the key is empty, `UnsupportedKeyType` when an identity value is a blob.
  */
-export function buildUpdateSql(plan: UpdatePlan): string {
+export function buildUpdateSql(plan: UpdatePlan, dialect: SqlDialect): string {
   if (plan.edits.length === 0) {
     throw new WriteBackError(WriteBackErrorKind.NoEdits, "no columns were edited");
   }
@@ -177,11 +205,13 @@ export function buildUpdateSql(plan: UpdatePlan): string {
   }
 
   const set = plan.edits
-    .map((edit) => `${quoteIdent(edit.column)} = ${editLiteral(edit.value)}`)
+    .map((edit) => `${quoteIdent(edit.column, dialect)} = ${editLiteral(edit.value, dialect)}`)
     .join(", ");
-  const where = plan.key.map(keyPredicate).join(" AND ");
+  // `map(keyPredicate)` would hand the callback the array index as its second
+  // argument, which is now the dialect parameter. Spelled out on purpose.
+  const where = plan.key.map((key) => keyPredicate(key, dialect)).join(" AND ");
 
-  return `UPDATE ${qualifiedTable(plan.table)} SET ${set} WHERE ${where}`;
+  return `UPDATE ${qualifiedTable(plan.table, dialect)} SET ${set} WHERE ${where}`;
 }
 
 /**
@@ -190,8 +220,9 @@ export function buildUpdateSql(plan: UpdatePlan): string {
  *
  * Only the declared primary key counts. Postgres has no safe implicit row
  * key (`ctid` moves under a vacuum), and desktop's SQLite `rowid` fallback is
- * not ported: ADR-0063 decision 2 dropped it, and web ships no SQLite family
- * adapter for it to apply to.
+ * not ported: ADR-0063 decision 2 dropped it, and the browse query web sends
+ * could not use it anyway — a `rowid` key needs `rowid` to have been selected
+ * by name, and `selectTopN` emits `SELECT *`, which excludes it.
  *
  * Reads `primary_key` rather than filtering `columns` by their `primary_key`
  * flag, because only the former is ordered — and for a composite key, the

@@ -286,4 +286,132 @@ the credential in the maintainer's hands, so an unset run is the normal one.
 Gate green: 945 API tests (78 files, +69, 1 file skipped), 1096 web, lint,
 typecheck, format.
 
-_(slice C next)_
+### Slice C — MySQL / MariaDB adapter, and the dialect seam it forced
+
+`mysql-adapter.ts` mirrors desktop's `crates/dbboard-mysql/src/lib.rs`
+(ADR-0068) read at `main` = b98f7a6, over `mysql2` rather than sqlx. What is
+mirrored is the behaviour, not the driver: the same three catalog queries
+verbatim, the same `CAST(ordinal_position AS SIGNED)` (since MySQL 8.0 the
+information_schema is a view over the data dictionary and that column's type
+varies by server), the same 2048-byte error truncation, the same refusal to
+let a connection URL reach an error message, and the same TLS hardening.
+
+**Dependency review (baseline §12) — `mysql2@3.23.2`.** MIT. No install
+script and no native build: it is pure JS, which is the reason it is the
+driver here rather than a binding. Eight runtime dependencies, all pure JS
+and all already-known names — `aws-ssl-profiles`, `denque`,
+`generate-function`, `iconv-lite`, `long`, `lru.min`, `named-placeholders`,
+`sql-escaper`. No telemetry and no network egress beyond the MySQL socket it
+is asked to open. It was already in the lockfile before this slice, as a
+transitive of nuxt's `db0`, so the tree gains no new package — only a direct
+edge from `apps/api`.
+
+Two driver choices in `Mysql2Pool` are load-bearing rather than incidental,
+and both exist to make desktop's decoding rule mean the same thing here:
+
+- **`query`, not `execute`.** `execute` is the binary protocol, where a value
+  arrives in its own type's encoding. `query` is the text protocol, where
+  every value is the text MySQL would print — which is what desktop's sqlx
+  `raw_sql` path sees, and what makes "valid UTF-8 or blob" the same
+  question on both sides.
+- **`typeCast: (field) => field.buffer()`.** Without it mysql2 converts each
+  cell using the _declared_ column type, which loses exactly the distinction
+  desktop keeps: a `BLOB` holding valid UTF-8 is text, and a `VARCHAR`
+  holding invalid UTF-8 is not.
+
+Metadata is decoded by different rules from data, and deliberately: an
+information_schema cell that is not valid UTF-8 is a `SchemaError`, not a
+blob. A name the caller cannot address the object with is worse than no
+answer.
+
+Three things in desktop's trait have no hook here and are absent rather than
+written and unused: `ping`, `foreign_keys`, and `query_read_only` with its
+`TimeoutStyle` machinery. That machinery exists to pick between MySQL's
+`max_execution_time` (ms), MariaDB's `max_statement_time` (s) and MySQL
+5.6's neither. Web has no read-only route, so there is nothing for the probe
+to protect and no reason to carry three spellings of a variable this adapter
+never sets.
+
+TLS defaults to on. Desktop hardens sqlx's `Preferred`, which falls back to
+plaintext silently; mysql2's default is worse, being no TLS at all. So
+absent, `PREFERRED` and `REQUIRED` all resolve to an encrypted connection,
+`DISABLED` stays plaintext for a deliberately insecure local node, and
+`VERIFY_CA` / `VERIFY_IDENTITY` verify. `REQUIRED` maps to
+`rejectUnauthorized: false` because that is what the word means in MySQL's
+vocabulary — encrypt, do not verify — and it is the strongest thing
+available while there is nowhere in the connection config to nominate a CA.
+
+Flags: `has_describe_table`, `has_table_ddl`, `has_execute`, and -
+uniquely so far outside Postgres — `has_atomic_restore`. A DDL statement
+causes an implicit commit in MySQL, which would break the all-or-nothing
+promise, but dbboard's logical dump is data-only (ADR-0049) so a restore
+script emits no DDL, and for data an InnoDB transaction is exactly atomic.
+`executeInTransaction` holds one pooled connection for the whole batch and
+`destroy()`s it when the rollback itself fails — returning it would hand the
+next caller an open transaction.
+
+`test/mysql-integration.spec.ts` runs against a real `mysql:8` container via
+testcontainers, with `DBBOARD_MYSQL_URL` as an override for a server the
+maintainer already has. Unlike D1 there is no credential gate: the container
+is the default path, so this suite runs on every machine with a Docker
+daemon.
+
+#### The dialect seam (ADR-0072)
+
+MySQL is the first driver web ships that does not quote identifiers with
+`"..."`, and `"orders"` there is a _string literal_ unless the server runs
+with ANSI_QUOTES. In `FROM` that is a syntax error; in a `SELECT` list it is
+worse, because a column reference quietly becomes a constant. So every
+generated identifier had to become dialect-aware.
+
+**Two dialect types, not one shared union.** `apps/api/src/domain/dialect.ts`
+names `sqlite | postgres | mysql`; `apps/web/app/utils/sql-build.ts` names
+`ansi | mysql`. The API's emitters also write _literals_, where SQLite and
+Postgres part company (`X'...'` versus `'\x...'::bytea`); the browser
+only ever writes identifiers, and there the two agree. One shared union
+would import a distinction the frontend cannot act on and leave `sqlite` and
+`postgres` as two names for the same branch.
+
+`dialectFor` resolves anything it has not heard of to ANSI rather than
+throwing (decision 1). `driver` is a `string`, not a union, because the API
+can gain a driver without the browser bundle being rebuilt. The fallback
+direction is the safe one and only just: ANSI is what every dialect except
+MySQL accepts, and when it is wrong it is wrong loudly, as a syntax error
+the user sees rather than a query against the wrong object.
+
+**The `driver` option is getter-shaped, and that is the whole design.** The
+SQL page has no `GET /connections/:id` to ask, so it finds the driver by
+matching the route id against `useConnections().list` — an in-flight fetch
+that usually resolves _after_ the sidebar mounts. Reading a plain string
+once at setup would pin ANSI for the session and quietly break every MySQL
+sidebar whose connection list was a tick slower than the page. So
+`useSchemaBrowser` accepts `string | (() => string | null | undefined)` and
+resolves per call, `SchemaBrowser.vue` passes `() => props.driver` down while
+using a `computed` for its own three emit sites, and a test drives the
+late-arrival case directly: mount with the driver absent, set it, then assert
+the `LIMIT 0` probe back-quotes.
+
+On the API side the parameter is `domain/dialect.ts`, whose `DEFAULT_DIALECT`
+is `postgres` — web's spelling of ANSI there, because that arm is what every
+emitter produced before the seam existed, so the fallback changes nothing that
+already worked. It keeps two functions rather than one: `dialectForDriver`
+answers `null` for a driver not in the table (desktop's `Option`), and
+`dialectFor` applies the fallback. The split exists so a drift test in
+`static-adapter-factory.spec.ts` can tell "not in the table" from "resolved to
+the default" — which matters because for _literals_ the fallback is only safe
+for Postgres, and a SQLite-wire driver reaching it dumps blobs Postgres-style.
+That is exactly the bug slice B shipped for the length of one slice.
+
+Of the four places the survey named, three took the parameter —
+`sql-build.ts`, `domain/write-back.ts` and `domain/dump/literal.ts` (with
+`insert.ts` and `select.ts` threading it through). **The fourth was wrong
+about itself.** `domain/restore/plan.ts` quotes nothing at all: it splits a
+script into statements and never emits an identifier, so there is no arm for a
+dialect to pick. `domain/dump/table-ddl.ts`, which the survey did not name,
+does have a private `quoteIdent` — but it is not the seam's, because the DDL
+it wraps is the server's own text and re-quoting it in another dialect would
+corrupt it. Both now say so in their module docs, so the next reader does not
+have to re-derive the omission.
+
+Gate green: 1029 API tests (81 files, +84, 1 file skipped), 1134 web, lint,
+typecheck, format.

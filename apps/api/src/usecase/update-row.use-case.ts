@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import { dialectFor, type SqlDialect } from "../domain/dialect";
 import { CapabilityError, ConflictError, QueryError } from "../domain/errors";
 import { buildUpdateSql, WriteBackError, type UpdatePlan } from "../domain/write-back";
 import type { ConnectionRegistry } from "./connection-registry.port";
@@ -39,7 +40,11 @@ export class UpdateRow {
     // nothing. An empty key is the case this ordering exists for: the
     // alternative is discovering it from an affected count after an
     // unkeyed UPDATE has already rewritten the table.
-    const sql = this.buildOrRefuse(plan);
+    //
+    // The dialect comes from the adapter that is about to run the statement,
+    // not from the request: the client says which connection, and the driver
+    // behind it is the only thing that decides how an identifier is quoted.
+    const sql = this.buildOrRefuse(plan, dialectFor(adapter.getId()));
     const affected = await adapter.execute(sql);
 
     // The key is a declared primary key, so a well-formed plan can only
@@ -68,9 +73,9 @@ export class UpdateRow {
   // reaches the engine. Re-typed rather than rethrown as-is so it carries a
   // category the error filter knows; the reason is kept verbatim because it
   // already names the specific problem.
-  private buildOrRefuse(plan: UpdatePlan): string {
+  private buildOrRefuse(plan: UpdatePlan, dialect: SqlDialect): string {
     try {
-      return buildUpdateSql(plan);
+      return buildUpdateSql(plan, dialect);
     } catch (e) {
       if (e instanceof WriteBackError) throw new QueryError(e.message);
       throw e;

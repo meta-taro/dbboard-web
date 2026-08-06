@@ -19,6 +19,18 @@
  * Sections degrade rather than fail. Aurora DSQL has neither foreign keys nor
  * sequences (desktop ADR-0021), so those catalog queries return nothing and
  * the corresponding sections are simply absent.
+ *
+ * **This module takes no dialect parameter, and its private `quoteIdent` is
+ * not the seam's.** Rung 7 slice C threaded a dialect through everything else
+ * in `domain` that emits SQL text, and deliberately not through here. The
+ * reason is that reconstruction-from-catalog is not a thing the other engines
+ * need: MySQL answers `SHOW CREATE TABLE` and SQLite reads `sqlite_master.sql`
+ * back, so each hands over finished DDL and neither ever reaches an assembler.
+ * A dialect parameter here would have exactly one live value forever, and
+ * would suggest the module is reusable in a way it is not — every identifier
+ * below is a `pg_catalog` name, and half the output is `pg_get_*def` text
+ * copied verbatim. When a MySQL or SQLite `tableDdl` arrives it belongs in
+ * that adapter, as one query, not in a second arm of this file.
  */
 
 /** One column, from `pg_attribute` / `format_type` / `pg_get_expr`. */

@@ -346,4 +346,94 @@ describe("SchemaBrowser", () => {
     expect(row.find("[data-testid='schema-column-default']").exists()).toBe(false);
     wrapper.unmount();
   });
+
+  // ---- dialect seam (ADR-0072, rung 7 slice C) -------------------------
+  //
+  // Every identifier this panel emits is either handed to the editor or run
+  // as SQL, and MySQL reads `"users"` as a string literal rather than a
+  // table name. Getting this wrong is a syntax error in `FROM` and, in a
+  // `SELECT` list, a column reference that silently becomes a constant.
+
+  describe("mysql", () => {
+    const mysqlOptions = {
+      props: { connectionId: "abc", apiBase: "http://test", driver: "mysql" },
+    };
+
+    it("back-quotes the table name it inserts", async () => {
+      mockFetch.mockResolvedValueOnce({ tables: [{ schema: "shop", name: "orders" }] });
+      const wrapper = mount(SchemaBrowser, mysqlOptions);
+      await flushPromises();
+
+      await wrapper.find("[data-testid='schema-insert-table']").trigger("click");
+      expect(wrapper.emitted("insert")![0]).toEqual(["`shop`.`orders`"]);
+      wrapper.unmount();
+    });
+
+    it("back-quotes the browse statement", async () => {
+      mockFetch.mockResolvedValueOnce({ tables: [{ schema: "shop", name: "orders" }] });
+      const wrapper = mount(SchemaBrowser, mysqlOptions);
+      await flushPromises();
+
+      await wrapper.find("[data-testid='schema-browse-table']").trigger("click");
+      expect(wrapper.emitted("browse")![0]).toEqual([
+        {
+          sql: "SELECT * FROM `shop`.`orders` LIMIT 100;",
+          table: { schema: "shop", name: "orders" },
+        },
+      ]);
+      wrapper.unmount();
+    });
+
+    it("back-quotes the column name it inserts", async () => {
+      mockFetch.mockResolvedValueOnce({ tables: [{ schema: "shop", name: "orders" }] });
+      mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+      mockFetch.mockResolvedValueOnce({
+        columns: [{ name: "total", declared_type: "DECIMAL" }],
+        rows: [],
+        rows_affected: 0,
+      });
+
+      const wrapper = mount(SchemaBrowser, mysqlOptions);
+      await flushPromises();
+      await wrapper.find("[data-testid='schema-table']").trigger("toggle");
+      await flushPromises();
+
+      await wrapper.find("[data-testid='schema-insert-column']").trigger("click");
+      expect(wrapper.emitted("insert")![0]).toEqual(["`total`"]);
+      wrapper.unmount();
+    });
+
+    it("passes the driver down so the LIMIT 0 probe back-quotes too", async () => {
+      // Reachable even though MySQL advertises `has_describe_table`: the
+      // capability probe degrades to `false` when it cannot be answered,
+      // and then the shallow path is the only one left.
+      mockFetch.mockResolvedValueOnce({ tables: [{ schema: "shop", name: "orders" }] });
+      mockFetch.mockResolvedValueOnce(CANNOT_DESCRIBE);
+      mockFetch.mockResolvedValueOnce({ columns: [], rows: [], rows_affected: 0 });
+
+      const wrapper = mount(SchemaBrowser, mysqlOptions);
+      await flushPromises();
+      await wrapper.find("[data-testid='schema-table']").trigger("toggle");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenNthCalledWith(3, "http://test/connections/abc/query", {
+        method: "POST",
+        body: { sql: "SELECT * FROM `shop`.`orders` LIMIT 0" },
+      });
+      wrapper.unmount();
+    });
+  });
+
+  it("stays ANSI when the driver prop is absent", async () => {
+    // The page mounts this before the connection list has arrived, so
+    // `undefined` is a real state and it must not produce broken SQL for
+    // the drivers that were working before the seam existed.
+    mockFetch.mockResolvedValueOnce({ tables: [{ schema: "public", name: "users" }] });
+    const wrapper = mount(SchemaBrowser, mountOptions);
+    await flushPromises();
+
+    await wrapper.find("[data-testid='schema-insert-table']").trigger("click");
+    expect(wrapper.emitted("insert")![0]).toEqual(['"public"."users"']);
+    wrapper.unmount();
+  });
 });

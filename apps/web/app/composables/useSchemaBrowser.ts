@@ -17,7 +17,7 @@
  */
 import { onMounted, readonly, ref } from "vue";
 import { useRuntimeConfig } from "#imports";
-import { qualifiedName } from "../utils/sql-build";
+import { dialectFor, qualifiedName, type SqlDialect } from "../utils/sql-build";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
@@ -64,6 +64,18 @@ interface TableSchemaResponse {
 
 export interface UseSchemaBrowserOptions {
   apiBase?: string;
+  /**
+   * The connection's driver, used only to pick the identifier quoting of the
+   * `LIMIT 0` probe (ADR-0072). Absent means "not known yet", which resolves
+   * to ANSI — the page mounts this before the connection list has arrived.
+   *
+   * A getter is accepted, and is what a page should pass: the driver is read
+   * out of an in-flight `GET /connections`, so it is usually still unknown
+   * when this composable is constructed. Reading a plain string once at
+   * setup would pin ANSI for the session and break every MySQL sidebar whose
+   * connection list resolved a tick later.
+   */
+  driver?: string | (() => string | null | undefined);
 }
 
 function resolveApiBase(explicit: string | undefined): string {
@@ -72,12 +84,17 @@ function resolveApiBase(explicit: string | undefined): string {
   return cfg.public.apiBaseUrl ?? "";
 }
 
-function buildLimitZeroSql(schema: string | null, table: string): string {
-  return `SELECT * FROM ${qualifiedName({ schema, name: table })} LIMIT 0`;
+function buildLimitZeroSql(schema: string | null, table: string, dialect: SqlDialect): string {
+  return `SELECT * FROM ${qualifiedName({ schema, name: table }, dialect)} LIMIT 0`;
 }
 
 export function useSchemaBrowser(connectionId: string, options?: UseSchemaBrowserOptions) {
   const apiBase = resolveApiBase(options?.apiBase);
+  // Resolved per call, not once at setup: the driver may still be loading.
+  function currentDialect(): SqlDialect {
+    const driver = typeof options?.driver === "function" ? options.driver() : options?.driver;
+    return dialectFor(driver);
+  }
   const tables = ref<ReadonlyArray<TableInfo>>([]);
   const state = ref<SchemaState>("idle");
   const lastError = ref<CategorisedError | null>(null);
@@ -129,7 +146,7 @@ export function useSchemaBrowser(connectionId: string, options?: UseSchemaBrowse
     }
     const res = await apiFetch<QueryResponse>(`${apiBase}/connections/${connectionId}/query`, {
       method: "POST",
-      body: { sql: buildLimitZeroSql(schema, table) },
+      body: { sql: buildLimitZeroSql(schema, table, currentDialect()) },
     });
     return res.columns;
   }

@@ -3,11 +3,18 @@ import { computed, reactive } from "vue";
 import ErrorBanner from "./ErrorBanner.vue";
 import { useSchemaBrowser, type ColumnInfo, type TableInfo } from "../composables/useSchemaBrowser";
 import { prefixed } from "../utils/display-error";
-import { BROWSE_ROWS, qualifiedName, quoteIdent, selectTopN } from "../utils/sql-build";
+import { BROWSE_ROWS, dialectFor, qualifiedName, quoteIdent, selectTopN } from "../utils/sql-build";
 
 interface Props {
   connectionId: string;
   apiBase?: string;
+  /**
+   * The connection's driver, used only to pick identifier quoting (ADR-0072).
+   * Optional because the page mounts this panel before the connection list
+   * has arrived; `undefined` resolves to ANSI, which is what every driver
+   * except MySQL accepts.
+   */
+  driver?: string;
 }
 
 const props = defineProps<Props>();
@@ -23,7 +30,12 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const { tables, state, lastError, refresh, loadColumns } = useSchemaBrowser(props.connectionId, {
   apiBase: props.apiBase,
+  // A getter, not `props.driver`: the page reads the driver out of an
+  // in-flight connection list, so it is usually still absent at mount.
+  driver: () => props.driver,
 });
+
+const dialect = computed(() => dialectFor(props.driver));
 
 interface GroupView {
   key: string;
@@ -84,15 +96,15 @@ async function onToggleTable(table: TableInfo) {
 }
 
 function onInsertTable(table: TableInfo) {
-  emit("insert", qualifiedName(table));
+  emit("insert", qualifiedName(table, dialect.value));
 }
 
 function onBrowseTable(table: TableInfo) {
-  emit("browse", { sql: selectTopN(table, BROWSE_ROWS), table });
+  emit("browse", { sql: selectTopN(table, BROWSE_ROWS, dialect.value), table });
 }
 
 function onInsertColumn(column: ColumnInfo) {
-  emit("insert", quoteIdent(column.name));
+  emit("insert", quoteIdent(column.name, dialect.value));
 }
 
 function columnEntry(table: TableInfo): ColumnEntry | undefined {

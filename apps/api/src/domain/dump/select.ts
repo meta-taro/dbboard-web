@@ -12,6 +12,7 @@
  * Cursor values are rendered with the same {@link valueLiteral} the `INSERT`s
  * use, so the cursor and the data agree on how a value is spelled.
  */
+import type { SqlDialect } from "../dialect";
 import type { TableInfo } from "../values/table-info";
 import type { Value } from "../values/value";
 import { qualifiedTable, quoteIdent } from "../write-back";
@@ -35,6 +36,8 @@ export class CursorError extends Error {
  *   matching `keyColumns`. Omit it for the first page; it is ignored when
  *   `keyColumns` is empty.
  * - `limit` bounds the page size. The caller keeps it under `ROW_CAP`.
+ * - `dialect` quotes the identifiers and renders the cursor values. It sits
+ *   ahead of `after` because it is required and `after` is not.
  *
  * @throws {CursorError} when `after` does not match the key's arity, or
  * carries a `null`. Desktop renders a null cursor value as the literal `NULL`
@@ -48,12 +51,13 @@ export function buildSelectPage(
   table: TableInfo,
   keyColumns: string[],
   limit: number,
+  dialect: SqlDialect,
   after?: readonly Value[],
 ): string {
-  let sql = `SELECT * FROM ${qualifiedTable(table)}`;
+  let sql = `SELECT * FROM ${qualifiedTable(table, dialect)}`;
 
   if (keyColumns.length > 0) {
-    const keyList = keyColumns.map(quoteIdent).join(", ");
+    const keyList = keyColumns.map((column) => quoteIdent(column, dialect)).join(", ");
 
     if (after !== undefined) {
       if (after.length !== keyColumns.length) {
@@ -64,7 +68,8 @@ export function buildSelectPage(
       if (after.some((value) => value === null)) {
         throw new CursorError("cursor contains a null; a keyed page cannot resume past it");
       }
-      sql += ` WHERE (${keyList}) > (${after.map(valueLiteral).join(", ")})`;
+      const cursor = after.map((value) => valueLiteral(value, dialect)).join(", ");
+      sql += ` WHERE (${keyList}) > (${cursor})`;
     }
 
     sql += ` ORDER BY ${keyList}`;
@@ -80,6 +85,6 @@ export function buildSelectPage(
  * large-database gate. Identifier quoting matches {@link buildSelectPage} so
  * the same table is addressed identically in the count and the paged reads.
  */
-export function buildCount(table: TableInfo): string {
-  return `SELECT COUNT(*) FROM ${qualifiedTable(table)}`;
+export function buildCount(table: TableInfo, dialect: SqlDialect): string {
+  return `SELECT COUNT(*) FROM ${qualifiedTable(table, dialect)}`;
 }

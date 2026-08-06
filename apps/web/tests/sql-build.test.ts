@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BROWSE_ROWS, qualifiedName, quoteIdent, selectTopN } from "../app/utils/sql-build";
+import {
+  BROWSE_ROWS,
+  dialectFor,
+  qualifiedName,
+  quoteIdent,
+  selectTopN,
+} from "../app/utils/sql-build";
 
 // These pin the generated text, not just its shape. A browse is the only
 // SQL in this app the user did not type, and it is the provenance the cell
@@ -19,14 +25,60 @@ describe("quoteIdent", () => {
   });
 
   it("leaves other punctuation alone", () => {
-    // A backtick is an ordinary character in an ANSI-quoted identifier.
-    // MySQL's quoting arrives with its adapter in rung 7.
+    // A backtick is an ordinary character in an ANSI-quoted identifier, and
+    // stays one — the MySQL dialect doubles it, this one must not.
     expect(quoteIdent("weird`name")).toBe('"weird`name"');
     expect(quoteIdent("has space")).toBe('"has space"');
   });
 
   it("quotes an empty name rather than emitting nothing", () => {
     expect(quoteIdent("")).toBe('""');
+  });
+
+  it("back-quotes in the mysql dialect", () => {
+    // Not a preference. MySQL reads `"orders"` as a *string literal* unless
+    // the server runs with ANSI_QUOTES, so ANSI quoting there is a syntax
+    // error in `FROM` — and in a `SELECT` list it is worse: a column
+    // reference silently becomes a constant string.
+    expect(quoteIdent("orders", "mysql")).toBe("`orders`");
+  });
+
+  it("doubles only its own quote character, per dialect", () => {
+    // The asymmetry that makes this two functions' worth of care. A `"`
+    // inside a back-quoted identifier is an ordinary character, and
+    // doubling it would rename the column.
+    expect(quoteIdent("a`b", "mysql")).toBe("`a``b`");
+    expect(quoteIdent('a"b', "mysql")).toBe('`a"b`');
+    expect(quoteIdent("a`b", "ansi")).toBe('"a`b"');
+  });
+});
+
+describe("dialectFor", () => {
+  it("answers mysql for the mysql driver", () => {
+    expect(dialectFor("mysql")).toBe("mysql");
+  });
+
+  it("answers ansi for every other driver web ships", () => {
+    expect(dialectFor("postgres")).toBe("ansi");
+    expect(dialectFor("turso")).toBe("ansi");
+    expect(dialectFor("d1")).toBe("ansi");
+    expect(dialectFor("null")).toBe("ansi");
+  });
+
+  it("falls back to ansi for a driver this build has never heard of", () => {
+    // ADR-0072 decision 1, and the direction matters: ANSI is what every
+    // dialect except MySQL accepts, so it is the right guess for an adapter
+    // the API gained after this bundle was built. The browser is in no
+    // position to refuse a driver name the server accepted.
+    expect(dialectFor("cockroach")).toBe("ansi");
+    expect(dialectFor("")).toBe("ansi");
+  });
+
+  it("falls back to ansi before a connection is known", () => {
+    // The schema browser renders while the connection list is still
+    // loading, so `undefined` is a real state and not a defensive branch.
+    expect(dialectFor(undefined)).toBe("ansi");
+    expect(dialectFor(null)).toBe("ansi");
   });
 });
 
@@ -43,6 +95,11 @@ describe("qualifiedName", () => {
 
   it("quotes both halves independently", () => {
     expect(qualifiedName({ schema: 'a"b', name: 'c"d' })).toBe('"a""b"."c""d"');
+  });
+
+  it("carries the dialect into both halves", () => {
+    expect(qualifiedName({ schema: "shop", name: "orders" }, "mysql")).toBe("`shop`.`orders`");
+    expect(qualifiedName({ schema: null, name: "orders" }, "mysql")).toBe("`orders`");
   });
 });
 
@@ -70,6 +127,15 @@ describe("selectTopN", () => {
 
   it("defaults to the browse row count", () => {
     expect(selectTopN({ schema: null, name: "t" })).toBe(`SELECT * FROM "t" LIMIT ${BROWSE_ROWS};`);
+  });
+
+  it("builds a MySQL browse that MySQL can actually run", () => {
+    // `LIMIT n` needs no dialect branch — MySQL, SQLite and Postgres all
+    // spell it the same way. The quoting is the whole difference, which is
+    // why the dialect stops at `qualifiedName`.
+    expect(selectTopN({ schema: "shop", name: "orders" }, 100, "mysql")).toBe(
+      "SELECT * FROM `shop`.`orders` LIMIT 100;",
+    );
   });
 });
 

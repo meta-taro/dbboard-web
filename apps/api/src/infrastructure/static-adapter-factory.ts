@@ -3,6 +3,7 @@ import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.p
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
 import { createD1Adapter, D1Adapter } from "./d1-adapter";
+import { createMySqlAdapter, MySqlAdapter } from "./mysql-adapter";
 import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
 import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
 
@@ -16,8 +17,8 @@ import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
  * table `create` dispatches on, so the two cannot report different sets.
  *
  * Insertion order is display order (Maps preserve it): the drivers that
- * reach a database first — `postgres`, `turso`, then `d1` — and `null` last
- * because it connects to nothing.
+ * reach a database first — `postgres`, `turso`, `d1`, then `mysql` — and
+ * `null` last because it connects to nothing.
  */
 interface DriverBuilder {
   create(config: AdapterConfig): DatabaseAdapter;
@@ -69,6 +70,18 @@ const BUILDERS = new Map<string, DriverBuilder>([
       // private field to the next, never through the factory.
       rebuild: (previous, config) =>
         previous instanceof D1Adapter ? previous.rebuildWith(config) : createD1Adapter(config),
+    },
+  ],
+  [
+    "mysql",
+    {
+      create: (config) => createMySqlAdapter(config),
+      // Same shape as postgres, and literally the same credential: a
+      // password embedded in a URL the browser is never shown (ADR-0080).
+      rebuild: (previous, config) =>
+        previous instanceof MySqlAdapter
+          ? previous.rebuildWith(config)
+          : createMySqlAdapter(config),
     },
   ],
   ["null", { create: () => new NullAdapter(), rebuild: () => new NullAdapter() }],

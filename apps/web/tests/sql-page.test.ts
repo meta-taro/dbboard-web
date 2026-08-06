@@ -103,12 +103,30 @@ vi.mock("../app/components/HistorySidebar.vue", () => ({
 vi.mock("../app/components/SchemaBrowser.vue", () => ({
   default: defineComponent({
     name: "SchemaBrowser",
-    props: ["connectionId"],
+    props: ["connectionId", "driver"],
     emits: ["insert", "browse"],
     setup(props) {
       mocks.schemaConstructed(props.connectionId);
       return () => h("aside", { "data-testid": "schema-browser" });
     },
+  }),
+}));
+
+// The page has no `GET /connections/:id` to ask, so it reads the driver out
+// of the list (ADR-0072). Stubbed here because the real composable fetches on
+// mount and resolves the API base from the runtime config, which this suite
+// runs without — `use-connections.test.ts` owns that behaviour.
+let connectionListRef: Ref<ReadonlyArray<{ id: string; label: string; driver: string }>>;
+
+vi.mock("../app/composables/useConnections", () => ({
+  useConnections: () => ({
+    list: connectionListRef,
+    state: ref("idle"),
+    lastError: ref(null),
+    refresh: vi.fn(),
+    register: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
   }),
 }));
 
@@ -169,6 +187,7 @@ describe("SqlPage", () => {
   beforeEach(() => {
     resultRef = ref(null);
     sourceTableRef = ref(null);
+    connectionListRef = ref([]);
     editContextRef = ref(null);
     noPkRef = ref(false);
     stateRef = ref<"idle" | "loading" | "error">("idle");
@@ -475,6 +494,43 @@ describe("SqlPage", () => {
 
     expect(wrapper.find("[data-testid='schema-browser']").exists()).toBe(true);
     expect(mocks.schemaConstructed).toHaveBeenCalledWith("route-id");
+    wrapper.unmount();
+  });
+
+  // ---- dialect seam (ADR-0072, rung 7 slice C) -------------------------
+
+  it("hands the schema browser the driver of the connection it is looking at", async () => {
+    connectionListRef = ref([
+      { id: "other-id", label: "pg", driver: "postgres" },
+      { id: "route-id", label: "shop", driver: "mysql" },
+    ]);
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.findComponent({ name: "SchemaBrowser" }).props("driver")).toBe("mysql");
+    wrapper.unmount();
+  });
+
+  it("leaves the driver undefined until the connection list arrives", async () => {
+    // Not a defensive branch: the list is fetched on mount, so this is the
+    // state the sidebar renders in first. `undefined` resolves to ANSI, and
+    // guessing a driver here would be worse than admitting we do not know.
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+    expect(wrapper.findComponent({ name: "SchemaBrowser" }).props("driver")).toBeUndefined();
+
+    connectionListRef.value = [{ id: "route-id", label: "shop", driver: "mysql" }];
+    await flushPromises();
+    expect(wrapper.findComponent({ name: "SchemaBrowser" }).props("driver")).toBe("mysql");
+    wrapper.unmount();
+  });
+
+  it("leaves the driver undefined when the route id is not in the list", async () => {
+    connectionListRef = ref([{ id: "other-id", label: "pg", driver: "postgres" }]);
+    const wrapper = mount(SqlPage, mountOptions);
+    await flushPromises();
+
+    expect(wrapper.findComponent({ name: "SchemaBrowser" }).props("driver")).toBeUndefined();
     wrapper.unmount();
   });
 

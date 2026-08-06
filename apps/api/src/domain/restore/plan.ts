@@ -45,10 +45,22 @@
  * shown to the operator, not a gate, and an over-count reads as "look at this
  * script" rather than as a false all-clear.
  *
- * No dialect parameter, for the reason ADR-0063 gave for `write-back.ts`: web
- * ships the Postgres family only, and these keywords are common to every
- * dialect it will ship. A dialect argument arrives with MySQL, as a parameter
- * on this function rather than as a second copy of it.
+ * ## Still no dialect parameter, and now for a better reason
+ *
+ * The earlier note here said one would arrive with MySQL. It did not, and the
+ * note was wrong about why there wasn't one: it is not that web shipped a
+ * single family, it is that **this module quotes nothing.** It classifies a
+ * statement by its leading keyword, and the keyword sets below are already the
+ * union across dialects — `REPLACE` is MySQL's and SQLite's, `PRAGMA` and
+ * `ATTACH` are SQLite's, `USE` and `UNLOCK` are MySQL's. Narrowing them by
+ * dialect would only let a statement the script really contains fall out of
+ * the classification and into `unparsed`, which makes the operator's summary
+ * worse and changes nothing about what runs.
+ *
+ * The one thing a dialect would buy — refusing a script written for another
+ * engine — is not this function's job and could not be done from keywords
+ * anyway: the keyword sets overlap almost entirely, and the statement that
+ * gives the dialect away is usually a type name in a `CREATE TABLE` body.
  */
 import { splitStatements } from "./split";
 

@@ -69,6 +69,22 @@ describe("RegisterConnectionDto", () => {
     expect(dto.authToken).toBe("eyJhbGciOi");
   });
 
+  it("accepts a d1 body with both path ids and a token", () => {
+    // The same whitelist trap the turso case describes, twice over: with
+    // `accountId` and `databaseId` stripped, `createD1Adapter` sees a config
+    // missing its required fields and the registration 404s — for a body
+    // that named them both.
+    const { dto, errors } = validate({
+      label: "D1",
+      driver: "d1",
+      accountId: "a1b2c3",
+      databaseId: "d4e5f6",
+      authToken: "cf-token",
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto).toMatchObject({ accountId: "a1b2c3", databaseId: "d4e5f6", authToken: "cf-token" });
+  });
+
   it("rejects port out of TCP range", () => {
     const { errors } = validate({ label: "x", driver: "postgres", host: "h", port: 70000 });
     expect(errors.map((e) => e.property)).toContain("port");

@@ -60,4 +60,15 @@ export class UpdateConnectionDto {
   @IsOptional()
   @IsString()
   authToken?: string;
+
+  // D1's two path ids. Unlike the token these are not credentials, so a
+  // blank one is an ordinary cleared box — `createD1Adapter` refuses it,
+  // which is the same answer registration gives.
+  @IsOptional()
+  @IsString()
+  accountId?: string;
+
+  @IsOptional()
+  @IsString()
+  databaseId?: string;
 }

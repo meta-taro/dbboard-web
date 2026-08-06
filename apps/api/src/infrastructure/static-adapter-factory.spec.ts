@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CapabilityError } from "../domain/errors";
+import { D1Adapter } from "./d1-adapter";
 import { NullAdapter } from "./null-adapter";
 import { PostgresAdapter } from "./postgres-adapter";
 import { StaticAdapterFactory } from "./static-adapter-factory";
@@ -13,6 +14,10 @@ import { TursoAdapter } from "./turso-adapter";
 const CONFIG_FOR: Record<string, Record<string, unknown>> = {
   postgres: { connectionString: "postgresql://u:p@127.0.0.1:1/db" },
   turso: { connectionString: "libsql://db-org.turso.io", authToken: "token" },
+  // D1 is addressed by two path ids rather than by a URL, which is the whole
+  // reason `AdapterConfig` grew fields for them — a driver whose fixture
+  // looks nothing like its neighbours' is the table earning its keep.
+  d1: { accountId: "acct", databaseId: "dbid", authToken: "token" },
   null: {},
 };
 
@@ -64,6 +69,41 @@ describe("StaticAdapterFactory", () => {
     ).toThrowError(CapabilityError);
   });
 
+  it("returns a D1Adapter for the 'd1' driver with both ids and a token", () => {
+    // No socket opens here either: the transport is built around `fetch`
+    // and nothing calls it until a query does.
+    const adapter = new StaticAdapterFactory().create("d1", CONFIG_FOR["d1"]);
+    expect(adapter).toBeInstanceOf(D1Adapter);
+    expect(adapter.getId()).toBe("d1");
+  });
+
+  it("raises CapabilityError when the d1 driver is missing an id or its token", () => {
+    const factory = new StaticAdapterFactory();
+    // Three required fields and no URL to infer them from, so each absence
+    // has to be refused here rather than surfacing as a 404 from Cloudflare
+    // against a path with `undefined` in it.
+    expect(() => factory.create("d1", {})).toThrowError(CapabilityError);
+    expect(() => factory.create("d1", { accountId: "acct", authToken: "t" })).toThrowError(
+      CapabilityError,
+    );
+    expect(() => factory.create("d1", { accountId: "acct", databaseId: "dbid" })).toThrowError(
+      CapabilityError,
+    );
+  });
+
+  it("raises CapabilityError when a d1 id would escape its path segment", () => {
+    // The same class of refusal as turso's `file:` check, at the level a
+    // request reaches: the ids are interpolated into an authenticated URL,
+    // so `../..` would re-aim the call at another Cloudflare API.
+    expect(() =>
+      new StaticAdapterFactory().create("d1", {
+        accountId: "../../zones",
+        databaseId: "dbid",
+        authToken: "t",
+      }),
+    ).toThrowError(CapabilityError);
+  });
+
   it("raises CapabilityError for unknown drivers (404 at the HTTP layer)", () => {
     expect(() => new StaticAdapterFactory().create("mongo", {})).toThrowError(CapabilityError);
     expect(() => new StaticAdapterFactory().create("", {})).toThrowError(CapabilityError);
@@ -72,7 +112,12 @@ describe("StaticAdapterFactory", () => {
   it("lists the drivers it supports, with the real ones first", () => {
     // The order is the order the form offers them, so the drivers that
     // reach a database lead and the do-nothing adapter trails.
-    expect([...new StaticAdapterFactory().supported()]).toEqual(["postgres", "turso", "null"]);
+    expect([...new StaticAdapterFactory().supported()]).toEqual([
+      "postgres",
+      "turso",
+      "d1",
+      "null",
+    ]);
   });
 
   it("can create every driver it lists", () => {

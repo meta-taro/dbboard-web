@@ -2,6 +2,7 @@ import { CapabilityError } from "../domain/errors";
 import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.port";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
+import { createD1Adapter, D1Adapter } from "./d1-adapter";
 import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
 import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
 
@@ -15,7 +16,7 @@ import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
  * table `create` dispatches on, so the two cannot report different sets.
  *
  * Insertion order is display order (Maps preserve it): the drivers that
- * reach a database first — `postgres`, then `turso` — and `null` last
+ * reach a database first — `postgres`, `turso`, then `d1` — and `null` last
  * because it connects to nothing.
  */
 interface DriverBuilder {
@@ -57,6 +58,17 @@ const BUILDERS = new Map<string, DriverBuilder>([
         previous instanceof TursoAdapter
           ? previous.rebuildWith(config)
           : createTursoAdapter(config),
+    },
+  ],
+  [
+    "d1",
+    {
+      create: (config) => createD1Adapter(config),
+      // Same shape again. D1's credential is a Cloudflare API token, and
+      // it reaches the successor the same way the other two do — from one
+      // private field to the next, never through the factory.
+      rebuild: (previous, config) =>
+        previous instanceof D1Adapter ? previous.rebuildWith(config) : createD1Adapter(config),
     },
   ],
   ["null", { create: () => new NullAdapter(), rebuild: () => new NullAdapter() }],

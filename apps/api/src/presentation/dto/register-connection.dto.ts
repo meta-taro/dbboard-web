@@ -74,4 +74,16 @@ export class RegisterConnectionDto {
   @IsOptional()
   @IsString()
   authToken?: string;
+
+  // D1 addresses a database by two ids in the REST path (0031 slice B).
+  // Declared for the same whitelist reason as everything above; the format
+  // is checked in `createD1Adapter`, which is where knowing what a
+  // Cloudflare path segment may contain belongs.
+  @IsOptional()
+  @IsString()
+  accountId?: string;
+
+  @IsOptional()
+  @IsString()
+  databaseId?: string;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { libsqlColumnType, libsqlValueToValue } from "./libsql-value-mapping";
+import { libsqlColumnType, libsqlValueToValue, sqliteJsonToValue } from "./libsql-value-mapping";
+import { TypeConversionError } from "../domain/errors";
 import { isBlobValue, decodeBlob, type BlobValue } from "../domain/values/value";
 
 // Desktop's `convert_value` (crates/dbboard-turso/src/lib.rs) is a five-arm
@@ -102,5 +103,77 @@ describe("libsqlColumnType", () => {
     expect(libsqlColumnType(undefined)).toBeNull();
     expect(libsqlColumnType(null)).toBeNull();
     expect(libsqlColumnType("")).toBeNull();
+  });
+});
+
+// The JSON-envelope sibling (0031 slice B). Same storage classes, a
+// different wire: D1's `/raw` hands back `serde_json`-shaped cells, so the
+// arms that differ from `libsqlValueToValue` are the ones JSON forces —
+// booleans exist, bigints do not, and a blob arrives as an array of byte
+// numbers. Mirrors desktop `convert_json_value`
+// (crates/dbboard-d1/src/lib.rs at b98f7a6).
+describe("sqliteJsonToValue", () => {
+  it("maps a JSON null and a missing cell alike", () => {
+    expect(sqliteJsonToValue(null)).toBeNull();
+    expect(sqliteJsonToValue(undefined)).toBeNull();
+  });
+
+  it("maps a boolean to SQLite's 1 and 0", () => {
+    // SQLite has no boolean storage class, so a `true` on the wire is an
+    // INTEGER that JSON happened to spell as a keyword. Desktop calls this
+    // arm defensive; it costs one line and keeps a `true` out of a grid
+    // whose column reads INTEGER everywhere else.
+    expect(sqliteJsonToValue(true)).toBe(1);
+    expect(sqliteJsonToValue(false)).toBe(0);
+  });
+
+  it("keeps integers and reals as numbers", () => {
+    expect(sqliteJsonToValue(42)).toBe(42);
+    expect(sqliteJsonToValue(-7)).toBe(-7);
+    expect(sqliteJsonToValue(1.5)).toBe(1.5);
+  });
+
+  it("keeps text as a string, empty included", () => {
+    expect(sqliteJsonToValue("hi")).toBe("hi");
+    expect(sqliteJsonToValue("")).toBe("");
+  });
+
+  it("reads an array of bytes as a blob", () => {
+    const mapped = sqliteJsonToValue([1, 2, 255]);
+    expect(isBlobValue(mapped)).toBe(true);
+    expect(Array.from(decodeBlob(mapped as BlobValue))).toEqual([1, 2, 255]);
+  });
+
+  it("reads an empty array as an empty blob, not as null", () => {
+    const mapped = sqliteJsonToValue([]);
+    expect(isBlobValue(mapped)).toBe(true);
+    expect(Array.from(decodeBlob(mapped as BlobValue))).toEqual([]);
+  });
+
+  it("refuses a byte outside 0-255", () => {
+    expect(() => sqliteJsonToValue([256])).toThrow(TypeConversionError);
+    expect(() => sqliteJsonToValue([-1])).toThrow(TypeConversionError);
+    expect(() => sqliteJsonToValue([1.5])).toThrow(TypeConversionError);
+  });
+
+  it("refuses a null inside a byte array", () => {
+    // Silently reading it as a zero byte would corrupt the blob rather
+    // than report that the envelope was not what it claimed to be.
+    expect(() => sqliteJsonToValue([1, null, 2])).toThrow(TypeConversionError);
+  });
+
+  it("refuses a JSON object", () => {
+    // No SQLite storage class produces one. Stringifying it would put a
+    // shape on the wire that `docs/api-contract.md` does not describe.
+    expect(() => sqliteJsonToValue({ a: 1 })).toThrow(TypeConversionError);
+  });
+
+  it("reports a non-finite number as text", () => {
+    // Unreachable through `JSON.parse`, which has no spelling for these.
+    // Kept because the function's contract is `unknown` in, `Value` out,
+    // and `Infinity` reaching JSON would come back as a bare `null` —
+    // indistinguishable from a real one.
+    expect(sqliteJsonToValue(Number.POSITIVE_INFINITY)).toBe("Infinity");
+    expect(sqliteJsonToValue(Number.NaN)).toBe("NaN");
   });
 });

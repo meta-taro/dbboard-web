@@ -21,6 +21,8 @@ const CONNECTION_FIELDS: Record<keyof AdapterConfig, true> = {
   password: true,
   sslMode: true,
   authToken: true,
+  accountId: true,
+  databaseId: true,
 };
 
 /**

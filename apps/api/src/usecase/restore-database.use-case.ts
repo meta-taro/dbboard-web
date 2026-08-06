@@ -202,12 +202,15 @@ export class RestoreDatabase {
    * Apply statements one at a time, honouring `onError` and stopping between
    * statements if the request goes away.
    *
-   * **Unreachable on today's adapter set, and deliberately kept.**
-   * PostgresAdapter advertises the atomic hook and is web's only real adapter;
-   * NullAdapter has neither hook and is refused a step earlier. Rung 7 brings
-   * Cloudflare D1, whose HTTP API has no multi-statement transaction — which
-   * is precisely why desktop has this branch. Written down so a dead-code
-   * sweep does not remove it.
+   * **Reached by Cloudflare D1** (0031 slice B), and by nothing else today.
+   * Postgres and Turso both advertise the atomic hook; NullAdapter has
+   * neither and is refused a step earlier. D1's REST API takes one statement
+   * per request and has no multi-statement transaction, so `D1Adapter`
+   * implements `execute` and not `executeInTransaction` — which is precisely
+   * the split desktop wrote this branch for (ADR-0051). When this shipped it
+   * was dead code kept against that arrival; `restore-database.d1.spec.ts`
+   * now drives it with a real adapter rather than a stub, so the dispatch
+   * itself is what the test proves.
    */
   private async runPerStatement(
     adapter: DatabaseAdapter,

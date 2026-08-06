@@ -143,7 +143,8 @@ it; it does not implement a `.dbbx` reader web has nothing to read into.
 | C     | MySQL adapter (ADR-0068) + dialect seam (ADR-0072) | none — a third dialect      |
 | D     | SSH tunnel (ADR-0069) **with** liveness (ADR-0092) | none — a lifetime           |
 | E     | Connection bundle (ADR-0038): classify             | none                        |
-| F     | Closeout                                           | —                           |
+| F     | Driver-aware connection form                       | none — a form               |
+| G     | Closeout                                           | —                           |
 
 Slice order is dependency order, not value order. A and B are both SQLite-wire
 and share a value mapping; C needs the dialect seam that A and B make
@@ -222,4 +223,67 @@ capabilities an opinion rather than a mirror.
 Gate green: 876 API tests (75 files, +44), 1096 web, lint, typecheck,
 format.
 
-_(slice B next)_
+### Slice B — Cloudflare D1 adapter over `/raw`
+
+`sqliteJsonToValue` first, beside slice A's `libsqlValueToValue` in
+`libsql-value-mapping.ts` — the same storage classes arriving as JSON
+instead of as driver objects. Two arms disagree with the native mapper and
+both are right where they stand: `true` is `1` here (JSON has a boolean and
+SQLite does not, so the encoder spelled an INTEGER as a keyword) and an
+array is a blob here (D1 sends bytes as numbers; the native driver sends an
+`ArrayBuffer`). Then `D1Adapter` over a `D1Transport` seam, then the
+factory, the two `AdapterConfig` ids and the two DTOs.
+
+**One precision loss with no fix at this layer, recorded rather than
+papered over.** `JSON.parse` narrows every number to a double before the
+mapper is called, so a 64-bit INTEGER past 2^53 has already lost its low
+bits. Slice A avoided this with `intMode: "bigint"`; there is no equivalent
+switch on a response body. The fix — hand-parsing with a reviver that sees
+the raw literal — is named in the mapper's doc comment as worth paying for
+only if a real D1 database hands back rowids that large.
+
+What is mirrored exactly is everything Cloudflare or SQLite decides: the
+`sqlite_%` **and** `\_cf\_%` exclusions with their `ESCAPE '\'`, the
+`[code] message` error join and its 2048-byte truncation, the PRAGMA
+quote-doubling and by-name column lookup, the `ORDER BY (type = 'table')
+DESC, name` DDL query, and the synthesised `no such table` message.
+
+Three deliberate departures:
+
+- **The endpoint is not configurable.** Desktop's `D1Config.base_url`
+  exists for its own integration test; here the same field would let a
+  request body aim an authenticated call anywhere. The transport seam
+  covers the testing role, so the URL is a module constant.
+- **The path ids must match `/^[A-Za-z0-9_-]+$/`.** They are interpolated
+  into an authenticated URL, so `../../zones` would re-aim the call at
+  another Cloudflare API. Refused at the factory — the level a request
+  reaches — as well as pinned in the adapter's own tests.
+- **A malformed body is a `ConnectionError`, where desktop says `Query`.**
+  The house rule set in `turso-adapter.ts`: a 502 that turns out to be a
+  bad query misleads far less than a 400 that turns out to be a dead
+  server. An unparseable envelope is not a statement the caller can fix.
+
+The row cap stays out of the adapter. `ROW_CAP` lives in `domain/limits.ts`
+and `ExecuteQuery` applies it after the adapter returns, "so no adapter can
+forget"; mirroring desktop's in-adapter `MAX_RESULT_ROWS` would cap twice
+and give one condition two unequal errors. A 10 001-row envelope pins that
+the adapter does not cap.
+
+Flags: `has_describe_table`, `has_table_ddl`, `has_execute`.
+`has_atomic_restore` stays false **with no `executeInTransaction` method at
+all** — `/raw` takes one statement per request and has no multi-statement
+transaction. That is the DoD item with teeth: `restore-database.d1.spec.ts`
+drives `RestoreDatabase` with a real `D1Adapter` over a stubbed socket, so
+the runner picks the per-statement branch itself rather than being told to
+by a fake. `0030` slice D's branch stopped being dead code here.
+
+`test/d1-integration.spec.ts` mirrors desktop's `rest_roundtrip.rs` behind
+the same three env gates (`DBBOARD_D1_ACCOUNT_ID` / `_DATABASE_ID` /
+`_TOKEN`), self-skipping with a printed reason. Unlike Postgres there is no
+container to fall back on and unlike Turso no `:memory:`; baseline §15 puts
+the credential in the maintainer's hands, so an unset run is the normal one.
+
+Gate green: 945 API tests (78 files, +69, 1 file skipped), 1096 web, lint,
+typecheck, format.
+
+_(slice C next)_

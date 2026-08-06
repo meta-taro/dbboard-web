@@ -38,6 +38,15 @@ describe("UpdateConnectionDto", () => {
     expect(dto.authToken).toBe("");
   });
 
+  it("carries the d1 path ids through an edit", () => {
+    // Not credentials, so unlike the token they have to survive an edit as
+    // typed: they are the address. Stripped by the whitelist, a re-point of
+    // a D1 connection to another database would silently keep the old one.
+    const { dto, errors } = validate({ accountId: "a1b2c3", databaseId: "d4e5f6", authToken: "" });
+    expect(errors).toHaveLength(0);
+    expect(dto).toMatchObject({ accountId: "a1b2c3", databaseId: "d4e5f6" });
+  });
+
   it("rejects a blank label", () => {
     // Blank means "keep" for a password and "unfindable" for a name. A
     // connection with no label cannot be picked out of the sidebar.

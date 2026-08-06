@@ -23,8 +23,19 @@ export interface AdapterConfig {
   // pair the postgres branch resolves alongside `user`, and a form that
   // labelled a Turso token "password" would be lying about what to paste
   // in. It carries forward across an edit the way `password` does
-  // (ADR-0080) — see `TursoAdapter.rebuildWith`.
+  // (ADR-0080) — see `TursoAdapter.rebuildWith`. 0031 slice B reuses it for
+  // Cloudflare D1's API token: genuinely the same slot, a bearer credential
+  // that is not part of any URL, so a second field would be the same thing
+  // under a second name.
   authToken?: string;
+  // 0031 slice B. D1 addresses a database by two ids in the REST path
+  // rather than by a host and a database name, and they are not
+  // interchangeable with `database`: a caller who typed a D1 database id
+  // into a box labelled "database" would have configured nothing. Named
+  // after desktop's `D1Config` fields for the same reason `authToken` is
+  // its own field — the form has to be able to say what to paste in.
+  accountId?: string;
+  databaseId?: string;
 }
 
 // Constructs an adapter from a driver discriminator + per-driver config.

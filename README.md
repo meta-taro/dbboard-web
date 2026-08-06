@@ -25,7 +25,7 @@ Phase 1.5 — PWA shell merged on `develop` (PR [#4](https://github.com/meta-tar
 
 - **Frontend:** Nuxt 4 (Vue 3, TypeScript)
 - **Backend:** NestJS 11 (Node.js, TypeScript)
-- **Databases:** Neon, Supabase, Turso / libSQL
+- **Databases:** Neon, Supabase, Turso / libSQL, Cloudflare D1
 - **Package manager:** pnpm via corepack (required — see [AI_AGENT_RULES.md](./AI_AGENT_RULES.md#2-package-manager))
 
 ## Architecture

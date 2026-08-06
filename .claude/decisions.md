@@ -960,8 +960,181 @@ is `has_table_ddl` — a client that has seen it `true` will ask for a dump.
 
 - Desktop: ADR-0049 and ADR-0050 in `dbboard/docs/decisions.md`;
   `crates/dbboard-core/src/dump/` and `crates/dbboard-postgres/src/table_ddl.rs`
-  read directly, per §19. Desktop pin `0ffb93f`.
+  read directly, per §19. **Desktop pin `fc41318`** (mainline, v0.5.0) —
+  corrected on 2026-08-06 from `0ffb93f`, a commit on an unmerged branch. Both
+  paths are byte-identical between the two and at desktop's tip `b98f7a6`.
 - Ticket: [`issues/0029-logical-dump.md`](./issues/0029-logical-dump.md) — the
   survey, the divergence table and the per-slice log. Ledger:
   [`parity-ledger.md`](./parity-ledger.md) rung 6b.
 - Next: ticket `0030`, restore (`has_atomic_restore`).
+
+## 2026-08-06 — Logical restore: a classifier with no parser, a media type that gets one allowance, and the second time a refusal split in two
+
+**Context.** Ticket [`0030`](./issues/0030-logical-restore.md), the second of
+rung 6b's two tickets and the one that closes it. Desktop's ADR-0051 runs an
+arbitrary `.sql` script against a connection; ADR-0065 adds the wiring rules it
+learned afterwards. Restore carries the inverse risk of every rung before it.
+Rung 6a's write-back composes a statement the user did not type but web _did_ —
+every character comes out of `write-back.ts`, so safety is by construction.
+Restore executes statements web neither wrote nor can vouch for, so the safety
+model cannot be "escape it correctly"; it has to be "refuse to run it against a
+target where it could destroy something". **Flips `has_atomic_restore`** — the
+last rung-0 capability flag still `false` for Postgres.
+
+**Decision 1 — Layer 2 is a leading-keyword classifier, and web adds no SQL
+parser.**
+
+Desktop's second layer is `sqlparser` with a real grammar. Pulling an
+equivalent into web is a supply-chain decision (baseline §12) this rung does
+not need to make, because of what the classification is _for_. Four of the five
+labels are informational — they populate counts the panel displays. Exactly one
+changes behaviour: `transaction_control`, which gets stripped because the
+runner owns the transaction boundary.
+
+And that is the one label a leading-keyword test gets exactly right. `BEGIN`,
+`START TRANSACTION`, `COMMIT`, `END`, `ROLLBACK`, `SAVEPOINT` and `RELEASE` are
+leading keywords by grammar; no statement _starts_ with `COMMIT` and means
+something else. The case that looks dangerous — a PL/pgSQL body full of
+`BEGIN … END` — never reaches the classifier on its own, because Layer 1 keeps
+a dollar-quoted body intact and the statement arrives with `CREATE` in front.
+
+Desktop's stance is kept whole: never drop, never reject, label `unparsed` when
+nothing matches, and run it verbatim. That is the deliberate inverse of
+ADR-0046's read-only check, which fails _closed_. Refusing an unrecognised
+statement here would break the "any `.sql`" promise that is the point of the
+feature.
+
+**Decision 2 — `application/sql` gets one allowance, on two paths, with its own
+limit.**
+
+`main.ts` installs `contentTypeGuard` (415 unless the first `Content-Type`
+token is exactly `application/json`) and a JSON body parser pinned at 64 KiB.
+Both are contract text — for the contract's endpoints. `docs/api-contract.md`
+tabulates them beside "Valid JSON missing the `sql` field → 422", which is
+`/query`; `domain/limits.ts` scopes its pin in writing to `POST /query`.
+`/connections/*` is a web-only unilateral surface the contract does not
+describe.
+
+So the resolution is narrow rather than loose. The guard gains one allowance —
+`application/sql`, on the restore paths only, matched by regex — and a second
+body parser is registered bound to that media type with its own
+`RESTORE_BODY_LIMIT_BYTES` (16 MiB, explicitly **not** contract-pinned). No
+contract endpoint can reach the larger limit, because nothing else is allowed
+past the guard with that media type; `http-contract.spec.ts` asserts `/query`
+still answers 413 at 70 KiB. Both parsers sit behind
+`createBearerAuthMiddleware`, so an unauthenticated request never allocates the
+buffer. The media type is the one dump already _emits_, which makes the pair
+symmetric.
+
+Options travel as query parameters, so the body stays pure script and needs no
+envelope.
+
+**Decision 3 — the script crosses the wire twice, and `run` cannot be handed a
+plan.**
+
+ADR-0065's re-plan-on-run reads like an IPC detail and is a correctness rule:
+it is what makes a stale plan unexecutable. Web has no file to re-read, so the
+run request carries the script again.
+
+The alternative — staging the upload server-side under a token — is state this
+codebase deliberately does not have. `InMemoryConnectionRegistry` already mints
+ids per process; a staged-script store would be a second and much larger one,
+needing an eviction policy, a size budget, and an answer for two tabs staging
+at once. Sending the bytes twice is stateless and cannot serve a stale plan.
+
+The rule is then spent where it cannot be forgotten: `run(prepared, options,
+signal)` re-derives the plan internally, so there is no parameter through which
+a stale one could arrive. `useRestore` holds the script in closure state and
+does not expose it, for the same reason. Discipline became a type.
+
+**Decision 4 — the refusal cannot carry structured data, so the plan does.**
+
+Desktop's `RestoreError::TargetNotEmpty { existing }` carries the table names.
+Web's error envelope carries `category` and `message` and nothing else — that
+is contract, and this ticket does not change it. So the **plan** response
+carries `existing_tables` and `is_target_empty` as ordinary data, and the run's
+refusal is a `query`-category 400 whose message names the count. The panel
+already holds the list and can show which tables are in the way without the
+error having to say.
+
+This is the second time an HTTP mirror of a desktop in-process refusal has
+split this way — ADR-0050's warn-and-allow was the first. **Naming the idiom:
+plan returns the detail, run returns the sentence.** Any future desktop refusal
+that carries structured data will hit the same wall, and this is the shape that
+gets through it.
+
+**Decision 5 — cancellation is a client disconnect, and it is not an error.**
+
+Desktop watches a `RestoreControl::is_cancelled` flag driven by its UI. The
+HTTP equivalent is the request going away. The use case takes an optional
+`AbortSignal`; the controller subscribes to the response's `close` and checks
+`writableFinished`, because every response closes its socket eventually and
+only a close _before_ the response was written means the client left.
+
+Two consequences follow from HTTP rather than from taste. The listener is
+registered **before** the preflight, not after: `prepare` queries the target
+for its table list, and a client that hangs up during that should not have a
+restore start behind it. And a cancelled run comes back with no body, so
+`cancelled` is a state of its own in `useRestore` rather than desktop's flag on
+an outcome that here never arrives. Desktop's semantics are otherwise
+unchanged: checked between statements on the per-statement path, once before
+the batch on the atomic path, and never an error.
+
+**Decision 6 — the per-statement path is dead code today and is still built.**
+
+Postgres advertises `has_atomic_restore` and is web's only real adapter;
+`NullAdapter` has no `execute` and refuses a step earlier. So the non-atomic
+branch is unreachable on today's adapter set. Rung 7 brings D1, whose HTTP API
+has no multi-statement transaction, which is exactly why desktop has the
+branch. Recorded so a dead-code sweep does not delete it.
+
+**Consequences.**
+
+- **`has_atomic_restore` is `true`** for `PostgresAdapter`. Every rung-0
+  capability flag is now flipped for Postgres, and rung 6b is closed.
+- **The atomic batch must use one pooled client.** `pool.query` per statement
+  would scatter `BEGIN`, the body and `COMMIT` across different connections,
+  and the batch would stop being atomic while every unit test still passed.
+  The integration test that would catch it is `leaves nothing behind when a
+statement partway through fails`.
+- **A restore is not history.** No `HistoryRecordingInterceptor` on either
+  route — same reason as dump and write-back. History is the record of queries
+  the user ran.
+- **Splitting comes first, always.** pg answers a multi-statement string with
+  an array of results, so a whole script through `executeQuery` surfaces as a 502. `splitStatements` is what makes restore possible at all, not a
+  convenience.
+- **The panel is inline, not a modal.** The browser's own file picker is the
+  dialog, and the one thing that would justify holding attention in a modal —
+  a progress bar — cannot exist, because HTTP gives no channel to report
+  per-statement progress. The run is indeterminate and says so.
+- `restore.*` landed across all 11 locales in the same commit as the
+  behaviour. `done` and `doneAtomic` are siblings: a JSON bundle cannot have a
+  key be both a string and an object.
+- `/connections/*` remains unilateral and `docs/api-contract.md` has a zero
+  diff against `86b324f` — six rungs running.
+
+**Reversibility.** Reversible by deletion except in two places. The
+`contentTypeGuard` allowance and the second body parser are edits to shared
+bootstrap, though both are scoped by path and media type. `has_atomic_restore`
+is not reversible in the useful sense: a client that has seen it `true` will
+offer a restore.
+
+**Cross-references.**
+
+- Desktop: ADR-0051 and ADR-0065 in `dbboard/docs/decisions.md`;
+  `crates/dbboard-core/src/restore/{split,plan,run}.rs` and
+  `src/lib/components/RestoreDialog.svelte` read directly, per §19. **Desktop
+  pin `fc41318`** (mainline, v0.5.0). The reading was done at `0ffb93f`, which
+  turned out to sit on an unmerged branch — caught while closing this ticket.
+  It cost nothing here: those four paths are byte-identical between `0ffb93f`,
+  `fc41318` and desktop's tip `b98f7a6`, so every divergence recorded above was
+  derived against mainline code. The pin is corrected anyway, because a
+  reference to a commit no branch contains is not a reference.
+- Ticket: [`issues/0030-logical-restore.md`](./issues/0030-logical-restore.md)
+  — the survey, the seven divergences and the per-slice log, including four
+  places where the shipped desktop code disagreed with the ticket written from
+  the ADRs. Ledger: [`parity-ledger.md`](./parity-ledger.md) rung 6b.
+- Previous: ticket `0029`, dump — the other half of 6b, and the first
+  occurrence of Decision 4's idiom.
+- Next: rung 7, adapters (Turso/libSQL, D1, MySQL, SSH tunnel). D1 is what
+  makes Decision 6's branch reachable.

@@ -415,3 +415,125 @@ have to re-derive the omission.
 
 Gate green: 1029 API tests (81 files, +84, 1 file skipped), 1134 web, lint,
 typecheck, format.
+
+### Slice D — SSH tunnel (ADR-0069) with liveness (ADR-0092)
+
+Five commits, bottom-up: `f5fc7ae` the pure domain, `3f6a257` the transport
+and the liveness wrapper, `b7e0a21` the factory wiring, `3d9aa0c` the wire
+shape and the host-key probe route.
+
+Mirrors desktop's `crates/dbboard-tunnel` read at `main` = `b98f7a6`. The
+behaviour, not the driver: desktop runs russh, web runs ssh2.
+
+#### There is no blind-accept arm, and that shaped the domain
+
+ADR-0069 Decision 2 is the part with no room to negotiate, so it is expressed
+as a type rather than a check. `HostKeyPolicy` has two variants — a pinned
+SHA-256 fingerprint, or a `known_hosts` text — and `resolveHostKey` demands
+exactly one of them. A config naming neither does not fall back to accepting
+whatever answers; it fails to resolve. There is no third variant to reach for,
+so no later edit can add trust-on-first-use by passing a flag.
+
+`verifyHostKey` returns three verdicts, not two, because "your pin no longer
+matches" and "this host is not pinned yet" ask the operator for opposite
+responses — investigate versus confirm — and a transport that reduces both to
+"handshake failed" hides the one that matters. ssh2 does exactly that
+reduction, which is why the verifier captures the domain verdict and the
+transport prefers it over the driver's text. Desktop's `VerifyHandler` makes
+the same move.
+
+#### The wedge ADR-0092 names is web's by inheritance
+
+The tunnel binds a guard to the adapter's lifetime, and `InMemoryConnectionRegistry`
+hands out a cached live adapter with no eviction on failure and no health
+check. So the moment a connection grows a tunnel it inherits the failure whole:
+the bastion drops the session, the loopback listener keeps binding and keeps
+accepting, and the pool heals forever against a forward with nothing behind it.
+Shipping the tunnel without the liveness check would have been shipping a known
+bug, which is why the survey called these one slice.
+
+The check lives in `TunneledAdapter` rather than in the registry because web
+keeps no keyring. The only copy of a live connection's credential is inside the
+adapter serving it, so the wrapper is the only layer that can rebuild a forward
+without asking the operator to re-enter one. A connection idle longer than one
+keepalive interval pays for a `SELECT 1` before its next call; a failure tears
+down forward and adapter and reopens them once, even when two callers arrive at
+the same stale connection.
+
+Three things ssh2 does not decide, so the transport does: keepalives on (30 s,
+3 misses — off is what lets an idle tunnel die unnoticed), the rejection reason
+above, and a probe timeout, because `probeHostKey` is reachable from an HTTP
+route and a black-holed host would otherwise hold a request open for as long as
+the TCP stack allows.
+
+#### The whitelist trap, at its worst
+
+Everything above was unreachable over HTTP until part 5. The global
+`whitelist: true` pipe strips what no DTO declares, so a body carrying an `ssh`
+block registered a perfectly ordinary connection and answered 201 — with no
+error anywhere — going straight at the database the operator was tunnelling to
+reach. Same trap as `authToken` in slice A and `accountId` in slice B, and the
+worst instance of it in the ticket: the other two fail closed (a connection
+that cannot authenticate), this one fails open.
+
+`SshTunnelDto` is a nested class with `@ValidateNested()` rather than a bare
+`@IsObject()`, because an object that is merely an object is un-whitelisted
+inside — `privateKeyPath` would survive at the door. The domain's index
+signature ignores it, but not getting that far is better than being ignored:
+web takes key _material_, never a path, so that the API process never reads
+files off the server on request.
+
+`host` and `user` are required in the DTO, which no other config field is. A
+single field's presence is a shape question, not a cross-field one, and 422
+states it more plainly than the 404 the domain resolver answers with. The
+pairing rules stay in `resolveSshTunnelConfig` so they cover every caller and
+not only the ones that arrived over HTTP.
+
+#### `POST /connections/ssh/host-key`
+
+The web half of desktop's `probe_ssh_host_key` (ADR-0076). POST despite reading
+nothing, because it dials a host named in the request and GET is the shape
+browsers and proxies feel free to prefetch; `@HttpCode(200)` because nothing is
+created.
+
+Two properties make it safe to expose and both live in `probeHostKey`: it never
+authenticates — the key is captured and then refused, so no credential reaches
+a host whose identity is still unverified — and it never writes. The answer
+fills a form box; saving it stays a deliberate act rather than trust-on-first-use
+behind a button, which the controller suite asserts by checking the registry is
+still empty afterwards. The use case adds exactly one decision, the port
+default, because a fingerprint fetched from `:22` and pinned against a tunnel
+dialled at `:2222` compares two different hosts' keys.
+
+It is an outbound dial on request, but not a new capability: `POST /connections`
+already connects wherever the body says, the same bearer middleware covers it,
+and `docs/deployment.md` already describes that exposure.
+
+#### Known divergence, deferred to slice F
+
+Desktop's `update_connection` takes `ssh: SshEditInput` with a `Keep` variant
+(`to_ssh_edit_field`, `to_ssh_draft` in `apps/desktop/src-tauri/src/lib.rs`):
+a blank secret box on the edit form means _keep the stored one_, matching
+ADR-0080 for the database password. Web has no such variant. `optionalText`
+maps `""` to `undefined`, and `resolveAuth` then fails "exactly one of
+privateKey or password" with a 404 — so an edit form that re-submits an `ssh`
+block with a blank credential box would break a working tunnel.
+
+Not closed here because nothing submits that block yet: web's connection form
+has no ssh fields until slice F, which is where the blank arrives and where the
+fix belongs. Recorded so it is closed deliberately rather than discovered.
+
+#### Dependencies (baseline §12)
+
+`ssh2@1.17.0` and `@types/ssh2@1.15.5` were already in `pnpm-lock.yaml` as
+testcontainers transitive deps, so slice D added a lockfile edge rather than a
+package — zero downloads, nothing new to audit. It did falsify the
+`ssh2: false` / `cpu-features: false` justifications in `pnpm-workspace.yaml`,
+which claimed no SSH path was taken; both are rewritten. The denials stand:
+ssh2's install script is a node-gyp rebuild of a _bundled optional_ crypto
+binding it carries on without, and `cpu-features` is an accelerator, so
+denying both keeps a compiler out of every install and CI job at the cost of
+a slightly slower negotiation.
+
+Gate green: 1170 API tests (88 files, 1 skipped), 1134 web, lint, typecheck,
+format; PII scan clean on staged and message.

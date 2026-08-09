@@ -16,9 +16,11 @@ allowBuilds:
   # NestJS DI in the API integration tests (vanilla esbuild drops it).
   # Postinstall verifies the native binary; build-time only.
   "@swc/core": true
-  # testcontainers transitive dep: native CPU feature detection used by
-  # ssh2 for SSH crypto perf. SSH-tunneled docker is not exercised — local
-  # docker socket only — so the prebuilt JS fallback is sufficient.
+  # Native CPU-feature detection, pulled in by ssh2 to pick a faster crypto
+  # path. Optional by construction: ssh2 works without it, on its bundled JS
+  # implementations. Kept denied now that ssh2 is a first-class dependency
+  # (0031 slice D) — a tunnel that negotiates slightly slower is a better
+  # trade than a node-gyp step in every install and CI job.
   cpu-features: false
   # esbuild downloads the platform-native binary on postinstall. Required by
   # Vite, Vitest, and Nuxt.
@@ -30,8 +32,12 @@ allowBuilds:
   # the source SVG into PNG icons at build time. Build-time only, no runtime
   # surface.
   sharp: true
-  # testcontainers transitive dep: SSH client used for remote-docker
-  # tunnelling. Local docker socket only — no SSH path is taken.
+  # The SSH client behind `infrastructure/ssh-tunnel` (0031 slice D), and a
+  # testcontainers transitive dep besides. Its install script is a node-gyp
+  # rebuild of a *bundled optional* crypto binding: ssh2 prints "Failed to
+  # build optional crypto binding" and carries on with its JS fallback, which
+  # is what the tunnel and its suite run on today. Denied so that installing
+  # this repo never needs a compiler.
   ssh2: false
   # Native module resolver used by ESLint / Nuxt; speeds up resolution and is
   # required for some plugins to load on Windows.

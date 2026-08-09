@@ -846,3 +846,30 @@ is HTTP, and these are page tests. Making the base resolve lazily instead was
 the alternative and was not taken: `useRuntimeConfig()` outside setup is only
 reliably available on the client, so it would have traded a test-visible
 failure for a server-side one.
+
+### Slice F6 — the operator's half
+
+`docs/deployment.md` gains "Connecting through an SSH bastion", placed beside
+the Aurora DSQL section because both answer the same shape of question: this
+provider needs something the generic registration flow does not explain.
+
+Four things are written down that the code knows and an operator otherwise
+would not. Which drivers can be tunnelled and why the answer is not a list —
+Turso and D1 speak HTTP to a provider endpoint, so there is no socket to
+redirect, and the form offering no bastion for them is the same fact as the
+`404` the API answers. That host-key verification has no opt-out and none is
+planned, with both accepted spellings and the commands that produce them.
+That **Fetch** shows the key that answered rather than the key that should
+have — it is for reading, not for verifying, and the doc says so in those
+words, because a button that fills the field in looks like it has done the
+checking. And where the private key ends up: heap, for the life of the
+process, never on disk, with no path field to read one off the host — but
+crossing the browser-to-API boundary on the way, which makes TLS matter more
+here than anywhere else in that document. An exposed API without TLS puts a
+private key on the wire in clear text, and the bearer secret does nothing
+about that.
+
+The liveness paragraph is included for one reason: the symptom it prevents is
+a hang, and a hang is what an operator would otherwise debug on the bastion.
+Saying that an idle connection costs a `SELECT 1` and a dead one is rebuilt
+turns a mystery into a slower first query.

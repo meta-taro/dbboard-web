@@ -161,6 +161,86 @@ contract.
 See `.claude/decisions.md` "2026-06-24 — Aurora DSQL: no adapter
 mirror needed (desktop ADR-0021)" for the cross-repo rationale.
 
+## Connecting through an SSH bastion
+
+A Postgres or MySQL server that is not reachable from this machine can be
+reached through an SSH forward: the API opens a session to a bastion you can
+reach, forwards a local port to the database, and points the driver at that
+local port instead. Registering one goes through the same `POST /connections`
+flow, with an `ssh` block beside the database fields; the connection form
+grows the boxes for it when the selected driver supports one.
+
+Which drivers those are is decided by whether the driver dials a `host:port`
+pair at all. Postgres and MySQL do. Turso and Cloudflare D1 speak HTTP to a
+provider endpoint, so there is no socket to redirect — the form offers no
+bastion for them, and an `ssh` block sent for one is refused with a `404` and
+`driver does not support an ssh tunnel: <driver>`.
+
+### Verifying the bastion's host key is not optional
+
+There is no "accept any key" setting, and none is planned. An SSH forward
+whose far end is unverified is a forward to whoever answered, and the
+credentials for your database go down it. Two ways to state the key are
+accepted:
+
+- a **fingerprint** — the `SHA256:…` field of what
+  `ssh-keyscan -t ed25519 <host> | ssh-keygen -lf -` prints. The digest is
+  base64 with the padding stripped, exactly as OpenSSH renders it, and the
+  comparison is case-sensitive; the `SHA256:` label itself is optional;
+- a **`known_hosts` entry** — one or more lines in the format
+  `~/.ssh/known_hosts` uses, which is what to paste when you already manage
+  the host key alongside your other SSH clients.
+
+The form's **Fetch** button dials the bastion and shows the key it presented.
+That is a convenience for reading the key, not a substitute for verifying it:
+the value it fills in came from whatever answered on that address. Compare it
+against a fingerprint you obtained some other way — from the host's console,
+from whoever provisioned it, from your existing `known_hosts` — before
+saving. Nothing is fetched unless you press it.
+
+### Where the key material goes
+
+The private key is pasted into the form as PEM text and sent to the API in
+the request body. There is deliberately **no** "path to a key file" field:
+one would have the API process reading files off its own host on request,
+which is a very different thing from the operator handing it a key.
+
+The API holds the key in `InMemoryConnectionRegistry`, in heap, for as long
+as the process lives. It is never written to disk by the application and does
+not survive a restart — the same properties, and the same limits, as the
+database passwords described under [Threat model](#threat-model): swap and
+hibernate state may retain it, and full-disk encryption is the only general
+defense.
+
+Because the key crosses the browser-to-API boundary, the transport rules
+matter more here than anywhere else in this document. The default loopback
+bind keeps it on the machine. If you expose the API, terminate TLS at a
+reverse proxy — an exposed API without TLS puts a private key on the wire in
+clear text, and the bearer secret does nothing about that.
+
+An encrypted key is supported: give the passphrase in the field beside it.
+Password authentication to the bastion is supported too, as the alternative
+to a key rather than in addition to one.
+
+### Editing a connection that has a tunnel
+
+The same rule the database password follows: a blank key or password box
+means "keep the one you already gave me", not "remove it". Changing the
+bastion's host or port without re-pasting the key is therefore an ordinary
+edit. Unticking the tunnel checkbox removes it, and takes the stored key with
+it.
+
+### When the bastion goes away
+
+A forward whose session has died does not fail loudly on its own — the local
+listener keeps accepting, and a query against it hangs. So a connection that
+has been idle for more than 30 seconds is probed with `SELECT 1` before the
+next query is sent, and a connection that fails the probe is rebuilt: the
+tunnel is re-dialled and the driver reconnected, from the credentials held in
+the adapter. A caller sees a slower first query rather than a hang. If the
+bastion is genuinely unreachable, the rebuild fails and the query returns the
+usual `connection` error.
+
 ## Optional: Anthropic AI provider
 
 `dbboard-web` ships an optional AI provider seam (Phase 6 Slices 1–2,

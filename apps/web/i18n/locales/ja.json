@@ -218,7 +218,26 @@
       "ssl-input": "暗号化",
       "ssl-require": "必須",
       "ssl-disable": "無効",
-      "connection-string-input": "接続文字列"
+      "connection-string-input": "接続文字列",
+      "ssh-toggle": "SSH 踏み台サーバー経由で接続する",
+      "ssh-heading": "SSH トンネル",
+      "ssh-host-input": "踏み台ホスト",
+      "ssh-port-input": "踏み台ポート",
+      "ssh-user-input": "踏み台ユーザー",
+      "ssh-auth-input": "認証方法",
+      "ssh-auth-private-key": "秘密鍵",
+      "ssh-auth-password": "パスワード",
+      "ssh-private-key-input": "秘密鍵 (PEM テキスト)",
+      "ssh-passphrase-input": "鍵のパスフレーズ",
+      "ssh-password-input": "踏み台のパスワード",
+      "ssh-host-key-input": "ホスト鍵の検証方法",
+      "ssh-host-key-fingerprint": "フィンガープリント",
+      "ssh-host-key-known-hosts": "known_hosts エントリ",
+      "ssh-fingerprint-input": "ホスト鍵のフィンガープリント",
+      "ssh-known-hosts-input": "known_hosts エントリ",
+      "ssh-fetch-host-key": "取得",
+      "ssh-fetching-host-key": "取得中…",
+      "ssh-fingerprint-hint": "これはサーバーが提示した鍵です。保存する前に、別の経路で受け取った値と照合してください。"
     },
     "add": {
       "heading": "接続を登録",
@@ -228,7 +247,8 @@
       "heading": "接続を編集",
       "submit": "保存",
       "cancel": "キャンセル",
-      "password-hint": "空欄のままにすると、保存済みのパスワードをそのまま使います。"
+      "password-hint": "空欄のままにすると、保存済みのパスワードをそのまま使います。",
+      "ssh-secret-hint": "空欄のままにすると、保存済みの鍵またはパスワードをそのまま使います。"
     },
     "row": {
       "id-label": "ID",

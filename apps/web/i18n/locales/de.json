@@ -218,7 +218,26 @@
       "ssl-input": "Verschlüsselung",
       "ssl-require": "Erforderlich",
       "ssl-disable": "Deaktiviert",
-      "connection-string-input": "Verbindungszeichenfolge"
+      "connection-string-input": "Verbindungszeichenfolge",
+      "ssh-toggle": "Über einen SSH-Bastion-Host verbinden",
+      "ssh-heading": "SSH-Tunnel",
+      "ssh-host-input": "Bastion-Host",
+      "ssh-port-input": "Bastion-Port",
+      "ssh-user-input": "Bastion-Benutzer",
+      "ssh-auth-input": "Anmelden mit",
+      "ssh-auth-private-key": "Privater Schlüssel",
+      "ssh-auth-password": "Passwort",
+      "ssh-private-key-input": "Privater Schlüssel (PEM-Text)",
+      "ssh-passphrase-input": "Schlüssel-Passphrase",
+      "ssh-password-input": "Bastion-Passwort",
+      "ssh-host-key-input": "Hostschlüssel prüfen anhand",
+      "ssh-host-key-fingerprint": "Fingerabdruck",
+      "ssh-host-key-known-hosts": "known_hosts-Eintrag",
+      "ssh-fingerprint-input": "Fingerabdruck des Hostschlüssels",
+      "ssh-known-hosts-input": "known_hosts-Eintrag",
+      "ssh-fetch-host-key": "Abrufen",
+      "ssh-fetching-host-key": "Wird abgerufen …",
+      "ssh-fingerprint-hint": "Das ist der Schlüssel, den der Server vorgezeigt hat. Vergleichen Sie ihn vor dem Speichern mit dem Wert, den Sie erhalten haben."
     },
     "add": {
       "heading": "Verbindung registrieren",
@@ -228,7 +247,8 @@
       "heading": "Verbindung bearbeiten",
       "submit": "Speichern",
       "cancel": "Abbrechen",
-      "password-hint": "Leer lassen, um das gespeicherte Passwort beizubehalten."
+      "password-hint": "Leer lassen, um das gespeicherte Passwort beizubehalten.",
+      "ssh-secret-hint": "Leer lassen, um den gespeicherten Schlüssel bzw. das gespeicherte Passwort beizubehalten."
     },
     "row": {
       "id-label": "ID",

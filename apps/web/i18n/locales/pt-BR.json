@@ -218,7 +218,26 @@
       "ssl-input": "Criptografia",
       "ssl-require": "Obrigatória",
       "ssl-disable": "Desativada",
-      "connection-string-input": "Cadeia de conexão"
+      "connection-string-input": "Cadeia de conexão",
+      "ssh-toggle": "Conectar por um bastion SSH",
+      "ssh-heading": "Túnel SSH",
+      "ssh-host-input": "Host do bastion",
+      "ssh-port-input": "Porta do bastion",
+      "ssh-user-input": "Usuário do bastion",
+      "ssh-auth-input": "Entrar com",
+      "ssh-auth-private-key": "Chave privada",
+      "ssh-auth-password": "Senha",
+      "ssh-private-key-input": "Chave privada (texto PEM)",
+      "ssh-passphrase-input": "Senha da chave",
+      "ssh-password-input": "Senha do bastion",
+      "ssh-host-key-input": "Verificar a chave do host por",
+      "ssh-host-key-fingerprint": "Impressão digital",
+      "ssh-host-key-known-hosts": "Entrada de known_hosts",
+      "ssh-fingerprint-input": "Impressão digital da chave do host",
+      "ssh-known-hosts-input": "Entrada de known_hosts",
+      "ssh-fetch-host-key": "Buscar",
+      "ssh-fetching-host-key": "Buscando…",
+      "ssh-fingerprint-hint": "Esta é a chave que o servidor apresentou. Compare-a com a que você recebeu antes de salvar."
     },
     "add": {
       "heading": "Registrar uma conexão",
@@ -228,7 +247,8 @@
       "heading": "Editar uma conexão",
       "submit": "Salvar",
       "cancel": "Cancelar",
-      "password-hint": "Deixe em branco para manter a senha armazenada."
+      "password-hint": "Deixe em branco para manter a senha armazenada.",
+      "ssh-secret-hint": "Deixe em branco para manter a chave ou a senha armazenada."
     },
     "row": {
       "id-label": "ID",

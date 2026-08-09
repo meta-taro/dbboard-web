@@ -218,7 +218,26 @@
       "ssl-input": "Chiffrement",
       "ssl-require": "Obligatoire",
       "ssl-disable": "Désactivé",
-      "connection-string-input": "Chaîne de connexion"
+      "connection-string-input": "Chaîne de connexion",
+      "ssh-toggle": "Se connecter via un rebond SSH",
+      "ssh-heading": "Tunnel SSH",
+      "ssh-host-input": "Hôte du rebond",
+      "ssh-port-input": "Port du rebond",
+      "ssh-user-input": "Utilisateur du rebond",
+      "ssh-auth-input": "Se connecter avec",
+      "ssh-auth-private-key": "Clé privée",
+      "ssh-auth-password": "Mot de passe",
+      "ssh-private-key-input": "Clé privée (texte PEM)",
+      "ssh-passphrase-input": "Phrase secrète de la clé",
+      "ssh-password-input": "Mot de passe du rebond",
+      "ssh-host-key-input": "Vérifier la clé d’hôte par",
+      "ssh-host-key-fingerprint": "Empreinte",
+      "ssh-host-key-known-hosts": "Entrée known_hosts",
+      "ssh-fingerprint-input": "Empreinte de la clé d’hôte",
+      "ssh-known-hosts-input": "Entrée known_hosts",
+      "ssh-fetch-host-key": "Récupérer",
+      "ssh-fetching-host-key": "Récupération…",
+      "ssh-fingerprint-hint": "Voici la clé présentée par le serveur. Comparez-la avec celle qui vous a été communiquée avant d’enregistrer."
     },
     "add": {
       "heading": "Enregistrer une connexion",
@@ -228,7 +247,8 @@
       "heading": "Modifier une connexion",
       "submit": "Enregistrer",
       "cancel": "Annuler",
-      "password-hint": "Laissez vide pour conserver le mot de passe enregistré."
+      "password-hint": "Laissez vide pour conserver le mot de passe enregistré.",
+      "ssh-secret-hint": "Laissez vide pour conserver la clé ou le mot de passe enregistré."
     },
     "row": {
       "id-label": "ID",

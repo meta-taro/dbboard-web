@@ -218,7 +218,26 @@
       "ssl-input": "加密",
       "ssl-require": "必需",
       "ssl-disable": "已停用",
-      "connection-string-input": "連線字串"
+      "connection-string-input": "連線字串",
+      "ssh-toggle": "透過 SSH 堡壘機連線",
+      "ssh-heading": "SSH 通道",
+      "ssh-host-input": "堡壘機主機",
+      "ssh-port-input": "堡壘機連接埠",
+      "ssh-user-input": "堡壘機使用者",
+      "ssh-auth-input": "驗證方式",
+      "ssh-auth-private-key": "私密金鑰",
+      "ssh-auth-password": "密碼",
+      "ssh-private-key-input": "私密金鑰（PEM 文字）",
+      "ssh-passphrase-input": "金鑰通關密語",
+      "ssh-password-input": "堡壘機密碼",
+      "ssh-host-key-input": "主機金鑰驗證方式",
+      "ssh-host-key-fingerprint": "指紋",
+      "ssh-host-key-known-hosts": "known_hosts 項目",
+      "ssh-fingerprint-input": "主機金鑰指紋",
+      "ssh-known-hosts-input": "known_hosts 項目",
+      "ssh-fetch-host-key": "取得",
+      "ssh-fetching-host-key": "取得中…",
+      "ssh-fingerprint-hint": "這是伺服器出示的金鑰。儲存前請與您透過其他管道取得的值核對。"
     },
     "add": {
       "heading": "註冊連線",
@@ -228,7 +247,8 @@
       "heading": "編輯連線",
       "submit": "儲存",
       "cancel": "取消",
-      "password-hint": "留空則保留已儲存的密碼。"
+      "password-hint": "留空則保留已儲存的密碼。",
+      "ssh-secret-hint": "留空則沿用已儲存的金鑰或密碼。"
     },
     "row": {
       "id-label": "ID",

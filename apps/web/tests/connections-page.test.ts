@@ -48,6 +48,23 @@ vi.mock("../app/composables/useDrivers", () => ({
   }),
 }));
 
+// The page mounts the real ConnectionForm, and since 0031 slice F5 that form
+// calls `useSshHostKey` in setup — which reads `useRuntimeConfig()` and so
+// needs a Nuxt instance the happy-dom half of this suite does not have.
+// Mocked for the same reason as the two above: these are page tests, not
+// HTTP. What the probe does with what it is given is covered by
+// tests/useSshHostKey.test.ts, and what the form does with the probe by
+// tests/connection-form.test.ts.
+vi.mock("../app/composables/useSshHostKey", () => ({
+  useSshHostKey: () => ({
+    fingerprint: ref(null),
+    lastError: ref(null),
+    state: ref("idle"),
+    probe: vi.fn(),
+    reset: vi.fn(),
+  }),
+}));
+
 // vue-i18n requires `app.use(createI18n(...))` under a real Nuxt runtime;
 // the page test runs in plain happy-dom. Stub useI18n so the page can call
 // `t(key)` without needing a configured i18n instance. The translated copy

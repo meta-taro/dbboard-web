@@ -793,3 +793,56 @@ lock behaviour rather than drive it, and the type change they accompany is not
 checked by them at all: `apps/web/tests/` is outside the generated Nuxt
 `tsconfig` include list, which covers `tests/nuxt/**` only. The compile-time
 consumer arrives with the form in F5.
+
+### Slice F5 — the boxes
+
+`ConnectionForm` gains an ssh section, shown only when `supportsSshTunnel`
+says the selected driver can be behind one. That is read from the port table
+rather than from a list beside it, so the browser and `StaticAdapterFactory`
+reach the answer the same way, and a driver the API grows a tunnel for cannot
+have boxes here that post at a 404 — or lack boxes for a tunnel it accepts.
+
+The section is a checkbox and a fieldset. Unticked on a record that never had
+a tunnel, the payload carries no `ssh` member at all; unticked on one that
+did, it carries `null`, which is the only spelling for "take it away"
+(slice F2). Ticked, it carries the block. The third case is the one worth
+naming: a driver with no boxes on a record that has a tunnel sends _absent_,
+not `null`, so a build that cannot render a tunnel can still rename the
+connection carrying one instead of silently disabling it. A test on an unknown
+driver `"cockroach"` pins that.
+
+Blank credential boxes are omitted rather than sent as `""`. `optionalText` in
+`tunnel-config.ts` folds the two together, so this is not a behaviour choice
+so much as saying nothing when the user said nothing — the same thing the
+database password one section up already does through `supplied()`. On an edit
+that means a blank key box keeps the stored one (ADR-0080, extended to the
+bastion), and the hint under the boxes says so.
+
+Only the boxes on screen contribute. Switching the auth select to `password`
+and submitting sends no `privateKey`, even if one was typed before the switch,
+because the pairing rules (ADR-0069) live in `resolveSshTunnelConfig` and a
+payload carrying both would be asking the server a question it will refuse.
+Same for the host-key select. That select has exactly two options; there is no
+blind-accept, which is ADR-0069's whole point.
+
+The Fetch button is the F1 composable wired to a box (ADR-0076): it fills the
+fingerprint field, never a stored value silently, and a refused probe leaves
+whatever was there intact and renders the error beneath. Nothing probes on
+blur or on driver change — the network call happens when asked for.
+
+Ten new form tests, twenty locale keys across eleven files. The parity test
+compares locales to each other only, so an `en`-only addition would have
+passed while ten other languages showed raw key strings on screen; the eleven
+are part of this slice rather than a follow-up for that reason. `ssh-toggle`
+was also added to the add/edit parity test's `inputIds`, so the new control is
+covered by the assertion that an edit asks the same questions as an add.
+
+One regression fell out of the form growing a composable: `connections-page.test.ts`
+mounts the real `ConnectionForm`, and `useSshHostKey` reads `useRuntimeConfig()`
+in setup, which under the happy-dom half of that suite has no Nuxt instance to
+read from. Thirty tests failed on a mount, not on an assertion. The mock now
+sits beside the two the page already had for the same reason — the composable
+is HTTP, and these are page tests. Making the base resolve lazily instead was
+the alternative and was not taken: `useRuntimeConfig()` outside setup is only
+reliably available on the client, so it would have traded a test-visible
+failure for a server-side one.

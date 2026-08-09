@@ -218,7 +218,26 @@
       "ssl-input": "Шифрование",
       "ssl-require": "Обязательно",
       "ssl-disable": "Отключено",
-      "connection-string-input": "Строка подключения"
+      "connection-string-input": "Строка подключения",
+      "ssh-toggle": "Подключаться через SSH-бастион",
+      "ssh-heading": "SSH-туннель",
+      "ssh-host-input": "Хост бастиона",
+      "ssh-port-input": "Порт бастиона",
+      "ssh-user-input": "Пользователь бастиона",
+      "ssh-auth-input": "Способ входа",
+      "ssh-auth-private-key": "Закрытый ключ",
+      "ssh-auth-password": "Пароль",
+      "ssh-private-key-input": "Закрытый ключ (текст PEM)",
+      "ssh-passphrase-input": "Парольная фраза ключа",
+      "ssh-password-input": "Пароль бастиона",
+      "ssh-host-key-input": "Проверять ключ хоста по",
+      "ssh-host-key-fingerprint": "Отпечаток",
+      "ssh-host-key-known-hosts": "Запись known_hosts",
+      "ssh-fingerprint-input": "Отпечаток ключа хоста",
+      "ssh-known-hosts-input": "Запись known_hosts",
+      "ssh-fetch-host-key": "Получить",
+      "ssh-fetching-host-key": "Получение…",
+      "ssh-fingerprint-hint": "Это ключ, предъявленный сервером. Перед сохранением сверьте его со значением, полученным по другому каналу."
     },
     "add": {
       "heading": "Зарегистрировать подключение",
@@ -228,7 +247,8 @@
       "heading": "Изменить подключение",
       "submit": "Сохранить",
       "cancel": "Отмена",
-      "password-hint": "Оставьте поле пустым, чтобы сохранить текущий пароль."
+      "password-hint": "Оставьте поле пустым, чтобы сохранить текущий пароль.",
+      "ssh-secret-hint": "Оставьте поле пустым, чтобы сохранить текущий ключ или пароль."
     },
     "row": {
       "id-label": "ID",

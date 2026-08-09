@@ -218,7 +218,26 @@
       "ssl-input": "加密",
       "ssl-require": "必需",
       "ssl-disable": "已禁用",
-      "connection-string-input": "连接字符串"
+      "connection-string-input": "连接字符串",
+      "ssh-toggle": "通过 SSH 堡垒机连接",
+      "ssh-heading": "SSH 隧道",
+      "ssh-host-input": "堡垒机主机",
+      "ssh-port-input": "堡垒机端口",
+      "ssh-user-input": "堡垒机用户",
+      "ssh-auth-input": "认证方式",
+      "ssh-auth-private-key": "私钥",
+      "ssh-auth-password": "密码",
+      "ssh-private-key-input": "私钥（PEM 文本）",
+      "ssh-passphrase-input": "密钥口令",
+      "ssh-password-input": "堡垒机密码",
+      "ssh-host-key-input": "主机密钥验证方式",
+      "ssh-host-key-fingerprint": "指纹",
+      "ssh-host-key-known-hosts": "known_hosts 条目",
+      "ssh-fingerprint-input": "主机密钥指纹",
+      "ssh-known-hosts-input": "known_hosts 条目",
+      "ssh-fetch-host-key": "获取",
+      "ssh-fetching-host-key": "获取中…",
+      "ssh-fingerprint-hint": "这是服务器出示的密钥。保存前请与您通过其他途径获得的值核对。"
     },
     "add": {
       "heading": "注册连接",
@@ -228,7 +247,8 @@
       "heading": "编辑连接",
       "submit": "保存",
       "cancel": "取消",
-      "password-hint": "留空则保留已保存的密码。"
+      "password-hint": "留空则保留已保存的密码。",
+      "ssh-secret-hint": "留空则继续使用已保存的密钥或密码。"
     },
     "row": {
       "id-label": "ID",

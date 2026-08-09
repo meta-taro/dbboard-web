@@ -218,7 +218,26 @@
       "ssl-input": "Cifrado",
       "ssl-require": "Obligatorio",
       "ssl-disable": "Desactivado",
-      "connection-string-input": "Cadena de conexión"
+      "connection-string-input": "Cadena de conexión",
+      "ssh-toggle": "Conectar a través de un bastión SSH",
+      "ssh-heading": "Túnel SSH",
+      "ssh-host-input": "Host del bastión",
+      "ssh-port-input": "Puerto del bastión",
+      "ssh-user-input": "Usuario del bastión",
+      "ssh-auth-input": "Iniciar sesión con",
+      "ssh-auth-private-key": "Clave privada",
+      "ssh-auth-password": "Contraseña",
+      "ssh-private-key-input": "Clave privada (texto PEM)",
+      "ssh-passphrase-input": "Frase de contraseña de la clave",
+      "ssh-password-input": "Contraseña del bastión",
+      "ssh-host-key-input": "Verificar la clave del host mediante",
+      "ssh-host-key-fingerprint": "Huella digital",
+      "ssh-host-key-known-hosts": "Entrada de known_hosts",
+      "ssh-fingerprint-input": "Huella digital de la clave del host",
+      "ssh-known-hosts-input": "Entrada de known_hosts",
+      "ssh-fetch-host-key": "Obtener",
+      "ssh-fetching-host-key": "Obteniendo…",
+      "ssh-fingerprint-hint": "Esta es la clave que presentó el servidor. Compárela con la que le facilitaron antes de guardar."
     },
     "add": {
       "heading": "Registrar una conexión",
@@ -228,7 +247,8 @@
       "heading": "Editar una conexión",
       "submit": "Guardar",
       "cancel": "Cancelar",
-      "password-hint": "Déjalo en blanco para conservar la contraseña guardada."
+      "password-hint": "Déjalo en blanco para conservar la contraseña guardada.",
+      "ssh-secret-hint": "Déjelo en blanco para conservar la clave o la contraseña guardada."
     },
     "row": {
       "id-label": "ID",

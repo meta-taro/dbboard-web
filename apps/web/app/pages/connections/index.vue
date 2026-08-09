@@ -4,8 +4,8 @@ import ConnectionForm from "../../components/ConnectionForm.vue";
 import ErrorBanner from "../../components/ErrorBanner.vue";
 import {
   useConnections,
+  type ConnectionFormPayload,
   type ConnectionView,
-  type RegisterInput,
 } from "../../composables/useConnections";
 import { useDrivers } from "../../composables/useDrivers";
 import { fromCategorised } from "../../utils/display-error";
@@ -39,10 +39,15 @@ function startEdit(row: ConnectionView): void {
   editing.value = row;
 }
 
-async function onSubmit(payload: RegisterInput): Promise<void> {
+async function onSubmit(payload: ConnectionFormPayload): Promise<void> {
   const target = editing.value;
   if (target === null) {
-    await register(payload);
+    // `ssh: null` means "take the bastion away", which a registration has no
+    // bastion to take. The form only emits it on a record that had one, so
+    // this narrows rather than corrects — but narrowing is what keeps
+    // `RegisterInput` free of a state it cannot express.
+    const { ssh, ...rest } = payload;
+    await register(ssh == null ? rest : { ...rest, ssh });
     // Reset only on success — keep the form populated so the user can fix
     // their input if the backend rejected it.
     if (lastError.value === null) form.value?.reset();

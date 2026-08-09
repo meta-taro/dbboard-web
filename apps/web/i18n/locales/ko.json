@@ -218,7 +218,26 @@
       "ssl-input": "암호화",
       "ssl-require": "필수",
       "ssl-disable": "사용 안 함",
-      "connection-string-input": "연결 문자열"
+      "connection-string-input": "연결 문자열",
+      "ssh-toggle": "SSH 배스천을 통해 연결",
+      "ssh-heading": "SSH 터널",
+      "ssh-host-input": "배스천 호스트",
+      "ssh-port-input": "배스천 포트",
+      "ssh-user-input": "배스천 사용자",
+      "ssh-auth-input": "인증 방식",
+      "ssh-auth-private-key": "개인 키",
+      "ssh-auth-password": "비밀번호",
+      "ssh-private-key-input": "개인 키 (PEM 텍스트)",
+      "ssh-passphrase-input": "키 암호 구절",
+      "ssh-password-input": "배스천 비밀번호",
+      "ssh-host-key-input": "호스트 키 확인 방식",
+      "ssh-host-key-fingerprint": "지문",
+      "ssh-host-key-known-hosts": "known_hosts 항목",
+      "ssh-fingerprint-input": "호스트 키 지문",
+      "ssh-known-hosts-input": "known_hosts 항목",
+      "ssh-fetch-host-key": "가져오기",
+      "ssh-fetching-host-key": "가져오는 중…",
+      "ssh-fingerprint-hint": "서버가 제시한 키입니다. 저장하기 전에 다른 경로로 받은 값과 대조하세요."
     },
     "add": {
       "heading": "연결 등록",
@@ -228,7 +247,8 @@
       "heading": "연결 편집",
       "submit": "저장",
       "cancel": "취소",
-      "password-hint": "비워 두면 저장된 비밀번호를 그대로 사용합니다."
+      "password-hint": "비워 두면 저장된 비밀번호를 그대로 사용합니다.",
+      "ssh-secret-hint": "비워 두면 저장된 키 또는 비밀번호를 그대로 사용합니다."
     },
     "row": {
       "id-label": "ID",

@@ -27,6 +27,7 @@
     "pg": "^8.21.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "ssh2": "1.17.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -36,6 +37,7 @@
     "@swc/core": "1.13.5",
     "@types/express": "^5.0.0",
     "@types/pg": "^8.20.0",
+    "@types/ssh2": "1.15.5",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.20.0",
     "@typescript-eslint/parser": "^8.20.0",

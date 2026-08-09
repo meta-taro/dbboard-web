@@ -68,6 +68,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      ssh2:
+        specifier: 1.17.0
+        version: 1.17.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -90,6 +93,9 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      '@types/ssh2':
+        specifier: 1.15.5
+        version: 1.15.5
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3

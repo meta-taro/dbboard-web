@@ -7,10 +7,15 @@ import {
 } from "../usecase/list-connections.use-case";
 import { ListDrivers, type ListDriversOutput } from "../usecase/list-drivers.use-case";
 import {
+  ProbeSshHostKey,
+  type ProbeSshHostKeyOutput,
+} from "../usecase/probe-ssh-host-key.use-case";
+import {
   RegisterConnection,
   type RegisterConnectionOutput,
 } from "../usecase/register-connection.use-case";
 import { UpdateConnection } from "../usecase/update-connection.use-case";
+import { ProbeSshHostKeyDto } from "./dto/probe-ssh-host-key.dto";
 import { RegisterConnectionDto } from "./dto/register-connection.dto";
 import { UpdateConnectionDto } from "./dto/update-connection.dto";
 
@@ -22,6 +27,7 @@ export class ConnectionsController {
     private readonly deleteConnection: DeleteConnection,
     private readonly updateConnection: UpdateConnection,
     private readonly listDrivers: ListDrivers,
+    private readonly probeSshHostKeyUseCase: ProbeSshHostKey,
   ) {}
 
   @Post()
@@ -48,6 +54,25 @@ export class ConnectionsController {
   @Get("drivers")
   drivers(): ListDriversOutput {
     return this.listDrivers.execute();
+  }
+
+  // Under `/connections` because it serves the connection form, and before
+  // the `:id` routes on the same rule as `drivers`.
+  //
+  // POST rather than GET despite reading nothing: it dials a host named in
+  // the request, and a GET is the shape browsers and proxies feel free to
+  // prefetch and cache. 200 rather than the 201 Nest would default to —
+  // nothing is created, which is half of what makes the probe safe (see the
+  // use case).
+  //
+  // It is an outbound dial on request, but not a new capability for this
+  // API: `POST /connections` already connects wherever the body says. The
+  // exposure is the same one `docs/deployment.md` describes, and the same
+  // bearer gate covers it.
+  @Post("ssh/host-key")
+  @HttpCode(200)
+  probeSshHostKey(@Body() body: ProbeSshHostKeyDto): Promise<ProbeSshHostKeyOutput> {
+    return this.probeSshHostKeyUseCase.execute(body);
   }
 
   // PATCH rather than PUT: the body is allowed to name only what changed,

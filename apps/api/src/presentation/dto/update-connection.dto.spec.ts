@@ -69,4 +69,24 @@ describe("UpdateConnectionDto", () => {
     expect(validate({ sslMode: "require" }).errors).toHaveLength(0);
     expect(validate({ sslMode: "disable" }).errors).toHaveLength(0);
   });
+
+  it("carries an ssh block through an edit, under the same rules", () => {
+    // 0031 slice D. The same `SshTunnelDto` registration validates, so
+    // putting a live connection behind a bastion and registering one behind
+    // it are the same shape — and, more to the point, an `ssh` block the
+    // whitelist stripped would leave `UpdateConnection` reading the body as
+    // a rename and the connection still going direct.
+    const ssh = {
+      host: "bastion.example.com",
+      user: "jump",
+      password: "pw",
+      fingerprint: `SHA256:${"A".repeat(43)}`,
+    };
+    const { dto, errors } = validate({ host: "db.internal", ssh });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).toEqual(ssh);
+
+    expect(validate({ ssh: { ...ssh, host: "" } }).errors.map((e) => e.property)).toContain("ssh");
+    expect(validate({ ssh: { ...ssh, port: 0 } }).errors.map((e) => e.property)).toContain("ssh");
+  });
 });

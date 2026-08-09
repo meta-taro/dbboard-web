@@ -7,6 +7,7 @@ import { AnthropicProvider, type AnthropicClient } from "./infrastructure/anthro
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
 import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
+import { SshHostKeyProber } from "./infrastructure/ssh-host-key-prober";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
@@ -38,9 +39,11 @@ import { ListConnectionTables } from "./usecase/list-connection-tables.use-case"
 import { ListConnections } from "./usecase/list-connections.use-case";
 import { ListDrivers } from "./usecase/list-drivers.use-case";
 import { ListTables } from "./usecase/list-tables.use-case";
+import { ProbeSshHostKey } from "./usecase/probe-ssh-host-key.use-case";
 import { RecordHistory } from "./usecase/record-history.use-case";
 import { RegisterConnection } from "./usecase/register-connection.use-case";
 import { RestoreDatabase } from "./usecase/restore-database.use-case";
+import { SSH_HOST_KEY_PROBE } from "./usecase/ssh-host-key-probe.port";
 import { SuggestSql } from "./usecase/suggest-sql.use-case";
 import { UpdateConnection } from "./usecase/update-connection.use-case";
 import { UpdateRow } from "./usecase/update-row.use-case";
@@ -161,6 +164,12 @@ import { UpdateRow } from "./usecase/update-row.use-case";
       provide: ListDrivers,
       useFactory: (factory: StaticAdapterFactory) => new ListDrivers(factory),
       inject: [ADAPTER_FACTORY],
+    },
+    { provide: SSH_HOST_KEY_PROBE, useClass: SshHostKeyProber },
+    {
+      provide: ProbeSshHostKey,
+      useFactory: (probe: SshHostKeyProber) => new ProbeSshHostKey(probe),
+      inject: [SSH_HOST_KEY_PROBE],
     },
     { provide: HISTORY_STORE, useClass: InMemoryHistoryStore },
     // AI provider (Phase 6 Slice 1). Returns `undefined` when no API

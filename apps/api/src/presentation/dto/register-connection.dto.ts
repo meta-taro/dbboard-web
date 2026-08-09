@@ -1,5 +1,17 @@
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from "class-validator";
 import { SSL_MODES, type SslMode } from "../../domain/ssl-mode";
+import { SshTunnelDto } from "./ssh-tunnel.dto";
 
 // Body schema for POST /connections. 0003 persisted label + driver.
 // 0004 adds the optional postgres connection fields — class-validator
@@ -86,4 +98,15 @@ export class RegisterConnectionDto {
   @IsOptional()
   @IsString()
   databaseId?: string;
+
+  // The bastion in front of this connection (0031 slice D). The whitelist
+  // trap the fields above describe, at its worst: an undeclared `ssh` block
+  // is stripped before the factory sees it, so the connection registers —
+  // with no error anywhere — going straight at the database the operator was
+  // tunnelling to reach.
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SshTunnelDto)
+  ssh?: SshTunnelDto;
 }

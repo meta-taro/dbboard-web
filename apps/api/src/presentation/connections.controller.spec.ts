@@ -6,7 +6,9 @@ import type { ConnectionRecord, ConnectionRegistry } from "../usecase/connection
 import { DeleteConnection } from "../usecase/delete-connection.use-case";
 import { ListConnections } from "../usecase/list-connections.use-case";
 import { ListDrivers } from "../usecase/list-drivers.use-case";
+import { ProbeSshHostKey } from "../usecase/probe-ssh-host-key.use-case";
 import { RegisterConnection } from "../usecase/register-connection.use-case";
+import type { SshHostKeyProbe } from "../usecase/ssh-host-key-probe.port";
 import { UpdateConnection } from "../usecase/update-connection.use-case";
 import { ConnectionsController } from "./connections.controller";
 
@@ -25,6 +27,10 @@ function factory(drivers: readonly string[] = ["null"]): AdapterFactory {
     rebuild: async () => adapter(),
     supported: () => drivers,
   };
+}
+
+function prober(fingerprint = `SHA256:${"A".repeat(43)}`): SshHostKeyProbe {
+  return { probe: vi.fn().mockResolvedValue(fingerprint) };
 }
 
 function inMemRegistry(seed: ConnectionRecord[] = []): ConnectionRegistry {
@@ -48,6 +54,7 @@ describe("ConnectionsController", () => {
       new DeleteConnection(reg),
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
+      new ProbeSshHostKey(prober()),
     );
     expect(await controller.register({ label: "Local", driver: "null" })).toEqual({
       id: "fixed-id",
@@ -77,6 +84,7 @@ describe("ConnectionsController", () => {
       new DeleteConnection(reg),
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
+      new ProbeSshHostKey(prober()),
     );
     const out = controller.list();
 
@@ -108,6 +116,7 @@ describe("ConnectionsController", () => {
       new DeleteConnection(reg),
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
+      new ProbeSshHostKey(prober()),
     );
     await expect(controller.remove("missing")).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalledWith("missing");
@@ -123,6 +132,7 @@ describe("ConnectionsController", () => {
       new DeleteConnection(reg),
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory(["postgres", "null"])),
+      new ProbeSshHostKey(prober()),
     );
     expect(controller.drivers()).toEqual({ drivers: ["postgres", "null"] });
   });
@@ -143,6 +153,7 @@ describe("ConnectionsController", () => {
       new DeleteConnection(reg),
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
+      new ProbeSshHostKey(prober()),
     );
 
     const out = await controller.update("2", {
@@ -164,5 +175,45 @@ describe("ConnectionsController", () => {
       parts: { host: "staging.internal", port: 5432, database: "app", user: "reader" },
     });
     expect(JSON.stringify(out)).not.toContain("password");
+  });
+
+  it("POST /connections/ssh/host-key answers with the key the bastion presented", async () => {
+    // Desktop's `probe_ssh_host_key`, over HTTP (ADR-0076). An object
+    // rather than the bare string desktop returns, so the response can
+    // gain a field later without every client having to change.
+    const probe = prober("SHA256:zzz");
+    const controller = new ConnectionsController(
+      new RegisterConnection(inMemRegistry(), factory(), () => "id"),
+      new ListConnections(inMemRegistry()),
+      new DeleteConnection(inMemRegistry()),
+      new UpdateConnection(inMemRegistry(), factory()),
+      new ListDrivers(factory()),
+      new ProbeSshHostKey(probe),
+    );
+
+    expect(await controller.probeSshHostKey({ host: "bastion", port: 2222 })).toEqual({
+      fingerprint: "SHA256:zzz",
+    });
+    expect(probe.probe).toHaveBeenCalledWith("bastion", 2222);
+  });
+
+  it("POST /connections/ssh/host-key registers nothing", async () => {
+    // The half of ADR-0076 that is easy to lose. Fetching a fingerprint
+    // fills a box for the operator to look at and save; it must not pin
+    // anything by itself, or the confirmation step is trust-on-first-use
+    // wearing a button.
+    const reg = inMemRegistry();
+    const controller = new ConnectionsController(
+      new RegisterConnection(reg, factory(), () => "id"),
+      new ListConnections(reg),
+      new DeleteConnection(reg),
+      new UpdateConnection(reg, factory()),
+      new ListDrivers(factory()),
+      new ProbeSshHostKey(prober()),
+    );
+
+    await controller.probeSshHostKey({ host: "bastion" });
+
+    expect(reg.list()).toHaveLength(0);
   });
 });

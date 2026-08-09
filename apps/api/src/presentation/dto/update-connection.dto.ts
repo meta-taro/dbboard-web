@@ -1,5 +1,17 @@
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from "class-validator";
 import { SSL_MODES, type SslMode } from "../../domain/ssl-mode";
+import { SshTunnelDto } from "./ssh-tunnel.dto";
 
 // Body schema for PATCH /connections/:id (0027 slice G).
 //
@@ -71,4 +83,14 @@ export class UpdateConnectionDto {
   @IsOptional()
   @IsString()
   databaseId?: string;
+
+  // The same block registration accepts, and the same reason for declaring
+  // it: stripped by the whitelist, an edit that puts a live connection
+  // behind a bastion reads as a rename, and the connection keeps going
+  // direct — precisely what the operator was editing it to stop.
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SshTunnelDto)
+  ssh?: SshTunnelDto;
 }

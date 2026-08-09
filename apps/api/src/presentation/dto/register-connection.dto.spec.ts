@@ -137,4 +137,97 @@ describe("RegisterConnectionDto", () => {
     expect(errors).toHaveLength(0);
     expect(dto.sslMode).toBeUndefined();
   });
+
+  // ---- 0031 slice D: the bastion in front of the connection -----------
+
+  const SSH = {
+    host: "bastion.example.com",
+    port: 2222,
+    user: "jump",
+    password: "pw",
+    fingerprint: `SHA256:${"A".repeat(43)}`,
+  };
+
+  it("accepts a connection fronted by an ssh tunnel, and keeps the block", () => {
+    // The whitelist trap the turso case describes, in its worst form. An
+    // undeclared `ssh` is stripped before the factory ever sees it, so the
+    // connection registers — successfully, with no error to read — going
+    // straight at the database the operator was tunnelling to reach.
+    const { dto, errors } = validate({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      ssh: SSH,
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).toEqual(SSH);
+  });
+
+  it("accepts key material and a known_hosts text as the other half of each pair", () => {
+    // The web shape takes material, not paths (see `SshTunnelConfig`): a
+    // path field would let a request make the API process read files off
+    // the server. Both alternatives have to be declared or the form can
+    // only ever send the password/fingerprint pair.
+    const { dto, errors } = validate({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      ssh: {
+        host: "bastion.example.com",
+        user: "jump",
+        privateKey: "pem-key-material",
+        passphrase: "unlock",
+        knownHosts: "bastion.example.com ssh-ed25519 AAAA",
+      },
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).toMatchObject({
+      privateKey: "pem-key-material",
+      knownHosts: expect.any(String),
+    });
+  });
+
+  it("strips a field the ssh block does not declare", () => {
+    // `privateKeyPath` is the field this shape deliberately does not have.
+    // The domain ignores it via an index signature; the pipe has to drop it
+    // at the door too, which only happens if the block is validated as a
+    // nested class rather than waved through as an object.
+    const { dto, errors } = validate({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      ssh: { ...SSH, privateKeyPath: "/root/.ssh/id_rsa" },
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).not.toHaveProperty("privateKeyPath");
+  });
+
+  it("rejects an ssh block that names no host or no user", () => {
+    // Not a cross-field rule — `resolveSshTunnelConfig` owns those, and
+    // answers 404. A block with no host is malformed at the shape level,
+    // and 422 is the honest status for that.
+    for (const ssh of [
+      { ...SSH, host: undefined },
+      { ...SSH, user: "" },
+    ]) {
+      const { errors } = validate({ label: "x", driver: "postgres", host: "h", ssh });
+      expect(errors.map((e) => e.property)).toContain("ssh");
+    }
+  });
+
+  it("rejects an ssh port out of TCP range", () => {
+    const { errors } = validate({
+      label: "x",
+      driver: "postgres",
+      host: "h",
+      ssh: { ...SSH, port: 70000 },
+    });
+    expect(errors.map((e) => e.property)).toContain("ssh");
+  });
+
+  it("leaves ssh absent when it is not sent", () => {
+    const { dto, errors } = validate({ label: "x", driver: "postgres", host: "h" });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).toBeUndefined();
+  });
 });

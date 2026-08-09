@@ -182,6 +182,48 @@ describe("HTTP contract surface (0003)", () => {
     expect(res.status).toBe(422);
   });
 
+  // ---- 0031 slice D: the ssh block on the wire -----------------------
+
+  it("POST /connections with an ssh block on a driver that cannot tunnel → 404 capability envelope", async () => {
+    // The end-to-end proof that the block survives the pipe. Stripped by
+    // `whitelist: true`, this body would register a perfectly ordinary
+    // connection and answer 201 — the failure mode the DTO field exists to
+    // prevent, and one no unit test of the factory can observe.
+    const res = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({
+        label: "Tunnelled null",
+        driver: "null",
+        ssh: {
+          host: "bastion.example.com",
+          user: "jump",
+          password: "pw",
+          fingerprint: `SHA256:${"A".repeat(43)}`,
+        },
+      });
+    expect(res.status).toBe(404);
+    expect(res.body.error.message).toMatch(/ssh tunnel/);
+  });
+
+  it("POST /connections/ssh/host-key refuses a body with no host before dialling → 422", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/connections/ssh/host-key")
+      .set("Content-Type", "application/json")
+      .send({ port: 22 });
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /connections/ssh/host-key refuses a port outside the TCP range → 422", async () => {
+    // Not clamped to 22: a probe of the wrong port reads the wrong host's
+    // key, and the operator would pin it (ADR-0076).
+    const res = await request(app.getHttpServer())
+      .post("/connections/ssh/host-key")
+      .set("Content-Type", "application/json")
+      .send({ host: "bastion.example.com", port: 70000 });
+    expect(res.status).toBe(422);
+  });
+
   it("POST /connections/:id/query routes to the registered adapter", async () => {
     const create = await request(app.getHttpServer())
       .post("/connections")

@@ -28,9 +28,16 @@ export interface SshTunnelConfig {
 
 /**
  * The shape as it arrives — every field `unknown`, because it comes from a
- * request body. The index signature is not laziness: it is what lets an
- * unrecognised field (`privateKeyPath`, say) be *ignored* rather than
- * quietly honoured.
+ * request body.
+ *
+ * Unrecognised fields (`privateKeyPath`, say) are ignored rather than quietly
+ * honoured, and that is a property of the resolver below, which reads these
+ * eight names and nothing else. It is deliberately *not* expressed as an
+ * index signature: a class can never satisfy one — TypeScript grants implicit
+ * index signatures to object literal types only — and the shape that actually
+ * arrives over HTTP is a class, `SshTunnelDto`. Declaring the tolerance in the
+ * type bought nothing the resolver did not already provide and cost the one
+ * assignment that has to hold.
  */
 export interface SshTunnelInput {
   readonly host?: unknown;
@@ -41,7 +48,6 @@ export interface SshTunnelInput {
   readonly password?: unknown;
   readonly fingerprint?: unknown;
   readonly knownHosts?: unknown;
-  readonly [key: string]: unknown;
 }
 
 export const DEFAULT_SSH_PORT = 22;

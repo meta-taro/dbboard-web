@@ -189,9 +189,9 @@ describe("RegisterConnectionDto", () => {
 
   it("strips a field the ssh block does not declare", () => {
     // `privateKeyPath` is the field this shape deliberately does not have.
-    // The domain ignores it via an index signature; the pipe has to drop it
-    // at the door too, which only happens if the block is validated as a
-    // nested class rather than waved through as an object.
+    // The domain ignores it by reading only the names it knows; the pipe has
+    // to drop it at the door too, which only happens if the block is
+    // validated as a nested class rather than waved through as an object.
     const { dto, errors } = validate({
       label: "Prod",
       driver: "postgres",

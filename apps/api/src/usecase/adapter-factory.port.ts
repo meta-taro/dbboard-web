@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import type { SshTunnelInput } from "../domain/ssh";
 import type { SslMode } from "../domain/ssl-mode";
 
 // Open bag of driver-config fields. The "null" branch ignores everything;
@@ -36,6 +37,17 @@ export interface AdapterConfig {
   // its own field — the form has to be able to say what to paste in.
   accountId?: string;
   databaseId?: string;
+  // 0031 slice D (desktop ADR-0069). The bastion to reach this database
+  // through, or absent for a direct connection. `unknown`-typed fields
+  // throughout, because it arrives as a nested object in a request body and
+  // `resolveSshTunnelConfig` is what turns it into something trustworthy.
+  //
+  // Not every driver can be fronted by one: a forward redirects a TCP
+  // `host:port`, and Turso and D1 have no such pair to redirect. Desktop
+  // makes that structural — `ssh` is a field on the URL-bearing
+  // `BackendConfig` variants only — where an open config bag cannot, so the
+  // factory refuses the pairing instead (`ConnectionKind::supports_ssh_tunnel`).
+  ssh?: SshTunnelInput;
 }
 
 // Constructs an adapter from a driver discriminator + per-driver config.
@@ -43,8 +55,13 @@ export interface AdapterConfig {
 // 0003 supplied a StaticAdapterFactory that only knew "null"; 0004 adds
 // "postgres". An unknown driver raises CapabilityError so the
 // `POST /connections` route 404s rather than hard-erroring.
+//
+// Asynchronous since 0031 slice D: a connection fronted by an SSH tunnel
+// cannot be built until the forward is up and has told us its loopback port.
+// The drivers themselves stay lazy — no `await` here opens a database socket
+// — so a direct connection resolves without a round trip.
 export interface AdapterFactory {
-  create(driver: string, config: AdapterConfig): DatabaseAdapter;
+  create(driver: string, config: AdapterConfig): Promise<DatabaseAdapter>;
 
   // A replacement for `previous`, pointed at `config`. Separate from
   // `create` because of what an edit is allowed to leave out: the password.
@@ -57,7 +74,11 @@ export interface AdapterFactory {
   // new one. Raises the same CapabilityError for an unknown driver or a
   // config the driver refuses — before anything is torn down, so a rejected
   // edit leaves the connection it was editing intact.
-  rebuild(previous: DatabaseAdapter, driver: string, config: AdapterConfig): DatabaseAdapter;
+  rebuild(
+    previous: DatabaseAdapter,
+    driver: string,
+    config: AdapterConfig,
+  ): Promise<DatabaseAdapter>;
 
   // The drivers `create` accepts, in the order a chooser should offer them.
   // 0027 slice E: the connection form used to restate this list in its

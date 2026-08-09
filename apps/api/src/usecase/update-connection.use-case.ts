@@ -23,6 +23,11 @@ const CONNECTION_FIELDS: Record<keyof AdapterConfig, true> = {
   authToken: true,
   accountId: true,
   databaseId: true,
+  // Putting a connection behind a bastion changes where it connects, so a
+  // body that adds one is an edit and not a rename. Taking the bastion away
+  // arrives as an absent `ssh` alongside the host and user boxes the form
+  // re-submitted, so that direction is already covered by them.
+  ssh: true,
 };
 
 /**
@@ -69,7 +74,7 @@ export class UpdateConnection {
       // Build before tearing down. The factory validates, so an edit that
       // names no host must cost the user nothing — least of all the
       // connection they were in the middle of editing.
-      next.adapter = this.adapterFactory.rebuild(record.adapter, record.driver, config);
+      next.adapter = await this.adapterFactory.rebuild(record.adapter, record.driver, config);
       await closeQuietly(record.adapter);
 
       const parts = connectionPartsOf(config);

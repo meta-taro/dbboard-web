@@ -20,7 +20,11 @@ function adapter(): DatabaseAdapter {
 }
 
 function factory(drivers: readonly string[] = ["null"]): AdapterFactory {
-  return { create: () => adapter(), rebuild: () => adapter(), supported: () => drivers };
+  return {
+    create: async () => adapter(),
+    rebuild: async () => adapter(),
+    supported: () => drivers,
+  };
 }
 
 function inMemRegistry(seed: ConnectionRecord[] = []): ConnectionRegistry {
@@ -36,7 +40,7 @@ function inMemRegistry(seed: ConnectionRecord[] = []): ConnectionRegistry {
 }
 
 describe("ConnectionsController", () => {
-  it("POST /connections returns the registered id", () => {
+  it("POST /connections returns the registered id", async () => {
     const reg = inMemRegistry();
     const controller = new ConnectionsController(
       new RegisterConnection(reg, factory(), () => "fixed-id"),
@@ -45,7 +49,9 @@ describe("ConnectionsController", () => {
       new UpdateConnection(reg, factory()),
       new ListDrivers(factory()),
     );
-    expect(controller.register({ label: "Local", driver: "null" })).toEqual({ id: "fixed-id" });
+    expect(await controller.register({ label: "Local", driver: "null" })).toEqual({
+      id: "fixed-id",
+    });
     expect(reg.list()).toHaveLength(1);
   });
 

@@ -37,9 +37,11 @@ export class RegisterConnection {
     private readonly newId: () => string = randomUUID,
   ) {}
 
-  execute(input: RegisterConnectionInput): RegisterConnectionOutput {
+  // Asynchronous since 0031 slice D: a connection fronted by an SSH tunnel
+  // is not built until its forward is up. Nothing else here waits on I/O.
+  async execute(input: RegisterConnectionInput): Promise<RegisterConnectionOutput> {
     const { label, driver, ...config } = input;
-    const adapter = this.adapterFactory.create(driver, config);
+    const adapter = await this.adapterFactory.create(driver, config);
     const id = this.newId();
     // After `create`, deliberately: a config the factory rejects should raise
     // before anything about it is written down.

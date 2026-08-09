@@ -40,19 +40,19 @@ describe("RegisterConnection", () => {
 
   beforeEach(() => {
     factory = {
-      create: (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)),
+      create: async (driver) => (driver === "null" ? stubAdapter() : throwUnknown(driver)),
       // Registration never rebuilds; the member exists because the port
       // declares it (0027 slice G).
-      rebuild: (previous) => previous,
+      rebuild: async (previous) => previous,
       supported: () => ["null"],
     };
   });
 
-  it("constructs an adapter, generates an id, and stores the record", () => {
+  it("constructs an adapter, generates an id, and stores the record", async () => {
     const { registry, records } = inMemoryRegistry();
     const useCase = new RegisterConnection(registry, factory, () => "fixed-id");
 
-    const out = useCase.execute({ label: "local", driver: "null" });
+    const out = await useCase.execute({ label: "local", driver: "null" });
 
     expect(out).toEqual({ id: "fixed-id" });
     expect(records).toHaveLength(1);
@@ -60,7 +60,7 @@ describe("RegisterConnection", () => {
     expect(records[0]?.adapter.getId()).toBe("null");
   });
 
-  it("forwards the whole config to the factory but keeps only its non-secret half", () => {
+  it("forwards the whole config to the factory but keeps only its non-secret half", async () => {
     // The leak path 0004 § Tasks calls out: passwords / connection strings
     // travel through the use case to the factory, but they must never land
     // on the ConnectionRecord — only the adapter holds them.
@@ -76,13 +76,13 @@ describe("RegisterConnection", () => {
       registry,
       {
         create: factorySpy,
-        rebuild: (previous) => previous,
+        rebuild: async (previous) => previous,
         supported: () => ["null", "postgres"],
       },
       () => "fixed-id",
     );
 
-    useCase.execute({
+    await useCase.execute({
       label: "Prod",
       driver: "postgres",
       connectionString: "postgresql://u:SECRET@host/db",
@@ -108,19 +108,19 @@ describe("RegisterConnection", () => {
     expect(records[0]).not.toHaveProperty("connectionString");
   });
 
-  it("stores the split fields as parts, minus the password", () => {
+  it("stores the split fields as parts, minus the password", async () => {
     const { registry, records } = inMemoryRegistry();
     const useCase = new RegisterConnection(
       registry,
       {
-        create: () => stubAdapter(),
-        rebuild: (previous) => previous,
+        create: async () => stubAdapter(),
+        rebuild: async (previous) => previous,
         supported: () => ["postgres"],
       },
       () => "fixed-id",
     );
 
-    useCase.execute({
+    await useCase.execute({
       label: "Prod",
       driver: "postgres",
       host: "db.internal",
@@ -141,11 +141,11 @@ describe("RegisterConnection", () => {
     expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
   });
 
-  it("stores no parts for a connection that has none", () => {
+  it("stores no parts for a connection that has none", async () => {
     // The `null` driver names no host. An empty parts object would claim
     // there is a connection to describe.
     const { registry, records } = inMemoryRegistry();
-    new RegisterConnection(registry, factory, () => "fixed-id").execute({
+    await new RegisterConnection(registry, factory, () => "fixed-id").execute({
       label: "local",
       driver: "null",
     });
@@ -153,10 +153,12 @@ describe("RegisterConnection", () => {
     expect(records[0]).not.toHaveProperty("parts");
   });
 
-  it("propagates the factory's CapabilityError for unknown drivers", () => {
+  it("propagates the factory's CapabilityError for unknown drivers", async () => {
     const { registry, records } = inMemoryRegistry();
     const useCase = new RegisterConnection(registry, factory);
-    expect(() => useCase.execute({ label: "x", driver: "mongo" })).toThrowError(CapabilityError);
+    await expect(useCase.execute({ label: "x", driver: "mongo" })).rejects.toThrowError(
+      CapabilityError,
+    );
     expect(records).toHaveLength(0);
   });
 });

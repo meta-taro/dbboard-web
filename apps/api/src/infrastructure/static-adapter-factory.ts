@@ -1,10 +1,21 @@
 import { CapabilityError } from "../domain/errors";
+import {
+  DEFAULT_MYSQL_PORT,
+  DEFAULT_POSTGRES_PORT,
+  forwardTarget,
+  redirectToLoopback,
+  resolveSshTunnelConfig,
+  type ForwardTarget,
+  type SshTunnelConfig,
+} from "../domain/ssh";
 import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.port";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { NullAdapter } from "./null-adapter";
 import { createD1Adapter, D1Adapter } from "./d1-adapter";
 import { createMySqlAdapter, MySqlAdapter } from "./mysql-adapter";
 import { createPostgresAdapter, PostgresAdapter } from "./postgres-adapter";
+import { openSshTunnel, type SshTunnelHandle } from "./ssh-tunnel";
+import { isTunneledAdapter, openTunneledAdapter } from "./tunneled-adapter";
 import { createTursoAdapter, TursoAdapter } from "./turso-adapter";
 
 /**
@@ -27,6 +38,25 @@ interface DriverBuilder {
   // keeps the password the old pool holds, and a driver with no credential
   // has nothing to keep (0027 slice G).
   rebuild(previous: DatabaseAdapter, config: AdapterConfig): DatabaseAdapter;
+  /**
+   * Where to forward to when the connection names no port, and — by being
+   * set at all — that this driver can be fronted by an SSH tunnel (0031
+   * slice D).
+   *
+   * One field rather than a `supportsSsh` flag beside a port, because the
+   * two can only be wrong separately: a forward redirects a TCP `host:port`
+   * pair, so a driver that cannot say which port it speaks on has nothing to
+   * redirect. Turso is a libSQL URL, D1 is an HTTPS API, and `null` connects
+   * to nothing; desktop reaches the same set structurally, by hanging `ssh`
+   * off the URL-bearing `BackendConfig` variants only, and refuses the rest
+   * in `ConnectionKind::supports_ssh_tunnel`.
+   */
+  defaultPort?: number;
+}
+
+/** How a forward is opened. Injected so the factory can be tested without a bastion. */
+export interface StaticAdapterFactoryDeps {
+  openTunnel?: (config: SshTunnelConfig, target: ForwardTarget) => Promise<SshTunnelHandle>;
 }
 
 const BUILDERS = new Map<string, DriverBuilder>([
@@ -46,6 +76,7 @@ const BUILDERS = new Map<string, DriverBuilder>([
         previous instanceof PostgresAdapter
           ? previous.rebuildWith(config)
           : createPostgresAdapter(config),
+      defaultPort: DEFAULT_POSTGRES_PORT,
     },
   ],
   [
@@ -82,6 +113,7 @@ const BUILDERS = new Map<string, DriverBuilder>([
         previous instanceof MySqlAdapter
           ? previous.rebuildWith(config)
           : createMySqlAdapter(config),
+      defaultPort: DEFAULT_MYSQL_PORT,
     },
   ],
   ["null", { create: () => new NullAdapter(), rebuild: () => new NullAdapter() }],
@@ -91,12 +123,69 @@ const BUILDERS = new Map<string, DriverBuilder>([
 // itself stays oblivious. An unknown driver raises CapabilityError so
 // POST /connections lands as 404 rather than a hard 500.
 export class StaticAdapterFactory implements AdapterFactory {
-  create(driver: string, config: AdapterConfig): DatabaseAdapter {
-    return this.builderFor(driver).create(config);
+  private readonly openTunnel: NonNullable<StaticAdapterFactoryDeps["openTunnel"]>;
+
+  constructor(deps: StaticAdapterFactoryDeps = {}) {
+    this.openTunnel = deps.openTunnel ?? openSshTunnel;
   }
 
-  rebuild(previous: DatabaseAdapter, driver: string, config: AdapterConfig): DatabaseAdapter {
-    return this.builderFor(driver).rebuild(previous, config);
+  async create(driver: string, config: AdapterConfig): Promise<DatabaseAdapter> {
+    const builder = this.builderFor(driver);
+    return this.build(driver, builder, config, (cfg) => builder.create(cfg));
+  }
+
+  async rebuild(
+    previous: DatabaseAdapter,
+    driver: string,
+    config: AdapterConfig,
+  ): Promise<DatabaseAdapter> {
+    const builder = this.builderFor(driver);
+    // Through the wrapper to the driver underneath. A `TunneledAdapter` is
+    // not a `PostgresAdapter`, so handing it straight to `rebuild` would miss
+    // every `instanceof` above and fall back to a fresh, credential-less
+    // adapter — an edit that left the password blank would silently lose it.
+    // The old wrapper is not closed here: UpdateConnection does that after
+    // the replacement is live, and closing it takes the old forward with it.
+    const inner = isTunneledAdapter(previous) ? previous.unwrap() : previous;
+    return this.build(driver, builder, config, (cfg) => builder.rebuild(inner, cfg));
+  }
+
+  /**
+   * The one path both entry points take: strip the `ssh` block off the
+   * config, and either build the driver directly or build it against a
+   * freshly opened forward.
+   *
+   * `make` receives a config the driver can read — never the `ssh` block,
+   * which is not a driver setting, and with `host`/`port` already pointed at
+   * loopback when there is a tunnel.
+   */
+  private async build(
+    driver: string,
+    builder: DriverBuilder,
+    config: AdapterConfig,
+    make: (config: AdapterConfig) => DatabaseAdapter,
+  ): Promise<DatabaseAdapter> {
+    const { ssh, ...rest } = config;
+    if (ssh === undefined) return make(rest);
+
+    if (builder.defaultPort === undefined) {
+      // Desktop raises `ConfigError::SshUnsupportedKind` here rather than
+      // ignoring the block: a tunnel that was configured and silently not
+      // used is a connection the operator believes is private and is not.
+      throw new CapabilityError(`driver does not support an ssh tunnel: ${driver}`);
+    }
+
+    // Both resolve before anything is dialled, so a malformed tunnel config
+    // or a connection that names no host costs no round trip.
+    const tunnel = resolveSshTunnelConfig(ssh);
+    const target = forwardTarget(rest, builder.defaultPort);
+
+    return openTunneledAdapter({
+      openTunnel: () => this.openTunnel(tunnel, target),
+      // Re-run on every reconnect, against the new forward's port — which is
+      // why it closes over `rest` rather than over a resolved config.
+      buildInner: (localPort) => make(redirectToLoopback(rest, localPort)),
+    });
   }
 
   private builderFor(driver: string): DriverBuilder {

@@ -25,10 +25,15 @@ export class ConnectionsController {
   ) {}
 
   @Post()
-  register(@Body() body: RegisterConnectionDto): RegisterConnectionOutput {
+  async register(@Body() body: RegisterConnectionDto): Promise<RegisterConnectionOutput> {
     // Forward the whole validated DTO — class-validator's whitelist:true
     // pipe has already dropped any non-declared fields, so this is the
     // contract surface that reaches the use case.
+    //
+    // Awaited since 0031 slice D: registering a connection behind an SSH
+    // tunnel opens the forward first. The HTTP contract is unchanged — Nest
+    // resolves a returned promise either way — but the failure has to surface
+    // here, as a rejected request, and not as an unhandled rejection.
     return this.registerConnection.execute(body);
   }
 

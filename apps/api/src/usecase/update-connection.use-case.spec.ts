@@ -44,8 +44,8 @@ describe("UpdateConnection", () => {
   beforeEach(() => {
     rebuilt = stubAdapter();
     factory = {
-      create: () => stubAdapter(),
-      rebuild: vi.fn().mockImplementation(() => rebuilt),
+      create: async () => stubAdapter(),
+      rebuild: vi.fn().mockImplementation(async () => rebuilt),
       supported: () => ["postgres", "null"],
     };
   });
@@ -119,6 +119,21 @@ describe("UpdateConnection", () => {
       user: "reader",
       password: "",
     });
+    expect(records.get("c1")?.adapter).toBe(rebuilt);
+  });
+
+  it("treats putting a connection behind a bastion as an edit, not a rename", async () => {
+    // 0031 slice D. An `ssh` block changes where the connection reaches the
+    // database from, so a body carrying one has to rebuild — read as a
+    // rename it would be stored as a no-op and the connection would keep
+    // going direct, which is precisely the case the operator was trying to
+    // stop.
+    const { registry, records, adapter } = seeded();
+    const ssh = { host: "bastion", user: "jump", password: "pw", fingerprint: "SHA256:x" };
+
+    await new UpdateConnection(registry, factory).execute("c1", { ssh });
+
+    expect(factory.rebuild).toHaveBeenCalledWith(adapter, "postgres", { ssh });
     expect(records.get("c1")?.adapter).toBe(rebuilt);
   });
 

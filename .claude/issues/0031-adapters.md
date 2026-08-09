@@ -18,7 +18,7 @@ dialects; web ships one driver plus `null`.
 | `dbboard-tunnel` | ADR-0069 | absent      | D     |
 | —                | ADR-0072 | ANSI only   | C     |
 | —                | ADR-0092 | no liveness | D     |
-| `dbboard-config` | ADR-0038 | no export   | E     |
+| `dbboard-config` | ADR-0038 | n/a — see E | E     |
 
 `CLAUDE.md` names Turso/libSQL a target database and no adapter exists. That
 documentation contradiction is why Turso goes first even though it is not the
@@ -134,6 +134,12 @@ neither problem: `InMemoryConnectionRegistry` mints ids per process and there
 is no export surface at all. Slice E writes that reasoning down and classifies
 it; it does not implement a `.dbbx` reader web has nothing to read into.
 
+> **Superseded by slice E's own work log below.** This paragraph reads the
+> ledger's summary rather than the ADR, and gets the reason half right: the
+> missing export surface is true but incidental. The ADR classifies web itself
+> ("dbboard-web is unaffected"), and the payload is a keyring-reference map web
+> could not fill even with an export surface. `n/a`, not deferred.
+
 ## Slices
 
 | Slice | Subject                                            | Flag effect                 |
@@ -142,7 +148,7 @@ it; it does not implement a `.dbbx` reader web has nothing to read into.
 | B     | Cloudflare D1 adapter over `/raw` (ADR-0007)       | `has_atomic_restore` varies |
 | C     | MySQL adapter (ADR-0068) + dialect seam (ADR-0072) | none — a third dialect      |
 | D     | SSH tunnel (ADR-0069) **with** liveness (ADR-0092) | none — a lifetime           |
-| E     | Connection bundle (ADR-0038): classify             | none                        |
+| E     | Connection bundle (ADR-0038): classify → `n/a`     | none                        |
 | F     | Driver-aware connection form                       | none — a form               |
 | G     | Closeout                                           | —                           |
 
@@ -537,3 +543,55 @@ a slightly slower negotiation.
 
 Gate green: 1170 API tests (88 files, 1 skipped), 1134 web, lint, typecheck,
 format; PII scan clean on staged and message.
+
+### Slice E — ADR-0038 classified: `n/a`, and the ledger row was wrong twice
+
+The survey above said "deferred, not skipped" and pointed at the missing export
+surface. Reading the ADR itself rather than the ledger's summary of it — the
+§19 order, source before digest — found the classification already made, by
+desktop, in the ADR's own Consequences:
+
+> **Web sibling**: desktop-only feature, no HTTP wire-contract change, so
+> dbboard-web is unaffected and no cross-repo brief is needed (same posture as
+> ADR-0036/0037).
+
+So the row was in the wrong table. Category A is for surfaces the two repos
+share; a `.dbbx` file is not one, and the ADR says so in the same words web's
+own ledger uses for ADR-0036/0037, which are already in Category C.
+
+**The status was wrong on firmer ground than the missing export surface.** The
+ledger's reason — "an _interop format_, so if web ever exports connections the
+envelope has to match byte-for-byte" — supposes there is something to match.
+There is not. The plaintext inside the age envelope is
+
+```jsonc
+{ "version": 1, "connections": { ...a ConnectionFile... }, "secrets": { "dbboard.<id>.<field>": "…" } }
+```
+
+and both members are already `n/a` here: the secrets map is keyed by _keyring
+references_ (ADR-0013 / 0033, Category C — web has no keychain), and
+`connections.toml` is not one of the two formats ADR-0004 shares. Web could
+match the envelope byte-for-byte and still be unable to fill it. A future web
+that persisted connections would not change that; it would have its own
+document, and matching desktop's would mean adopting desktop's config file
+rather than exporting web's own state.
+
+**And the artifact does not keep its meaning across the gap**, which is the
+part worth writing down because it would survive web gaining persistence.
+Desktop's consequence reads:
+
+> Anyone with both the file and the passphrase has every secret — the same
+> trust boundary as handing over the secrets directly, but now in one step.
+
+That equivalence holds because the import seeds an OS keychain scoped to one
+user account. On web the same import would land in a process that answers to a
+bearer token, so the boundary moves from _the person you handed the bundle to_
+to _everyone who can reach the API_ — and it moves silently, because the file,
+the passphrase prompt and the success message all look identical. A mirror
+would carry desktop's security argument along with its bytes into a place where
+the argument is false. The reference-collision refusal added in the ADR's
+2026-07-16 hardening is a smaller instance of the same asymmetry: it defends a
+keychain namespace web does not have.
+
+No code, no test, no dependency. `age` is not evaluated under §12 because
+nothing is being added — the finding is that there is nothing to add.

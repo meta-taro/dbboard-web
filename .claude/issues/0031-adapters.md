@@ -720,3 +720,34 @@ Sixteen new or rewritten tests across five files. `sshPartsOf` was repurposed
 from input→parts to config→parts, which is the same projection one step later
 and let its two resolver-concern tests go; `classifySshEdit` was designed and
 then not written, having no caller.
+
+### Slice F3 — asking the bastion what key it presents
+
+`useSshHostKey` wraps `POST /connections/ssh/host-key`, which has existed
+server-side since slice D with nothing in the browser calling it.
+
+It is the first composable here that does **not** fetch on mount. `useDrivers`
+reads a fact about the API build and costs nothing; this dials a machine the
+operator named, and ADR-0076 makes it a button precisely so that it happens
+once, deliberately, against a hostname somebody finished typing.
+
+Three behaviours are load-bearing rather than incidental:
+
+- **A blank host is refused without a round trip.** The server would answer
+  422, but the trip would also blank the previous answer and dress a form
+  mistake as a server error.
+- **A blank port box sends no `port` at all.** `ProbeSshHostKey` resolves the
+  default, and the tunnel dials with the same one. A copy in the browser could
+  drift, and then the fingerprint on screen would belong to a different
+  listener than the one the tunnel connects to — the comparison would pass
+  while comparing two hosts.
+- **The stored fingerprint is cleared when a probe _starts_, not when it
+  succeeds.** A key left on screen while a different host is being probed is
+  the only way this composable could get someone to pin the wrong one.
+
+The fingerprint is both returned and stored: the caller that pressed the button
+decides whether it goes into the field. Nothing here judges the key — that a
+human compares it against a value obtained out of band is the entire reason
+ADR-0069 makes host-key verification mandatory rather than automatic.
+
+Seven tests (fourteen runs, two environments).

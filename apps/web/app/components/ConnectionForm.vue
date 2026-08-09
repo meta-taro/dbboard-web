@@ -523,7 +523,7 @@ defineExpose({ reset });
                 rows="4"
                 spellcheck="false"
                 autocomplete="off"
-              ></textarea>
+              />
             </label>
             <label>
               {{ t("connections.form.ssh-passphrase-input") }}
@@ -605,7 +605,7 @@ defineExpose({ reset });
               rows="3"
               spellcheck="false"
               autocomplete="off"
-            ></textarea>
+            />
           </label>
 
           <ErrorBanner

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createD1Adapter, type D1Adapter } from "../src/infrastructure/d1-adapter";
+import { InMemoryConnectionRegistry } from "../src/infrastructure/in-memory-connection-registry";
+import { RestoreDatabase } from "../src/usecase/restore-database.use-case";
 import { isBlobValue } from "../src/domain/values/value";
 
 // Live round-trip against a real Cloudflare D1 database — the web mirror of
@@ -38,6 +40,7 @@ function adapter(): D1Adapter {
 }
 
 const TABLE = `dbboard_d1_web_${process.pid}`;
+const RESTORE_TABLE = `${TABLE}_restore`;
 
 describe("D1 adapter integration (live REST)", () => {
   if (!LIVE) {
@@ -109,6 +112,65 @@ describe("D1 adapter integration (live REST)", () => {
         expect(ddl.endsWith(";\n")).toBe(true);
       } finally {
         await d1.execute(`DROP TABLE IF EXISTS ${TABLE}`);
+      }
+    },
+    SUITE_TIMEOUT_MS,
+  );
+
+  it(
+    "restores a script one statement at a time, because D1 has no atomic hook",
+    async () => {
+      // Ticket 0031's definition of done asks for the per-statement branch to
+      // be exercised against D1 rather than only against a stubbed socket.
+      // `src/usecase/restore-database.d1.spec.ts` proves the runner picks the
+      // branch when handed the real adapter class; this proves the statements
+      // it sends one at a time are ones D1 actually applies.
+      const d1 = adapter();
+      const restore = new RestoreDatabase(d1, new InMemoryConnectionRegistry());
+
+      await d1.execute(`DROP TABLE IF EXISTS ${RESTORE_TABLE}`);
+
+      try {
+        const script =
+          `CREATE TABLE ${RESTORE_TABLE} (id INTEGER PRIMARY KEY, label TEXT NOT NULL);\n` +
+          `INSERT INTO ${RESTORE_TABLE} (id, label) VALUES (1, 'one');\n` +
+          `INSERT INTO ${RESTORE_TABLE} (id, label) VALUES (2, 'two');\n`;
+
+        // `confirmed` because the target is whichever database the operator
+        // pointed the suite at, and it is allowed to already hold tables.
+        const outcome = await restore.run(await restore.prepare(undefined, script), {
+          confirmed: true,
+          onError: "stop",
+        });
+
+        expect(outcome.atomic).toBe(false);
+        expect(outcome.failures).toEqual([]);
+        expect(outcome.statementsRun).toBe(3);
+        expect(outcome.ddlRun).toBe(1);
+        expect(outcome.dataRun).toBe(2);
+
+        const applied = await d1.executeQuery(`SELECT label FROM ${RESTORE_TABLE} ORDER BY id`);
+        expect(applied.rows).toEqual([["one"], ["two"]]);
+
+        // The half no atomic path has: a statement that fails is reported and
+        // the run carries on, leaving what came after it applied.
+        const partial = await restore.run(
+          await restore.prepare(
+            undefined,
+            `INSERT INTO ${RESTORE_TABLE} (id, label) VALUES (1, 'clash');\n` +
+              `INSERT INTO ${RESTORE_TABLE} (id, label) VALUES (3, 'three');\n`,
+          ),
+          { confirmed: true, onError: "continue" },
+        );
+
+        expect(partial.failures).toHaveLength(1);
+        expect(partial.failures[0].index).toBe(0);
+        expect(partial.statementsRun).toBe(1);
+
+        const after = await d1.executeQuery(`SELECT label FROM ${RESTORE_TABLE} ORDER BY id`);
+        expect(after.rows).toEqual([["one"], ["two"], ["three"]]);
+      } finally {
+        await d1.execute(`DROP TABLE IF EXISTS ${RESTORE_TABLE}`);
       }
     },
     SUITE_TIMEOUT_MS,

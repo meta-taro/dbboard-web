@@ -1,6 +1,6 @@
 # 0031 — Adapters: the databases web cannot reach
 
-**Status:** open (2026-08-06) · **Opened:** 2026-08-06 · **Rung 7** of
+**Status:** closed (2026-08-09) · **Opened:** 2026-08-06 · **Rung 7** of
 [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -873,3 +873,64 @@ The liveness paragraph is included for one reason: the symptom it prevents is
 a hang, and a hang is what an operator would otherwise debug on the bastion.
 Saying that an idle connection costs a `SELECT 1` and a dead one is rebuilt
 turns a mystery into a slower first query.
+
+### Slice G — closeout, and the one item that could not be proved here
+
+Six items in the definition of done, checked against the code rather than
+against the work log. Five were already true. One was half true, and the half
+that was missing is the half an agent cannot supply.
+
+**Flags travel with the methods.** Each of the four adapters asserts its whole
+capability set against a literal, so a flag added by accident fails the test
+rather than passing quietly: Postgres `advertises describe_table, execute,
+table_ddl and atomic_restore, and nothing else`, Turso `reports the flags its
+shipped desktop counterpart reports`, MySQL `advertises exactly the four flags
+desktop's crate sets`, D1 `reports every capability desktop's crate reports,
+and no more`. Three of them also assert the inverse direction — the hook is
+absent where the flag is false (`omits the hook it reports false, rather than
+shipping a stub`, `implements every optional hook it advertises`, `omits
+executeInTransaction, so the flag and the hook agree`). Postgres proves it by
+exercising all four hooks instead.
+
+**Dialect.** `dialectFor` has both halves under test — `reports an unknown
+driver as unknown rather than guessing` and `falls back to ANSI for an
+unknown, absent or empty driver`. The four places the seam was left open each
+carry a MySQL assertion: `buildInsert`, `buildSelectPage`, `buildCount` and
+`buildUpdateSql`, plus `quoteIdent` itself doubling an embedded back-tick.
+
+**Host keys.** Nothing connects on trust. `tunnel-config` requires exactly one
+host-key policy, so a tunnel with neither is refused before it dials; a blank
+pin is refused rather than read as "anything"; and the two failure modes stay
+distinguishable in both policies — `tells an unknown host apart from a changed
+key` for the pin, `reports a host it has never seen as unknown, not as a
+mismatch` against `reports a known host presenting a different key as a
+mismatch` for `known_hosts`.
+
+**Stale adapters.** `tunneled-adapter` probes after 30 s idle, rebuilds on a
+failed probe, tears the old forward down rather than leaking it, and rebuilds
+once when two callers arrive at the same dead connection.
+
+**The D1 restore item, honestly.** "Exercised against D1, not only in a unit
+test with a stub" was already satisfied in the sense the slice-B work log
+claimed: `src/usecase/restore-database.d1.spec.ts` hands the runner the real
+`D1Adapter` and lets it pick the branch, stubbing only the socket, which is
+what rules out the failure a fake adapter cannot — a `D1Adapter` that grew an
+atomic hook would still pass a test that was told which path to take. But the
+live suite had four tests and none of them was a restore, so nothing yet
+proved that the statements the per-statement path sends one at a time are
+statements D1 accepts. `test/d1-integration.spec.ts` now has a fifth: a
+three-statement script restored through `RestoreDatabase`, asserting
+`atomic: false` and the rows that landed, then a second run whose first
+statement collides on the primary key — the half no atomic path has, where a
+failure is reported and the run carries on.
+
+**It has not been run.** The suite self-skips without
+`DBBOARD_D1_ACCOUNT_ID` / `_DATABASE_ID` / `_TOKEN`, and baseline §15 puts
+those in the maintainer's hands; an agent neither holds them nor sets them.
+So this item is closed as "the test exists and passes locally as a skip",
+which is not the same as green. Whoever holds the credential should export the
+three variables and run `pnpm -C apps/api test` once — that is the only step
+of this rung that has not actually executed.
+
+**Gate.** Format, lint, typecheck and tests green across both workspaces; PII
+scan clean on staged, tree and message.

@@ -1138,3 +1138,145 @@ offer a restore.
   occurrence of Decision 4's idiom.
 - Next: rung 7, adapters (Turso/libSQL, D1, MySQL, SSH tunnel). D1 is what
   makes Decision 6's branch reachable.
+
+## 2026-08-09 — Four adapters, a dialect seam that was already open, and a tunnel whose capability is a port number
+
+**Status.** Accepted. Rung 7 of [`parity-ledger.md`](./parity-ledger.md),
+ticket [`0031`](./issues/0031-adapters.md), seventeen commits from `84f4196`.
+
+**Context.** Web shipped six rungs against one real adapter. Desktop ships
+five. This rung adds Turso/libSQL, Cloudflare D1 and MySQL/MariaDB, and puts an
+SSH tunnel in front of the two that speak a socket — desktop ADR-0002, ADR-0016,
+ADR-0069, ADR-0092, and the ADR-0072 dialect the earlier rungs kept deferring.
+The survey is in the ticket; what follows is the subset that constrains work
+after this rung.
+
+**Decision 1 — a capability flag is a claim about a method, and the test says
+both halves.**
+
+Every adapter now has two capability tests, not one: its whole flag set against
+a literal (`toEqual`, so a flag added later fails the test rather than sliding
+in), and each optional hook against the flag that advertises it. The second
+half is the one that catches the real defect. `has_atomic_restore: true` on an
+adapter with no `executeInTransaction` is not a wrong flag, it is a runtime
+`TypeError` in a code path the operator reached by trusting the flag. D1 makes
+this concrete from the other side: it advertises `false` and **omits the
+method**, and its test asserts the omission.
+
+**Decision 2 — the restore runner branches on adapter shape, not on caller.**
+
+`adapter.executeInTransaction ? runAtomic : runPerStatement`. Rung 6b Decision 6
+built the per-statement path with no adapter to reach it and asked that a
+dead-code sweep leave it alone; D1 now reaches it, because the REST API takes
+one statement per request and has no multi-statement transaction. Nothing was
+added to the runner to accommodate D1. **That is the result being recorded** —
+the branch predicate was written against a shape rather than against a driver,
+so the second driver cost zero edits to the use case.
+
+**Decision 3 — the dialect seam was four call sites, and closing it meant
+picking a fallback that is wrong loudly.**
+
+`quoteIdent(name, dialect)` and `dialectFor(driver)`. MySQL backticks and
+doubles an embedded backtick; ANSI double-quotes. The four places the seam was
+left open (`buildInsert`, `buildSelectPage`, `buildCount`, `buildUpdateSql`)
+each grew a MySQL assertion beside the existing ANSI one, including the
+doubling case, because a quoting bug that only shows up on an identifier
+containing the quote character is exactly the bug that reaches production. An
+unknown driver falls back to ANSI rather than throwing: a new adapter that
+forgets to register a dialect produces syntax errors naming the identifier,
+which is diagnosable, instead of a startup crash naming the seam.
+
+**Decision 4 — the host-key policy is a type with two variants and no third.**
+
+Desktop ADR-0069 Decision 2 forbids blind accept. Expressing that as a check
+invites a later flag; expressing it as a sum type does not. `HostKeyPolicy` is
+a pinned SHA-256 fingerprint **or** a `known_hosts` text, `resolveHostKey`
+demands exactly one, and a config naming neither fails to resolve rather than
+falling back to trusting whatever answers. There is no variant to reach for, so
+trust-on-first-use cannot be added by passing a parameter.
+
+`verifyHostKey` returns three verdicts because "your pin no longer matches" and
+"this host is not pinned yet" ask the operator for opposite responses —
+investigate versus confirm — and ssh2 collapses both into a failed handshake.
+The domain verdict is captured and preferred over the driver's text.
+
+**Decision 5 — the probe route reports what was presented, not what is
+trusted.**
+
+`ssh-fetch-host-key` connects, records the key the server offered, and returns
+it. It cannot tell the operator whether that key is the right one; nothing on
+the wire can. So the route is a convenience for filling the box, the UI says as
+much beside the button, and the pin the operator saves is still theirs to have
+verified out of band. Mirrors desktop ADR-0076. **ADR-0077 (the OS keychain the
+fetched key would be stored in) is `n/a` and stays so** — web has no keyring,
+which is the same reason ADR-0013/0033 are Category C.
+
+**Decision 6 — blank means keep, and it is the record that decides, not the
+form.**
+
+Desktop has `SshEditInput::Keep`. Web's edit path now mirrors it: an empty
+passphrase or private-key box on a record that already has one is "leave it
+alone", not "clear it". The alternative — round-tripping the secret through the
+browser so the form can send back what it was given — would put a stored
+credential in a response body to preserve a UI invariant, which is a worse
+trade than any amount of form-state bookkeeping.
+
+**Decision 7 — tunnellability is structural.**
+
+A driver can sit behind a bastion exactly when `DriverBuilder.defaultPort` is
+set, because that is the same fact as "this driver dials a socket". No
+`supports_ssh` flag was added. Turso and D1 therefore get no bastion section in
+the form for the same reason the API answers their `ssh` block with a 404: an
+HTTPS endpoint has no port to redirect. A flag would have been a second place
+for the same truth to be recorded, and eventually to disagree.
+
+**Consequences.**
+
+- **A tunnelled adapter is probed before reuse.** `InMemoryConnectionRegistry`
+  caches a live adapter with no eviction and no health check, and a dropped
+  bastion leaves a loopback listener that still binds and still accepts — so
+  the pool heals forever against a forward with nothing behind it. A connection
+  idle longer than one keepalive interval pays for a `SELECT 1`; a failure
+  tears down forward and adapter and reopens them **once**, even when two
+  callers arrive at the same stale connection. The check lives in
+  `TunneledAdapter`, not the registry, because web keeps no keyring: the only
+  copy of the credential is inside the adapter serving the connection.
+- **Keepalives are on** (30 s, 3 misses). Off is what lets an idle tunnel die
+  unnoticed, and ssh2 does not decide it.
+- **`docs/api-contract.md` still has a zero diff against `86b324f`** — seven
+  rungs. `/connections/*` remains unilateral.
+- **ADR-0038 (`.dbbx` export) is `n/a`, not deferred**, and the ledger row was
+  wrong twice: the ADR classifies itself in its own Consequences, and the
+  envelope it defines is keyed by keyring references web does not have. A
+  mirror would carry desktop's security argument — "the same trust boundary as
+  handing over the secrets directly" — into a place where it is false, because
+  the import would land in a process answering to a bearer token rather than in
+  one user's OS keychain.
+- **The live D1 restore test exists and has never run.** Baseline §15 puts
+  `DBBOARD_D1_ACCOUNT_ID` / `_DATABASE_ID` / `_TOKEN` in the maintainer's
+  hands, and the suite self-skips without them. "The test exists and skips" is
+  not "the test is green"; recorded here rather than counted as done.
+
+**Reversibility.** The three adapters are reversible by deletion. The dialect
+seam is not, in the useful sense: four call sites now take a parameter, and
+removing it would mean re-deriving which of them are MySQL-reachable. The
+tunnel is reversible as a feature but not as a schema — a connection record
+that has stored an `ssh` block has stored a credential, and dropping the
+feature does not unstore it.
+
+**Cross-references.**
+
+- Desktop: ADR-0002, ADR-0016, ADR-0038, ADR-0069, ADR-0072, ADR-0076,
+  ADR-0077, ADR-0092 in `dbboard/docs/decisions.md`; `crates/dbboard-turso`,
+  `crates/dbboard-d1`, `crates/dbboard-mysql` and `crates/dbboard-tunnel` read
+  directly, per §19. **Desktop pin `b98f7a6`** (mainline, v0.5.1).
+- Ticket: [`issues/0031-adapters.md`](./issues/0031-adapters.md) — the survey,
+  the per-slice log, and the six definition-of-done items with the one that
+  closed qualified.
+- Previous: rung 6b, logical restore — Decision 6 there is Decision 2 here,
+  reached.
+- Next: rung 8, AI stage 2 (ADR-0025 provider switcher, ADR-0026 streaming and
+  cancel, ADR-0052 OpenAI), carrying ADR-0028 Decisions 8-9 off rung 4.
+- **Watch item:** ADR-0091's nested `Value` variant is on desktop `develop`
+  (PR #148, `468fc44`), not `main`. Web must not mirror the wire tag until it
+  ships.

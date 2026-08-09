@@ -108,6 +108,41 @@ describe("resolveSshTunnelConfig", () => {
     ).toThrow(/exactly one/);
   });
 
+  it("keeps the credential it is handed when the edit names none", () => {
+    // ADR-0080's rule, reaching the bastion (0031 slice F2). The form cannot
+    // prefill a secret box, so a saved edit re-submits it blank; without a
+    // carried credential that blank means "exactly one of" and a working
+    // tunnel dies on a rename.
+    const carried = { kind: "password", password: "s3cret" } as const;
+    const config = resolveSshTunnelConfig(
+      minimal({ password: "", port: 2222, user: "release" }),
+      carried,
+    );
+
+    expect(config.auth).toEqual(carried);
+    expect(config.port).toBe(2222);
+    expect(config.user).toBe("release");
+  });
+
+  it("prefers a credential the edit does name over the one it is handed", () => {
+    const config = resolveSshTunnelConfig(minimal({ password: "typed-again" }), {
+      kind: "password",
+      password: "stored",
+    });
+
+    expect(config.auth).toEqual({ kind: "password", password: "typed-again" });
+  });
+
+  it("still refuses two credentials, carried or not", () => {
+    // Carrying is what a blank box means; it is not permission to send both.
+    expect(() =>
+      resolveSshTunnelConfig(minimal({ privateKey: KEY_MATERIAL }), {
+        kind: "password",
+        password: "stored",
+      }),
+    ).toThrow(/exactly one/);
+  });
+
   it("rejects a private key that is not PEM-shaped", () => {
     expect(() =>
       resolveSshTunnelConfig(minimal({ password: undefined, privateKey: "id_ed25519" })),

@@ -509,6 +509,74 @@ describe("HTTP contract surface (0003)", () => {
     });
   });
 
+  // ---- 0031 slice F2: the three states of `ssh` on an edit ------------
+
+  it("PATCH /connections/:id with ssh:null takes the bastion away rather than being refused", async () => {
+    // `null` is the removal, and it has to survive two things that would
+    // each quietly turn it into "keep": the validator, which could read a
+    // non-object as a type error and answer 422, and the transformer, which
+    // could coerce it to `undefined`. Registering behind a real bastion is
+    // not something this suite can do, so what is pinned here is that the
+    // spelling reaches the use case and is accepted — the removal itself is
+    // pinned in `graftSshTunnel` and the factory.
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Direct", driver: "null" });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({ ssh: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty("ssh");
+  });
+
+  it("PATCH /connections/:id with an ssh block on a driver that cannot tunnel → 404", async () => {
+    // The edit path's half of the POST case above: the block is declared and
+    // constrained, so it reaches the factory and is refused there. Stripped
+    // by the whitelist it would answer 200, and an operator would be looking
+    // at a connection that reports success and still goes direct.
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Direct", driver: "null" });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({
+        ssh: {
+          host: "bastion.example.com",
+          user: "jump",
+          password: "pw",
+          fingerprint: `SHA256:${"A".repeat(43)}`,
+        },
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.message).toMatch(/ssh tunnel/);
+  });
+
+  it("PATCH /connections/:id saying nothing about ssh leaves the connection alone", async () => {
+    // The third state, and the reason the other two need spellings of their
+    // own. An absent block is not a removal, so a rename must not answer
+    // with a connection described differently from the one that was renamed.
+    const create = await request(app.getHttpServer())
+      .post("/connections")
+      .set("Content-Type", "application/json")
+      .send({ label: "Untouched", driver: "null" });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/connections/${create.body.id}`)
+      .set("Content-Type", "application/json")
+      .send({ label: "Renamed" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: create.body.id, label: "Renamed", driver: "null" });
+  });
+
   it("PATCH /connections/:id with a TLS mode it cannot honour → 422", async () => {
     const create = await request(app.getHttpServer())
       .post("/connections")

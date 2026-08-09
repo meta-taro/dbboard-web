@@ -1,5 +1,5 @@
 import type { HostKeyPolicy } from "./host-key";
-import { resolveSshTunnelConfig, type SshAuth, type SshTunnelInput } from "./tunnel-config";
+import type { SshAuth } from "./tunnel-config";
 
 /** Which credential the tunnel authenticates with — not the credential. */
 export type SshAuthKind = SshAuth["kind"];
@@ -51,7 +51,17 @@ interface SshPartsSource {
   readonly hostKey: HostKeyPolicy;
 }
 
-function project(source: SshPartsSource): SshParts {
+/**
+ * Describe a tunnel that is running.
+ *
+ * Takes a resolved config rather than a request body on purpose (0031 slice
+ * F2). What the sidebar should show is what the forward actually does, and
+ * those differ: a blank port is 22 by the time it is dialled, and an edit that
+ * left the credential box empty is running on the credential it carried over,
+ * which no request body says. Describing the input would have described a
+ * connection nobody made.
+ */
+export function sshPartsOf(source: SshPartsSource): SshParts {
   return {
     host: source.host,
     port: source.port,
@@ -59,19 +69,4 @@ function project(source: SshPartsSource): SshParts {
     auth: source.auth.kind,
     hostKey: source.hostKey,
   };
-}
-
-/**
- * Describe the tunnel an `ssh` config block asks for, or `undefined` when it
- * asks for none.
- *
- * Resolves first and projects second, rather than reading the raw input, so
- * that what is remembered is what the tunnel actually does: a blank port
- * becomes 22 here the way it does when the forward is opened, and a block the
- * resolver refuses raises `CapabilityError` rather than producing a
- * description of a connection that cannot exist.
- */
-export function sshPartsOf(input: SshTunnelInput | undefined): SshParts | undefined {
-  if (input === undefined) return undefined;
-  return project(resolveSshTunnelConfig(input));
 }

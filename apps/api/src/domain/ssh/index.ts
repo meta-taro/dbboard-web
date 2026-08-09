@@ -18,3 +18,4 @@ export {
   type SshTunnelConfig,
   type SshTunnelInput,
 } from "./tunnel-config";
+export { graftSshTunnel, type SshEdit } from "./tunnel-edit";

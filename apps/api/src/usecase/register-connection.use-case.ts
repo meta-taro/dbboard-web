@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { connectionPartsOf } from "../domain/connection-parts";
-import { sshPartsOf } from "../domain/ssh";
 import { AdapterConfig, AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRegistry } from "./connection-registry.port";
 
@@ -49,8 +48,11 @@ export class RegisterConnection {
     const parts = connectionPartsOf(config);
     // Same rule, applied to the bastion: what is written down is where the
     // tunnel goes and which kind of credential it uses, never the credential
-    // (0031 slice F).
-    const ssh = sshPartsOf(config.ssh);
+    // (0031 slice F). Asked of the factory rather than read off the config,
+    // so that registration and editing describe a tunnel the same way — and
+    // an edit's config cannot say, since the credential may have been carried
+    // (slice F2).
+    const ssh = this.adapterFactory.describeTunnel?.(adapter);
     this.registry.add({
       id,
       label,

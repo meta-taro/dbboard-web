@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { CapabilityError } from "../domain/errors";
+import { type SshParts, resolveSshTunnelConfig, sshPartsOf } from "../domain/ssh";
 import { NULL_CAPABILITIES } from "../domain/values";
 import type { AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRecord, ConnectionRegistry } from "./connection-registry.port";
@@ -37,6 +38,25 @@ function inMemoryRegistry(): { registry: ConnectionRegistry; records: Connection
         return true;
       },
     },
+  };
+}
+
+// Models the shape of the real factory rather than the shape of the request:
+// the block is resolved while the adapter is built, and `describeTunnel`
+// answers from the adapter afterwards. A fake that projected the request
+// instead would be unable to model a credential carried over from a previous
+// adapter, which is the case slice F2 exists for.
+function tunnelAwareFactory(): AdapterFactory {
+  const tunnels = new WeakMap<DatabaseAdapter, SshParts>();
+  return {
+    create: async (_driver, config) => {
+      const adapter = stubAdapter();
+      if (config.ssh) tunnels.set(adapter, sshPartsOf(resolveSshTunnelConfig(config.ssh)));
+      return adapter;
+    },
+    rebuild: async (previous) => previous,
+    describeTunnel: (adapter) => tunnels.get(adapter),
+    supported: () => ["postgres"],
   };
 }
 
@@ -151,15 +171,7 @@ describe("RegisterConnection", () => {
     // runs through a bastion at all, and an operator editing the port would
     // have no way to tell where the traffic actually goes.
     const { registry, records } = inMemoryRegistry();
-    await new RegisterConnection(
-      registry,
-      {
-        create: async () => stubAdapter(),
-        rebuild: async (previous) => previous,
-        supported: () => ["postgres"],
-      },
-      () => "fixed-id",
-    ).execute({
+    await new RegisterConnection(registry, tunnelAwareFactory(), () => "fixed-id").execute({
       label: "Prod",
       driver: "postgres",
       host: "db.internal",
@@ -191,15 +203,11 @@ describe("RegisterConnection", () => {
 
   it("stores no ssh description for a direct connection", async () => {
     const { registry, records } = inMemoryRegistry();
-    await new RegisterConnection(
-      registry,
-      {
-        create: async () => stubAdapter(),
-        rebuild: async (previous) => previous,
-        supported: () => ["postgres"],
-      },
-      () => "fixed-id",
-    ).execute({ label: "Prod", driver: "postgres", host: "db.internal" });
+    await new RegisterConnection(registry, tunnelAwareFactory(), () => "fixed-id").execute({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+    });
 
     expect(records[0]).not.toHaveProperty("ssh");
   });

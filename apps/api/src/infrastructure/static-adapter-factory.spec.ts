@@ -539,7 +539,9 @@ describe("StaticAdapterFactory", () => {
       }
     });
 
-    it("gives back a direct adapter when an edit drops the tunnel", async () => {
+    it("gives back a direct adapter when an edit explicitly drops the tunnel", async () => {
+      // `null`, not absence (0031 slice F2). Absence is what a PATCH body
+      // that is about something else looks like — see the next case.
       const spy = tunnelSpy();
       const factory = new StaticAdapterFactory({ openTunnel: spy.openTunnel });
 
@@ -549,7 +551,11 @@ describe("StaticAdapterFactory", () => {
         password: "OLD-PW",
         ssh: SSH,
       });
-      const after = await factory.rebuild(before, "postgres", { host: "db.internal", user: "u" });
+      const after = await factory.rebuild(before, "postgres", {
+        host: "db.internal",
+        user: "u",
+        ssh: null,
+      });
       try {
         expect(after).toBeInstanceOf(PostgresAdapter);
         // Still the far-side host, and still the password: dropping the
@@ -558,6 +564,64 @@ describe("StaticAdapterFactory", () => {
       } finally {
         await before.close?.();
         await after.close?.();
+      }
+    });
+
+    it("keeps the bastion, and its credential, through an edit that says nothing about it", async () => {
+      // 0031 slice F2, desktop `SshEditInput::Keep`. An edit that only moves
+      // the database host carries no ssh block — the form cannot re-send the
+      // bastion password it never received — so absence has to mean keep.
+      // Read as "no tunnel", renaming a connection would put it straight on
+      // the database it was tunnelling to reach.
+      const spy = tunnelSpy();
+      const factory = new StaticAdapterFactory({ openTunnel: spy.openTunnel });
+
+      const before = await factory.create("postgres", {
+        host: "old.internal",
+        user: "u",
+        password: "OLD-PW",
+        ssh: SSH,
+      });
+      const after = await factory.rebuild(before, "postgres", { host: "new.internal", user: "u" });
+      try {
+        expect(isTunneledAdapter(after)).toBe(true);
+        expect(spy.opened.map((o) => o.target.host)).toEqual(["old.internal", "new.internal"]);
+        // The same bastion, dialled with the credential nobody re-typed.
+        expect(spy.opened.map((o) => o.config.auth)).toEqual([
+          { kind: "password", password: "pw" },
+          { kind: "password", password: "pw" },
+        ]);
+      } finally {
+        await before.close?.();
+        await after.close?.();
+      }
+    });
+
+    it("describes the tunnel it built, and describes none for a direct connection", async () => {
+      // What the registry stores. Asked of the factory rather than derived
+      // from the config, because after a carried edit the config no longer
+      // says which credential the tunnel is on.
+      const spy = tunnelSpy();
+      const factory = new StaticAdapterFactory({ openTunnel: spy.openTunnel });
+
+      const tunneled = await factory.create("postgres", {
+        host: "db.internal",
+        user: "u",
+        ssh: SSH,
+      });
+      const direct = await factory.create("postgres", { host: "db.internal", user: "u" });
+      try {
+        expect(factory.describeTunnel(tunneled)).toEqual({
+          host: "bastion.example.com",
+          port: 22,
+          user: "jump",
+          auth: "password",
+          hostKey: { kind: "fingerprint", fingerprint: `SHA256:${"A".repeat(43)}` },
+        });
+        expect(factory.describeTunnel(direct)).toBeUndefined();
+      } finally {
+        await tunneled.close?.();
+        await direct.close?.();
       }
     });
   });

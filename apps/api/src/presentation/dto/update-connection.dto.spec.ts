@@ -89,4 +89,15 @@ describe("UpdateConnectionDto", () => {
     expect(validate({ ssh: { ...ssh, host: "" } }).errors.map((e) => e.property)).toContain("ssh");
     expect(validate({ ssh: { ...ssh, port: 0 } }).errors.map((e) => e.property)).toContain("ssh");
   });
+
+  it("lets an explicit null through, because that is how a bastion is removed", () => {
+    // 0031 slice F2, desktop's `SshEditInput`. Three states reach the use
+    // case, and the DTO has to be able to say all three: absent keeps the
+    // tunnel the connection is on, `null` takes it away, a block replaces it.
+    // Coerced to `undefined` here, the middle one would read as "keep" and a
+    // connection could never be taken out from behind its bastion.
+    const { dto, errors } = validate({ host: "db.internal", ssh: null });
+    expect(errors).toHaveLength(0);
+    expect(dto.ssh).toBeNull();
+  });
 });

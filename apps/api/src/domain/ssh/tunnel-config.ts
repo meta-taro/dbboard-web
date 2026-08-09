@@ -79,9 +79,17 @@ function resolvePort(value: unknown): number {
   return port;
 }
 
-function resolveAuth(input: SshTunnelInput): SshAuth {
+function resolveAuth(input: SshTunnelInput, carried: SshAuth | undefined): SshAuth {
   const privateKey = optionalText(input.privateKey);
   const password = optionalText(input.password);
+
+  // ADR-0080's rule, reaching the bastion. A secret box cannot be prefilled,
+  // so an edit form re-submits it blank, and a blank box says "the one you
+  // have" rather than "none". Only when *both* are blank, though: a caller
+  // sending two credentials is ambiguous whether or not one is stored.
+  if (carried !== undefined && privateKey === undefined && password === undefined) {
+    return carried;
+  }
 
   if ((privateKey === undefined) === (password === undefined)) {
     throw new CapabilityError(
@@ -120,12 +128,29 @@ function resolveHostKey(input: SshTunnelInput): HostKeyPolicy {
     : { kind: "known-hosts", knownHosts: knownHosts as string };
 }
 
-export function resolveSshTunnelConfig(input: SshTunnelInput): SshTunnelConfig {
+/**
+ * Resolve a tunnel out of a request body.
+ *
+ * `carriedAuth` is the credential the connection is already using, if any. It
+ * is what makes an *edit* possible: the form cannot prefill a secret box, so a
+ * saved edit re-submits it blank, and without something to carry that blank
+ * would tear down a working tunnel over a port change. Registration passes
+ * nothing and the rule below is unreachable, which is right — there is no
+ * stored credential to mean.
+ *
+ * Everything else is resolved the same way either time. Host, port, user and
+ * host key are not secrets, so a form can render them, and an edit that omits
+ * one is an edit that removed it.
+ */
+export function resolveSshTunnelConfig(
+  input: SshTunnelInput,
+  carriedAuth?: SshAuth,
+): SshTunnelConfig {
   return {
     host: requiredText(input.host, "host"),
     port: resolvePort(input.port),
     user: requiredText(input.user, "user"),
-    auth: resolveAuth(input),
+    auth: resolveAuth(input, carriedAuth),
     hostKey: resolveHostKey(input),
   };
 }

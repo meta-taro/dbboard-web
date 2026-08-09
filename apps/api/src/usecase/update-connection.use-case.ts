@@ -1,6 +1,5 @@
 import { connectionPartsOf } from "../domain/connection-parts";
 import { CapabilityError } from "../domain/errors";
-import { sshPartsOf } from "../domain/ssh";
 import type { AdapterConfig, AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRegistry } from "./connection-registry.port";
 import type { ConnectionView } from "./list-connections.use-case";
@@ -25,9 +24,9 @@ const CONNECTION_FIELDS: Record<keyof AdapterConfig, true> = {
   accountId: true,
   databaseId: true,
   // Putting a connection behind a bastion changes where it connects, so a
-  // body that adds one is an edit and not a rename. Taking the bastion away
-  // arrives as an absent `ssh` alongside the host and user boxes the form
-  // re-submitted, so that direction is already covered by them.
+  // body that adds one is an edit and not a rename. So does taking one away,
+  // which arrives as `ssh: null` — and `null` is not `undefined`, so the
+  // check below reads it as the connection detail it is (0031 slice F2).
   ssh: true,
 };
 
@@ -85,7 +84,13 @@ export class UpdateConnection {
       // In lockstep with the rebuild, and for the same reason as `parts`: a
       // record still describing the bastion the adapter just stopped using
       // would show an edit form that reinstates it on the next save.
-      const ssh = sshPartsOf(config.ssh);
+      //
+      // Read off the adapter that was just built, never off `config`. The
+      // three states an `ssh` field can be in (absent, `null`, a block) are
+      // resolved against the tunnel that was running, which only the previous
+      // adapter knew — so the config alone cannot say what is now in front of
+      // this connection (0031 slice F2).
+      const ssh = this.adapterFactory.describeTunnel?.(next.adapter);
       if (ssh === undefined) delete next.ssh;
       else next.ssh = ssh;
     }

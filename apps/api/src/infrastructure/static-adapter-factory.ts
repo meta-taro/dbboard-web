@@ -3,9 +3,11 @@ import {
   DEFAULT_MYSQL_PORT,
   DEFAULT_POSTGRES_PORT,
   forwardTarget,
+  graftSshTunnel,
   redirectToLoopback,
-  resolveSshTunnelConfig,
   type ForwardTarget,
+  type SshEdit,
+  type SshParts,
   type SshTunnelConfig,
 } from "../domain/ssh";
 import type { AdapterConfig, AdapterFactory } from "../usecase/adapter-factory.port";
@@ -131,7 +133,28 @@ export class StaticAdapterFactory implements AdapterFactory {
 
   async create(driver: string, config: AdapterConfig): Promise<DatabaseAdapter> {
     const builder = this.builderFor(driver);
-    return this.build(driver, builder, config, (cfg) => builder.create(cfg));
+    // Nothing is running yet, so there is nothing to keep: `graftSshTunnel`
+    // with no previous config reads an absent block and an explicit `null`
+    // alike, as "connect directly".
+    return this.build(
+      driver,
+      builder,
+      config,
+      (cfg) => builder.create(cfg),
+      (edit) => graftSshTunnel(undefined, edit),
+    );
+  }
+
+  /**
+   * The tunnel a connection is running over, or `undefined` for a direct one.
+   *
+   * The registry stores this rather than deriving it from the request that
+   * created the connection, because after an edit the two differ: a form that
+   * left the credential box blank describes a tunnel with no way in, and the
+   * one actually running has the credential it carried over.
+   */
+  describeTunnel(adapter: DatabaseAdapter): SshParts | undefined {
+    return isTunneledAdapter(adapter) ? adapter.describeTunnel() : undefined;
   }
 
   async rebuild(
@@ -147,7 +170,18 @@ export class StaticAdapterFactory implements AdapterFactory {
     // The old wrapper is not closed here: UpdateConnection does that after
     // the replacement is live, and closing it takes the old forward with it.
     const inner = isTunneledAdapter(previous) ? previous.unwrap() : previous;
-    return this.build(driver, builder, config, (cfg) => builder.rebuild(inner, cfg));
+    // The bastion credential carries the same way and for the same reason,
+    // one layer out: it lives in the wrapper, so the wrapper is what an edit
+    // has to be applied to (0031 slice F2).
+    return this.build(
+      driver,
+      builder,
+      config,
+      (cfg) => builder.rebuild(inner, cfg),
+      isTunneledAdapter(previous)
+        ? (edit) => previous.carryTunnel(edit)
+        : (edit) => graftSshTunnel(undefined, edit),
+    );
   }
 
   /**
@@ -157,16 +191,21 @@ export class StaticAdapterFactory implements AdapterFactory {
    *
    * `make` receives a config the driver can read — never the `ssh` block,
    * which is not a driver setting, and with `host`/`port` already pointed at
-   * loopback when there is a tunnel.
+   * loopback when there is a tunnel. `carry` answers what the `ssh` block
+   * means for *this* connection, which only its predecessor knows: the same
+   * absent block means "no tunnel" on the way in and "the tunnel you have"
+   * on the way through an edit.
    */
   private async build(
     driver: string,
     builder: DriverBuilder,
     config: AdapterConfig,
     make: (config: AdapterConfig) => DatabaseAdapter,
+    carry: (edit: SshEdit) => SshTunnelConfig | undefined,
   ): Promise<DatabaseAdapter> {
     const { ssh, ...rest } = config;
-    if (ssh === undefined) return make(rest);
+    const tunnel = carry(ssh);
+    if (tunnel === undefined) return make(rest);
 
     if (builder.defaultPort === undefined) {
       // Desktop raises `ConfigError::SshUnsupportedKind` here rather than
@@ -176,12 +215,14 @@ export class StaticAdapterFactory implements AdapterFactory {
     }
 
     // Both resolve before anything is dialled, so a malformed tunnel config
-    // or a connection that names no host costs no round trip.
-    const tunnel = resolveSshTunnelConfig(ssh);
+    // or a connection that names no host costs no round trip. (`carry` did
+    // the tunnel half above — a block the resolver refuses has already thrown
+    // by this point.)
     const target = forwardTarget(rest, builder.defaultPort);
 
     return openTunneledAdapter({
-      openTunnel: () => this.openTunnel(tunnel, target),
+      tunnel,
+      openTunnel: (config) => this.openTunnel(config, target),
       // Re-run on every reconnect, against the new forward's port — which is
       // why it closes over `rest` rather than over a resolved config.
       buildInner: (localPort) => make(redirectToLoopback(rest, localPort)),

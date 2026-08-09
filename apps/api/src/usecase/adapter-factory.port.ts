@@ -1,5 +1,5 @@
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
-import type { SshTunnelInput } from "../domain/ssh";
+import type { SshEdit, SshParts } from "../domain/ssh";
 import type { SslMode } from "../domain/ssl-mode";
 
 // Open bag of driver-config fields. The "null" branch ignores everything;
@@ -47,7 +47,11 @@ export interface AdapterConfig {
   // makes that structural — `ssh` is a field on the URL-bearing
   // `BackendConfig` variants only — where an open config bag cannot, so the
   // factory refuses the pairing instead (`ConnectionKind::supports_ssh_tunnel`).
-  ssh?: SshTunnelInput;
+  //
+  // Three states, not two (0031 slice F2, desktop `SshEditInput`): absent
+  // keeps whatever the connection is already running over, `null` takes the
+  // bastion away, and a block replaces it. See `SshEdit`.
+  ssh?: SshEdit;
 }
 
 // Constructs an adapter from a driver discriminator + per-driver config.
@@ -79,6 +83,19 @@ export interface AdapterFactory {
     driver: string,
     config: AdapterConfig,
   ): Promise<DatabaseAdapter>;
+
+  // What tunnel, if any, an adapter this factory built is running over —
+  // projected to the half that is safe to store and show (0031 slice F2).
+  //
+  // Asked of the factory rather than derived from the config that built the
+  // adapter, because after an edit those disagree: an edit that left the
+  // credential box blank describes a tunnel with no way in, while the one
+  // running carried the credential over. Only the adapter knows which.
+  //
+  // Optional so that a fake standing in for a driver with no tunnel support
+  // need not implement it; absent reads the same as "no tunnel", which is the
+  // right answer for every such factory.
+  describeTunnel?(adapter: DatabaseAdapter): SshParts | undefined;
 
   // The drivers `create` accepts, in the order a chooser should offer them.
   // 0027 slice E: the connection form used to restate this list in its

@@ -19,6 +19,13 @@
  */
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { CapabilityError, ConnectionError } from "../domain/errors";
+import {
+  graftSshTunnel,
+  sshPartsOf,
+  type SshEdit,
+  type SshParts,
+  type SshTunnelConfig,
+} from "../domain/ssh";
 import type { Capabilities, QueryResult, TableInfo, TableSchema } from "../domain/values";
 import type { SshTunnelHandle } from "./ssh-tunnel";
 
@@ -47,8 +54,19 @@ export const HEALTH_CHECK_AFTER_IDLE_MS = 30_000;
 export const PROBE_SQL = "SELECT 1";
 
 export interface TunneledAdapterDeps {
+  /**
+   * The tunnel this adapter runs over.
+   *
+   * Held rather than merely dialled, because it is where the bastion
+   * credential lives once the request that carried it is gone — the ssh
+   * counterpart of the password a driver keeps in its pool (ADR-0080). An
+   * edit that leaves the box blank is answered from here, and the sidebar's
+   * description is projected from here, so what is described is necessarily
+   * what is dialled.
+   */
+  tunnel: SshTunnelConfig;
   /** Opens a forward. Called again, with the same config, on recovery. */
-  openTunnel: () => Promise<SshTunnelHandle>;
+  openTunnel: (config: SshTunnelConfig) => Promise<SshTunnelHandle>;
   /**
    * Builds the adapter that talks to `127.0.0.1:localPort`.
    *
@@ -85,6 +103,22 @@ export interface TunneledAdapter extends DatabaseAdapter {
    * left blank.
    */
   unwrap(): DatabaseAdapter;
+  /**
+   * The tunnel, projected to the half that is safe to show (0031 slice F2).
+   *
+   * The registry stores this and the sidebar renders it. It is a method
+   * rather than a field for the same reason `unwrap` is: the only way to ask
+   * a tunneled adapter about its forward should go through the adapter.
+   */
+  describeTunnel(): SshParts;
+  /**
+   * The tunnel a successor should run over, given what the edit said.
+   *
+   * The bastion counterpart of `rebuildWith`: the edit goes in, a config
+   * comes out, and the credential is never handed to a caller that did not
+   * already have it. `undefined` back means the successor connects directly.
+   */
+  carryTunnel(edit: SshEdit): SshTunnelConfig | undefined;
 }
 
 export function isTunneledAdapter(adapter: DatabaseAdapter): adapter is TunneledAdapter {
@@ -94,7 +128,7 @@ export function isTunneledAdapter(adapter: DatabaseAdapter): adapter is Tunneled
 export async function openTunneledAdapter(deps: TunneledAdapterDeps): Promise<TunneledAdapter> {
   const now = deps.now ?? Date.now;
 
-  let tunnel = await deps.openTunnel();
+  let tunnel = await deps.openTunnel(deps.tunnel);
   let inner: DatabaseAdapter;
   try {
     inner = await deps.buildInner(tunnel.localPort);
@@ -124,7 +158,7 @@ export async function openTunneledAdapter(deps: TunneledAdapterDeps): Promise<Tu
   async function rebuild(): Promise<void> {
     await teardown();
 
-    const nextTunnel = await deps.openTunnel().catch((error: unknown) => {
+    const nextTunnel = await deps.openTunnel(deps.tunnel).catch((error: unknown) => {
       throw asConnectionError(error);
     });
     try {
@@ -219,6 +253,8 @@ export async function openTunneledAdapter(deps: TunneledAdapterDeps): Promise<Tu
     // trip for nothing. What it wants is the credential, which a stale
     // adapter still holds.
     unwrap: (): DatabaseAdapter => inner,
+    describeTunnel: (): SshParts => sshPartsOf(deps.tunnel),
+    carryTunnel: (edit: SshEdit): SshTunnelConfig | undefined => graftSshTunnel(deps.tunnel, edit),
     reconnect: async (): Promise<void> => {
       if (closed) {
         throw new ConnectionError("this connection was closed");

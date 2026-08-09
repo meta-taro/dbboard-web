@@ -88,9 +88,16 @@ export class UpdateConnectionDto {
   // it: stripped by the whitelist, an edit that puts a live connection
   // behind a bastion reads as a rename, and the connection keeps going
   // direct — precisely what the operator was editing it to stop.
+  //
+  // Nullable where registration's is not (0031 slice F2, desktop
+  // `SshEditInput`). An edit has a third thing to say that a registration
+  // does not: absent means "whatever tunnel it is already on", so removing
+  // one needs a spelling of its own, and `null` is it. `@IsOptional` already
+  // waves `null` past the validators below — what this type adds is the
+  // ability for the controller to forward it instead of narrowing it away.
   @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => SshTunnelDto)
-  ssh?: SshTunnelDto;
+  ssh?: SshTunnelDto | null;
 }

@@ -46,6 +46,12 @@ describe("UpdateConnection", () => {
     factory = {
       create: async () => stubAdapter(),
       rebuild: vi.fn().mockImplementation(async () => rebuilt),
+      // The real factory answers this from the adapter it just built, which
+      // is the only thing that knows whether an omitted `ssh` block kept a
+      // tunnel or there was never one. A fake that answered from the request
+      // would be modelling the bug slice F2 removes, so this one answers
+      // "direct" until a test says otherwise.
+      describeTunnel: vi.fn().mockReturnValue(undefined),
       supported: () => ["postgres", "null"],
     };
   });
@@ -213,38 +219,39 @@ describe("UpdateConnection", () => {
     expect(records.get("c1")).not.toHaveProperty("parts.password");
   });
 
-  it("re-describes the tunnel when an edit puts one in front", async () => {
+  it("describes the tunnel the rebuilt adapter is on, not the one the body asked for", async () => {
     // 0031 slice F. The description has to track the rebuild: a connection
     // that now goes through a bastion and does not say so is worse than one
     // that says nothing, because the sidebar looks unchanged.
+    //
+    // Asked of the adapter (slice F2), because the body cannot answer it. An
+    // edit that carried its credential over sends a blank password box, and a
+    // description derived from that would name a tunnel with no way in.
     const { registry, records } = seeded();
-
-    const view = await new UpdateConnection(registry, factory).execute("c1", {
-      host: "db.internal",
-      ssh: {
-        host: "bastion.example.com",
-        user: "deploy",
-        password: "SECRET-PW",
-        fingerprint: "SHA256:abc",
-      },
-    });
-
-    expect(view.ssh).toEqual({
+    const tunnel = {
       host: "bastion.example.com",
       port: 22,
       user: "deploy",
-      auth: "password",
-      hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc" },
+      auth: "password" as const,
+      hostKey: { kind: "fingerprint" as const, fingerprint: "SHA256:abc" },
+    };
+    factory.describeTunnel = vi.fn().mockReturnValue(tunnel);
+
+    const view = await new UpdateConnection(registry, factory).execute("c1", {
+      host: "db.internal",
+      ssh: { host: "bastion.example.com", user: "deploy", password: "", fingerprint: "SHA256:abc" },
     });
+
+    expect(factory.describeTunnel).toHaveBeenCalledWith(rebuilt);
+    expect(view.ssh).toEqual(tunnel);
     expect(JSON.stringify(records.get("c1"))).not.toContain("SECRET");
   });
 
-  it("forgets the tunnel when an edit takes it away", async () => {
-    // The description tracks what was built, and what is built from a config
-    // naming no `ssh` is a direct connection. Whether an absent block should
-    // instead mean "leave the tunnel alone" — desktop's `SshEditInput::Keep` —
-    // is the next commit's question; what must not happen either way is a
-    // record describing a bastion the adapter is no longer using.
+  it("forgets the tunnel once the adapter is no longer on one", async () => {
+    // The record follows the adapter, in both directions. Whether an absent
+    // `ssh` means the adapter kept its tunnel is settled a layer down
+    // (`graftSshTunnel`); what this use case must not do is keep describing a
+    // bastion after the factory has answered that there is none.
     const { registry, records } = seeded({
       ssh: {
         host: "bastion.example.com",
@@ -257,10 +264,36 @@ describe("UpdateConnection", () => {
 
     const view = await new UpdateConnection(registry, factory).execute("c1", {
       host: "db.internal",
+      ssh: null,
     });
 
+    expect(factory.rebuild).toHaveBeenCalledWith(expect.anything(), "postgres", {
+      host: "db.internal",
+      ssh: null,
+    });
     expect(view).not.toHaveProperty("ssh");
     expect(records.get("c1")).not.toHaveProperty("ssh");
+  });
+
+  it("leaves the tunnel description alone when nothing about the connection changed", async () => {
+    // A rename does not rebuild, so it never asks what tunnel the adapter is
+    // on — and the record keeps saying what it said. This is `SshEditInput::
+    // Keep` in the one case where it costs nothing to honour: the adapter was
+    // not replaced, so it is demonstrably still on the same bastion.
+    const ssh = {
+      host: "bastion.example.com",
+      port: 22,
+      user: "deploy",
+      auth: "password" as const,
+      hostKey: { kind: "fingerprint" as const, fingerprint: "SHA256:abc" },
+    };
+    const { registry, records } = seeded({ ssh });
+
+    const view = await new UpdateConnection(registry, factory).execute("c1", { label: "Staging" });
+
+    expect(factory.describeTunnel).not.toHaveBeenCalled();
+    expect(view.ssh).toEqual(ssh);
+    expect(records.get("c1")?.ssh).toEqual(ssh);
   });
 
   it("keeps a renamed connection in its place in the list", async () => {

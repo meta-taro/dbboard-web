@@ -657,3 +657,66 @@ docs-only and nothing has been pushed, so neither CI nor the pre-push hook ever
 saw it — the pre-commit hook lints staged files and does not typecheck the
 workspace. The rule that would have caught it is the one already written in
 CLAUDE.md: run all four gate commands, not the ones the hook covers.
+
+### Slice F2 — blank means keep, applied to the bastion
+
+The divergence slice D recorded, closed. Desktop's `update_connection` takes
+`ssh: SshEditInput` with three variants; web's `ssh` field had two states and
+no way to say the third. `SshEdit` gives it the same three, spelled the way
+JSON can spell them:
+
+| wire         | desktop   | means                                              |
+| ------------ | --------- | -------------------------------------------------- |
+| field absent | `Keep`    | whatever bastion the connection is already on      |
+| `ssh: null`  | `Disable` | take the bastion away                              |
+| `ssh: { … }` | `Set`     | this bastion, with a blank credential meaning keep |
+
+`graftSshTunnel(previous, edit)` is the whole of it, and it is a domain
+function rather than a branch in the factory because the question it answers
+— what tunnel is this connection on after this edit — is not about drivers.
+
+**Only the credential is carried.** Host, port, user and host key are not
+secrets, so the form renders them filled in, and an edit that omits one is an
+edit that cleared it. Carrying those would make a cleared host key
+unclearable, and an unverified bastion is what ADR-0069 refuses; a test pins
+that an edit keeping its credential still has to name a host key.
+
+The carry itself is `resolveAuth`'s, one argument wider: a `carried` auth is
+used when _both_ credential boxes are blank. Both, not either — a caller
+sending two credentials is ambiguous whether or not one is stored, and the
+existing "exactly one of privateKey or password" refusal is the honest answer.
+Registration passes nothing, so the carry arm is unreachable there and a blank
+credential fails exactly as it did before.
+
+**Where the description comes from had to move.** `sshPartsOf(config)` was
+right in F1 and became wrong the moment a credential could be carried: an edit
+that left the box blank describes a tunnel with no way in, while the tunnel
+actually running has the stored credential. So `TunneledAdapter` now holds its
+`SshTunnelConfig` rather than merely having dialled it, and answers two
+questions about it — `describeTunnel()` for the record, and `carryTunnel(edit)`
+for the next rebuild. The credential moves holder to holder exactly as
+`rebuildWith` moves a database password; the factory sees it only as the config
+it is about to dial. `openTunnel` takes that same held config, so what is
+described and what is dialled cannot drift apart.
+
+`AdapterFactory` gains `describeTunnel?(adapter)`, optional so that the fakes
+standing in for tunnel-less factories across the suite did not all grow a
+member. Both use cases now ask it instead of projecting the config, and the
+Keep case then needs **no** special handling in `UpdateConnection`: a rename
+never enters the rebuild branch, so the record's `ssh` is simply left alone —
+and it is left alone on the strongest possible evidence, that the adapter was
+not replaced.
+
+`UpdateConnectionDto.ssh` becomes `SshTunnelDto | null`. `@IsOptional()`
+already waved `null` past the validators, so this is a type change and not a
+validation change — what it adds is the controller's ability to forward the
+removal instead of narrowing it away. The three wire states each get an
+end-to-end case, because each of them has a way to fail silently at the pipe:
+`null` coerced to `undefined` would read as Keep, a stripped block would answer
+200 on a connection still going direct, and an absent block that rebuilt would
+drop a working forward.
+
+Sixteen new or rewritten tests across five files. `sshPartsOf` was repurposed
+from input→parts to config→parts, which is the same projection one step later
+and let its two resolver-concern tests go; `classifySshEdit` was designed and
+then not written, having no caller.

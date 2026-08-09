@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
 import { ConnectionError } from "../domain/errors";
 import { NULL_CAPABILITIES, type QueryResult, type TableInfo } from "../domain/values";
+import type { SshTunnelConfig } from "../domain/ssh";
 import type { SshTunnelHandle } from "./ssh-tunnel";
 import {
   HEALTH_CHECK_AFTER_IDLE_MS,
@@ -101,10 +102,19 @@ interface HarnessOptions {
   openTunnel?: () => Promise<SshTunnelHandle>;
 }
 
+const TUNNEL: SshTunnelConfig = {
+  host: "bastion.example.com",
+  port: 22,
+  user: "deploy",
+  auth: { kind: "password", password: "s3cret" },
+  hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc123" },
+};
+
 function harness(options: HarnessOptions = {}) {
   const time = clock();
   const tunnels: FakeTunnel[] = [];
   const inners: FakeInner[] = [];
+  const tunnel = TUNNEL;
 
   const openTunnel =
     options.openTunnel ??
@@ -121,7 +131,7 @@ function harness(options: HarnessOptions = {}) {
     return inner;
   };
 
-  return { time, tunnels, inners, openTunnel, buildInner };
+  return { time, tunnel, tunnels, inners, openTunnel, buildInner };
 }
 
 describe("openTunneledAdapter", () => {
@@ -129,6 +139,7 @@ describe("openTunneledAdapter", () => {
     const h = harness();
     const ports: number[] = [];
     const adapter = await openTunneledAdapter({
+      tunnel: h.tunnel,
       openTunnel: h.openTunnel,
       buildInner: async (port) => {
         ports.push(port);
@@ -334,6 +345,45 @@ describe("openTunneledAdapter", () => {
     await adapter.reconnect();
 
     expect(isTunneledAdapter(adapter) && adapter.unwrap()).toBe(h.inners[1]);
+  });
+
+  // ---- 0031 slice F2: what an edit can learn from a live tunnel ---------
+
+  it("describes the tunnel it runs over, and does not describe the credential", async () => {
+    // The sidebar and the edit form both need to say "this goes through
+    // bastion.example.com"; neither may be handed the password to say it
+    // with. `SshParts` is the shape that cannot carry one.
+    const h = harness();
+    const adapter = await openTunneledAdapter({ ...h, now: h.time.now });
+
+    expect(isTunneledAdapter(adapter) && adapter.describeTunnel()).toEqual({
+      host: "bastion.example.com",
+      port: 22,
+      user: "deploy",
+      auth: "password",
+      hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc123" },
+    });
+  });
+
+  it("applies an edit to the tunnel it holds rather than handing the tunnel out", async () => {
+    // `carryTunnel`, not `getTunnel`. Same reasoning as `rebuildWith` on the
+    // drivers: the credential moves from one holder to the next without the
+    // caller ever being in a position to read it.
+    const h = harness();
+    const adapter = await openTunneledAdapter({ ...h, now: h.time.now });
+    if (!isTunneledAdapter(adapter)) throw new Error("not tunneled");
+
+    expect(adapter.carryTunnel(undefined)).toEqual(h.tunnel);
+    expect(adapter.carryTunnel(null)).toBeUndefined();
+    expect(
+      adapter.carryTunnel({
+        host: "bastion.example.com",
+        port: 2222,
+        user: "deploy",
+        password: "",
+        fingerprint: "SHA256:abc123",
+      })?.auth,
+    ).toEqual({ kind: "password", password: "s3cret" });
   });
 
   it("still tears down the forward when the inner adapter fails to close", async () => {

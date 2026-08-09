@@ -74,6 +74,37 @@ export interface SshParts {
     | { kind: "known-hosts"; knownHosts: string };
 }
 
+/**
+ * The `ssh` block of a connection body — what is *sent*, where `SshParts` is
+ * what comes back (0031 slice F4).
+ *
+ * Two types rather than one because they are opposites in the only place it
+ * matters: this one carries the credential and does not say which kind is in
+ * use, and `SshParts` says which kind is in use and carries none. Mirrors
+ * `SshTunnelDto`, including the omission it was written for — there is no
+ * `privateKeyPath` member, because web takes key material and a path field
+ * would have the API process reading files off the server on request.
+ *
+ * The pairing rules (exactly one of privateKey/password, exactly one of
+ * fingerprint/knownHosts — ADR-0069) are not expressed as a union here. They
+ * belong to `resolveSshTunnelConfig`, which applies them to every caller
+ * rather than only the ones that came from this form, and a union would let
+ * the browser refuse a combination the server had not been asked about.
+ */
+export interface SshInput {
+  host: string;
+  // Absent means 22, resolved server-side — the same default the tunnel
+  // dials with, so the form never states one of its own.
+  port?: number;
+  user: string;
+  /** PEM text, not a path. Blank on an edit means "keep the stored one". */
+  privateKey?: string;
+  passphrase?: string;
+  password?: string;
+  fingerprint?: string;
+  knownHosts?: string;
+}
+
 export interface ConnectionView {
   id: string;
   label: string;
@@ -109,6 +140,11 @@ export interface RegisterInput {
   // Outranks any `sslmode` inside `connectionString`, which is what lets
   // the form's select be trusted in URL mode as well as parts mode.
   sslMode?: SslMode;
+  // Nested rather than flattened into `sshHost`/`sshUser`, because the API
+  // validates it with `@ValidateNested()` under a whitelist that strips what
+  // it does not recognise: flattened fields would be dropped at the pipe and
+  // the connection registered going direct.
+  ssh?: SshInput;
 }
 
 /**
@@ -131,7 +167,30 @@ export interface UpdateInput {
   password?: string;
   database?: string;
   sslMode?: SslMode;
+  /**
+   * Three states, where registration has two (0031 slice F2, mirroring
+   * desktop's `SshEditInput`):
+   *
+   * - **absent** — keep whatever tunnel the connection is already on;
+   * - **`null`** — take it away, which absence cannot say and so needs a
+   *   spelling of its own;
+   * - **a block** — put it on this one, where a blank credential inside
+   *   means carry the stored one (ADR-0080, extended to the bastion).
+   */
+  ssh?: SshInput | null;
 }
+
+/**
+ * What `ConnectionForm` emits, in either mode.
+ *
+ * `RegisterInput` with the edit's nullable `ssh`, because one component
+ * serves both modes and the page is what narrows the payload to the endpoint
+ * it is about to call. Written as an `Omit` intersection rather than by
+ * extending `RegisterInput`, since intersecting `SshInput | undefined` with
+ * `SshInput | null | undefined` would quietly give back the former and lose
+ * the removal this exists to carry.
+ */
+export type ConnectionFormPayload = Omit<RegisterInput, "ssh"> & { ssh?: SshInput | null };
 
 export type ConnectionsState = "idle" | "loading" | "error";
 

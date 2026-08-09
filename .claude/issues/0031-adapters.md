@@ -751,3 +751,45 @@ human compares it against a value obtained out of band is the entire reason
 ADR-0069 makes host-key verification mandatory rather than automatic.
 
 Seven tests (fourteen runs, two environments).
+
+### Slice F4 — the wire shape, and a port row owed since slice C
+
+`SshInput` is the block a connection body carries; `SshParts` is what comes
+back. Two types rather than one, because they are opposites in the only place
+it matters: this one carries the credential and does not say which kind is in
+use, and `SshParts` says which kind is in use and carries none.
+
+`RegisterInput.ssh` is `SshInput`; `UpdateInput.ssh` is `SshInput | null`,
+which is slice F2's third state reaching the browser. `ConnectionFormPayload`
+is the union of the two, because one component serves both modes and the page
+narrows to the endpoint it is about to call — written as
+`Omit<RegisterInput, "ssh"> & { ssh?: SshInput | null }`, since intersecting
+`SshInput | undefined` with `SshInput | null | undefined` gives back the
+former and loses the removal.
+
+The ADR-0069 pairing rules are deliberately not encoded as a union.
+`resolveSshTunnelConfig` applies them to every caller rather than only to the
+ones that arrived from this form, and a union here would have the browser
+refusing a combination the server was never asked about.
+
+`defaultPortFor` becomes a table and gains MySQL's 3306, owed since slice C
+shipped the adapter. Nothing was ever sent wrong — `mysql2` applies the same
+default when the payload omits a port — but the box showed no placeholder,
+which is the form declining to say what it is about to connect to. The
+previous comment in that file said the row "arrives with the adapter, in rung
+7", and it did not.
+
+`supportsSshTunnel` reads that same table instead of keeping a list beside it,
+which is how `StaticAdapterFactory` reaches the answer too: a `defaultPort` on
+the builder is exactly what makes a driver tunnel-capable there, because a
+forward redirects a `host:port` pair and a driver that cannot name a port has
+nothing to redirect. A driver this build has no row for is treated as unable —
+the cost is boxes that appear a release late, against a form that would
+otherwise collect a bastion and a private key and post them at a 404.
+
+Six new tests. The two composable ones passed on first run, because `register`
+and `update` forward the body verbatim and have nothing to narrow — so they
+lock behaviour rather than drive it, and the type change they accompany is not
+checked by them at all: `apps/web/tests/` is outside the generated Nuxt
+`tsconfig` include list, which covers `tests/nuxt/**` only. The compile-time
+consumer arrives with the form in F5.

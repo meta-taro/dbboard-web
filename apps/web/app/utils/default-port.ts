@@ -16,9 +16,34 @@ import type { Driver } from "../composables/useConnections";
 // none either — since slice E the server can offer one — and the port box
 // simply shows no placeholder rather than a number borrowed from elsewhere.
 //
-// Desktop's table has a MySQL row at 3306. Web has no MySQL adapter yet, so
-// mirroring the row would be inventing a default for a driver that cannot
-// be selected — it arrives with the adapter, in rung 7.
+// MySQL's row arrived with its adapter in 0031 slice C, and is owed from
+// then: `mysql2` applies 3306 itself when the payload omits a port, so
+// nothing was ever sent wrong, but the box showed no placeholder and the
+// form was therefore declining to say what it was about to connect to.
+const DEFAULT_PORTS: Record<string, number> = {
+  postgres: 5432,
+  mysql: 3306,
+};
+
 export function defaultPortFor(driver: Driver): number | undefined {
-  return driver === "postgres" ? 5432 : undefined;
+  return DEFAULT_PORTS[driver];
+}
+
+/**
+ * Whether this driver can be fronted by an SSH tunnel (0031 slice F4).
+ *
+ * Reads the table above rather than keeping a list beside it, which is how
+ * `StaticAdapterFactory` reaches the same answer: a `defaultPort` on the
+ * builder is exactly what makes a driver tunnel-capable there. The two can
+ * only be wrong separately — a forward redirects a TCP `host:port` pair, so
+ * a driver that cannot say which port it speaks on has nothing to redirect.
+ * Turso is a libSQL URL, D1 an HTTPS API, and `null` connects to nothing.
+ *
+ * A driver this build has no row for is treated as unable, which is the
+ * conservative direction: the cost is a tunnel-capable driver whose boxes
+ * appear a release late, against a form that would otherwise collect a
+ * bastion and a private key and post them at a 404.
+ */
+export function supportsSshTunnel(driver: Driver): boolean {
+  return defaultPortFor(driver) !== undefined;
 }

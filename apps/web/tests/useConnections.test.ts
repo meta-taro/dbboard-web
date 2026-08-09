@@ -148,6 +148,66 @@ describe("useConnections", () => {
     wrapper.unmount();
   });
 
+  it("register() sends an ssh block as its own member of the body", async () => {
+    // 0031 slice F4. The block is nested rather than flattened into
+    // `sshHost`/`sshUser`, because `SshTunnelDto` is validated with
+    // `@ValidateNested()` and the global whitelist strips what it does not
+    // know — flattened fields would vanish at the pipe and the connection
+    // would be registered going direct.
+    mockFetch.mockResolvedValueOnce({ connections: [] });
+    mockFetch.mockResolvedValueOnce({ id: "abc" });
+    mockFetch.mockResolvedValueOnce({ connections: [] });
+
+    const { Component, holder } = makeHarness();
+    const wrapper = mount(Component);
+    await flushPromises();
+
+    await holder.api!.register({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      ssh: { host: "bastion.example.com", user: "deploy", password: "pw", fingerprint: "SHA256:a" },
+    });
+
+    expect(mockFetch).toHaveBeenNthCalledWith(2, "http://test/connections", {
+      method: "POST",
+      body: {
+        label: "Prod",
+        driver: "postgres",
+        host: "db.internal",
+        ssh: {
+          host: "bastion.example.com",
+          user: "deploy",
+          password: "pw",
+          fingerprint: "SHA256:a",
+        },
+      },
+    });
+    wrapper.unmount();
+  });
+
+  it("update() sends an explicit null to take a bastion away", async () => {
+    // The state that has no other spelling (slice F2). Absent means "keep
+    // the tunnel you are on", so a composable that dropped `null` on the way
+    // past — as an empty-ish value, or by typing the field as optional-only
+    // — would leave a connection permanently behind its bastion.
+    mockFetch.mockResolvedValueOnce({ connections: [] });
+    mockFetch.mockResolvedValueOnce({ id: "abc", label: "Prod", driver: "postgres" });
+    mockFetch.mockResolvedValueOnce({ connections: [] });
+
+    const { Component, holder } = makeHarness();
+    const wrapper = mount(Component);
+    await flushPromises();
+
+    await holder.api!.update("abc", { host: "db.internal", ssh: null });
+
+    expect(mockFetch).toHaveBeenNthCalledWith(2, "http://test/connections/abc", {
+      method: "PATCH",
+      body: { host: "db.internal", ssh: null },
+    });
+    wrapper.unmount();
+  });
+
   it("update() leaves the list alone and reports the error when the edit is refused", async () => {
     const before = [{ id: "abc", label: "Prod", driver: "postgres" }];
     mockFetch.mockResolvedValueOnce({ connections: before });

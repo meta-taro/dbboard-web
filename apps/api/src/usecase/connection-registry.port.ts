@@ -1,5 +1,6 @@
 import type { ConnectionParts } from "../domain/connection-parts";
 import type { DatabaseAdapter } from "../domain/database-adapter.port";
+import type { SshParts } from "../domain/ssh";
 
 // A registered connection. `adapter` is the live instance the controllers
 // dispatch to; `driver` and `label` are user-facing metadata returned by
@@ -18,6 +19,14 @@ export interface ConnectionRecord {
   // Optional because "no parts" is a real state, not a missing value: a
   // `null`-driver connection has no address to describe.
   parts?: ConnectionParts;
+  // The bastion this connection is reached through, minus the key or the
+  // password that opens it (0031 slice F). Kept for the same reason `parts`
+  // is: an edit form that cannot show the tunnel cannot be trusted to leave
+  // it alone, and the form has no other way to learn it exists.
+  //
+  // Optional in the same sense — a direct connection has no tunnel to
+  // describe, which is different from one whose tunnel is unknown.
+  ssh?: SshParts;
 }
 
 // A flat store keyed by id. Production swap could be a persistent store

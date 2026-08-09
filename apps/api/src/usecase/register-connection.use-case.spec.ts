@@ -6,6 +6,11 @@ import type { AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRecord, ConnectionRegistry } from "./connection-registry.port";
 import { RegisterConnection } from "./register-connection.use-case";
 
+// The tunnel resolver insists a private key is key material and not a path,
+// so the fixture has to look like one (`scripts/pii-scan.allow` allows this
+// exact shape).
+const KEY_MATERIAL = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----";
+
 function stubAdapter(): DatabaseAdapter {
   return {
     getId: () => "null",
@@ -139,6 +144,64 @@ describe("RegisterConnection", () => {
       sslMode: "require",
     });
     expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
+  });
+
+  it("stores the tunnel's non-secret half alongside the database's", async () => {
+    // 0031 slice F. Without this the edit form cannot show that a connection
+    // runs through a bastion at all, and an operator editing the port would
+    // have no way to tell where the traffic actually goes.
+    const { registry, records } = inMemoryRegistry();
+    await new RegisterConnection(
+      registry,
+      {
+        create: async () => stubAdapter(),
+        rebuild: async (previous) => previous,
+        supported: () => ["postgres"],
+      },
+      () => "fixed-id",
+    ).execute({
+      label: "Prod",
+      driver: "postgres",
+      host: "db.internal",
+      database: "app",
+      user: "reader",
+      password: "SECRET-PW",
+      ssh: {
+        host: "bastion.example.com",
+        port: 2222,
+        user: "deploy",
+        privateKey: KEY_MATERIAL,
+        passphrase: "SECRET-PHRASE",
+        fingerprint: "SHA256:abc",
+      },
+    });
+
+    expect(records[0]?.ssh).toEqual({
+      host: "bastion.example.com",
+      port: 2222,
+      user: "deploy",
+      auth: "private-key",
+      hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc" },
+    });
+    // The leak test the database half already has, extended to the bastion:
+    // the record describes the tunnel and holds none of its credentials.
+    expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("SECRET");
+    expect(JSON.stringify({ ...records[0], adapter: undefined })).not.toContain("OPENSSH");
+  });
+
+  it("stores no ssh description for a direct connection", async () => {
+    const { registry, records } = inMemoryRegistry();
+    await new RegisterConnection(
+      registry,
+      {
+        create: async () => stubAdapter(),
+        rebuild: async (previous) => previous,
+        supported: () => ["postgres"],
+      },
+      () => "fixed-id",
+    ).execute({ label: "Prod", driver: "postgres", host: "db.internal" });
+
+    expect(records[0]).not.toHaveProperty("ssh");
   });
 
   it("stores no parts for a connection that has none", async () => {

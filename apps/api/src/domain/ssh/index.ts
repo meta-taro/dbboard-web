@@ -9,6 +9,7 @@ export {
   type ForwardSource,
   type ForwardTarget,
 } from "./loopback";
+export { sshPartsOf, type SshAuthKind, type SshParts } from "./ssh-parts";
 export {
   DEFAULT_SSH_PORT,
   describeSshTunnel,

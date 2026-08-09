@@ -51,11 +51,38 @@ export interface ConnectionParts {
   sslMode?: SslMode;
 }
 
+/**
+ * How a registered connection reaches its bastion, minus the key or the
+ * password that opens it.
+ *
+ * Mirrors `SshParts` on the API (`apps/api/src/domain/ssh/ssh-parts.ts`) and
+ * keeps its one deliberate omission: `auth` says *which* credential the
+ * tunnel uses, never the credential. Desktop's `SshPrefill` can prefill a key
+ * *path* because a path is not a secret; web takes key material, so the box
+ * starts empty and `auth` is all there is to prefill.
+ *
+ * Nothing is optional. A tunnel the server refused to open is not described
+ * at all — `ssh` is simply absent for a direct connection.
+ */
+export interface SshParts {
+  host: string;
+  port: number;
+  user: string;
+  auth: "private-key" | "password";
+  hostKey:
+    | { kind: "fingerprint"; fingerprint: string }
+    | { kind: "known-hosts"; knownHosts: string };
+}
+
 export interface ConnectionView {
   id: string;
   label: string;
   driver: string;
   parts?: ConnectionParts;
+  // Absent for a direct connection, which is a different statement from a
+  // tunnel whose details are unknown — the server sends this whenever one is
+  // configured (0031 slice F).
+  ssh?: SshParts;
 }
 
 /**

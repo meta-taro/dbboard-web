@@ -1,5 +1,6 @@
 import { connectionPartsOf } from "../domain/connection-parts";
 import { CapabilityError } from "../domain/errors";
+import { sshPartsOf } from "../domain/ssh";
 import type { AdapterConfig, AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRegistry } from "./connection-registry.port";
 import type { ConnectionView } from "./list-connections.use-case";
@@ -80,14 +81,27 @@ export class UpdateConnection {
       const parts = connectionPartsOf(config);
       if (parts === undefined) delete next.parts;
       else next.parts = parts;
+
+      // In lockstep with the rebuild, and for the same reason as `parts`: a
+      // record still describing the bastion the adapter just stopped using
+      // would show an edit form that reinstates it on the next save.
+      const ssh = sshPartsOf(config.ssh);
+      if (ssh === undefined) delete next.ssh;
+      else next.ssh = ssh;
     }
 
     // An upsert — `add` replaces by id and keeps the record's position, so a
     // renamed connection does not move to the bottom of the sidebar.
     this.registry.add(next);
 
-    const { id: recordId, label: recordLabel, driver, parts } = next;
-    return { id: recordId, label: recordLabel, driver, ...(parts && { parts }) };
+    const { id: recordId, label: recordLabel, driver, parts, ssh } = next;
+    return {
+      id: recordId,
+      label: recordLabel,
+      driver,
+      ...(parts && { parts }),
+      ...(ssh && { ssh }),
+    };
   }
 }
 

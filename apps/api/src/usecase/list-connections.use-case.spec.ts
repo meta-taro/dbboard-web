@@ -76,4 +76,22 @@ describe("ListConnections", () => {
   it("returns an empty list when nothing is registered", () => {
     expect(new ListConnections(registry([])).execute()).toEqual({ connections: [] });
   });
+
+  it("carries the tunnel description into the view", () => {
+    // The projection names every field it forwards, so a record field the
+    // view forgot is silent — the sidebar simply never learns the connection
+    // is tunnelled (0031 slice F).
+    const ssh = {
+      host: "bastion.example.com",
+      port: 22,
+      user: "deploy",
+      auth: "password",
+      hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc" },
+    } as const;
+    const reg = registry([
+      { id: "c1", label: "Prod", driver: "postgres", adapter: adapter(), ssh },
+    ]);
+
+    expect(new ListConnections(reg).execute().connections[0]?.ssh).toEqual(ssh);
+  });
 });

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { connectionPartsOf } from "../domain/connection-parts";
+import { sshPartsOf } from "../domain/ssh";
 import { AdapterConfig, AdapterFactory } from "./adapter-factory.port";
 import type { ConnectionRegistry } from "./connection-registry.port";
 
@@ -46,7 +47,18 @@ export class RegisterConnection {
     // After `create`, deliberately: a config the factory rejects should raise
     // before anything about it is written down.
     const parts = connectionPartsOf(config);
-    this.registry.add({ id, label, driver, adapter, ...(parts && { parts }) });
+    // Same rule, applied to the bastion: what is written down is where the
+    // tunnel goes and which kind of credential it uses, never the credential
+    // (0031 slice F).
+    const ssh = sshPartsOf(config.ssh);
+    this.registry.add({
+      id,
+      label,
+      driver,
+      adapter,
+      ...(parts && { parts }),
+      ...(ssh && { ssh }),
+    });
     return { id };
   }
 }

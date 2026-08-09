@@ -1,4 +1,5 @@
 import type { ConnectionParts } from "../domain/connection-parts";
+import type { SshParts } from "../domain/ssh";
 import type { ConnectionRegistry } from "./connection-registry.port";
 
 export interface ConnectionView {
@@ -9,6 +10,10 @@ export interface ConnectionView {
   // has no password member, which is what lets this cross the wire at all
   // (0027 slice F).
   parts?: ConnectionParts;
+  // Absent when the connection is direct. `SshParts` names the tunnel's
+  // credential only by kind, which is what lets this cross the wire
+  // (0031 slice F).
+  ssh?: SshParts;
 }
 
 export interface ListConnectionsOutput {
@@ -25,7 +30,7 @@ export class ListConnections {
 
   execute(): ListConnectionsOutput {
     return {
-      connections: this.registry.list().map(({ id, label, driver, parts }) => ({
+      connections: this.registry.list().map(({ id, label, driver, parts, ssh }) => ({
         id,
         label,
         driver,
@@ -35,6 +40,7 @@ export class ListConnections {
         // whatever the record gains next, which is how the adapter would
         // eventually cross out.
         ...(parts && { parts }),
+        ...(ssh && { ssh }),
       })),
     };
   }

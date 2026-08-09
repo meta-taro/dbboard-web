@@ -213,6 +213,56 @@ describe("UpdateConnection", () => {
     expect(records.get("c1")).not.toHaveProperty("parts.password");
   });
 
+  it("re-describes the tunnel when an edit puts one in front", async () => {
+    // 0031 slice F. The description has to track the rebuild: a connection
+    // that now goes through a bastion and does not say so is worse than one
+    // that says nothing, because the sidebar looks unchanged.
+    const { registry, records } = seeded();
+
+    const view = await new UpdateConnection(registry, factory).execute("c1", {
+      host: "db.internal",
+      ssh: {
+        host: "bastion.example.com",
+        user: "deploy",
+        password: "SECRET-PW",
+        fingerprint: "SHA256:abc",
+      },
+    });
+
+    expect(view.ssh).toEqual({
+      host: "bastion.example.com",
+      port: 22,
+      user: "deploy",
+      auth: "password",
+      hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc" },
+    });
+    expect(JSON.stringify(records.get("c1"))).not.toContain("SECRET");
+  });
+
+  it("forgets the tunnel when an edit takes it away", async () => {
+    // The description tracks what was built, and what is built from a config
+    // naming no `ssh` is a direct connection. Whether an absent block should
+    // instead mean "leave the tunnel alone" — desktop's `SshEditInput::Keep` —
+    // is the next commit's question; what must not happen either way is a
+    // record describing a bastion the adapter is no longer using.
+    const { registry, records } = seeded({
+      ssh: {
+        host: "bastion.example.com",
+        port: 22,
+        user: "deploy",
+        auth: "password",
+        hostKey: { kind: "fingerprint", fingerprint: "SHA256:abc" },
+      },
+    });
+
+    const view = await new UpdateConnection(registry, factory).execute("c1", {
+      host: "db.internal",
+    });
+
+    expect(view).not.toHaveProperty("ssh");
+    expect(records.get("c1")).not.toHaveProperty("ssh");
+  });
+
   it("keeps a renamed connection in its place in the list", async () => {
     // `list()` order is sidebar order. An edit that moved a connection to
     // the bottom would be a small betrayal of a user who just renamed it.

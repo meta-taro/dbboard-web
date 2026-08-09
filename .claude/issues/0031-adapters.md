@@ -484,10 +484,10 @@ that cannot authenticate), this one fails open.
 
 `SshTunnelDto` is a nested class with `@ValidateNested()` rather than a bare
 `@IsObject()`, because an object that is merely an object is un-whitelisted
-inside — `privateKeyPath` would survive at the door. The domain's index
-signature ignores it, but not getting that far is better than being ignored:
-web takes key _material_, never a path, so that the API process never reads
-files off the server on request.
+inside — `privateKeyPath` would survive at the door. The domain ignores it
+anyway, by reading only the eight names it knows, but not getting that far is
+better than being ignored: web takes key _material_, never a path, so that the
+API process never reads files off the server on request.
 
 `host` and `user` are required in the DTO, which no other config field is. A
 single field's presence is a shape question, not a cross-field one, and 422
@@ -595,3 +595,65 @@ keychain namespace web does not have.
 
 No code, no test, no dependency. `age` is not evaluated under §12 because
 nothing is being added — the finding is that there is nothing to add.
+
+### Slice F1 — the non-secret half of a tunnel, remembered
+
+A connection behind a bastion could be registered since slice D, and from that
+moment nothing could describe it. `ConnectionRecord` kept `parts` — the
+database endpoint minus the password — and kept nothing at all about the
+tunnel, so `GET /connections` answered as though the connection were direct.
+An edit form built on that answer cannot show the tunnel, and a form that
+cannot show it cannot be trusted to leave it alone.
+
+`SshParts` is the ssh counterpart of `ConnectionParts` and makes the same
+argument ADR-0080 makes: name the non-secret half separately, and a prefill
+built from it **cannot** leak the credential by oversight, because there is
+nowhere to put it. The guarantee is in a type, not in care taken while
+writing a projection — `sshPartsOf` reads its input through a parameter whose
+`auth` member is narrowed to `{ kind }`, so the body could not reach the key
+or the bastion password if it tried.
+
+Every member is required, which `ConnectionParts` cannot say. A half-known
+tunnel is not a thing: `resolveSshTunnelConfig` refuses a config missing any
+of them, so a tunnel that is running has all of them. That is also why the
+projection resolves first and reads second — a blank port becomes 22 here the
+way it does when the forward opens, so a prefilled form describes the tunnel
+that exists rather than the boxes that were typed into; and a block the
+resolver would refuse raises `CapabilityError` instead of producing a
+description of a connection that cannot exist.
+
+**The divergence the whole ssh port carries shows up here as an absence.**
+Desktop's `SshPrefill` carries a key _path_ and an `encrypted` flag, because a
+path is not itself a secret. Web takes key _material_, so there is no
+non-secret half of the credential to prefill and no flag to carry: `auth` says
+which box to show, and the box starts empty.
+
+Recomputed from the raw config at the use-case layer, exactly as
+`connectionPartsOf(config)` already is, rather than returned from the adapter
+factory. The factory's contract stays `create`/`rebuild` → adapter, so no fake
+in any suite grew a member, and the two use cases that write records are the
+two that describe them.
+
+`update` deletes the description when an edit carries no `ssh` block, in
+lockstep with the rebuild that just dropped the forward. A record still naming
+a bastion the adapter has stopped using would show an edit form that
+reinstates it on the next save. **Whether an absent block should instead mean
+_leave the tunnel alone_ — desktop's `SshEditInput::Keep`, the divergence slice
+D recorded — is F2's question**, and the test that pins today's behaviour says
+so in its own comment rather than leaving the coming churn unexplained.
+
+Nine tests: seven on the projection (including that a serialized `SshParts`
+contains neither the key nor either password), two apiece on register and
+update, one on the view. `ConnectionView` and its web-side mirror in
+`useConnections.ts` gain `ssh?: SshParts` — absent for a direct connection,
+which is a different statement from a tunnel whose details are unknown.
+
+**A gate that was skipped came due here.** `apps/api` had not typechecked
+since 3d9aa0c: `SshTunnelDto` is a class and `SshTunnelInput` declared an index
+signature, which TypeScript grants implicitly to object literal types only, so
+neither controller call site compiled. Fixed in 76492b4 ahead of this commit,
+with the PDCA in its message. It survived four days because slice E was
+docs-only and nothing has been pushed, so neither CI nor the pre-push hook ever
+saw it — the pre-commit hook lints staged files and does not typecheck the
+workspace. The rule that would have caught it is the one already written in
+CLAUDE.md: run all four gate commands, not the ones the hook covers.

@@ -150,6 +150,9 @@
       "explain": "이 쿼리 설명",
       "suggest": "SQL 생성"
     },
+    "provider": {
+      "label": "제공자"
+    },
     "dialect": {
       "label": "방언 (선택)",
       "placeholder": "예: postgres"

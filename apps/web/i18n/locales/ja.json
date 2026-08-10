@@ -150,6 +150,9 @@
       "explain": "このクエリを解説",
       "suggest": "SQL を生成"
     },
+    "provider": {
+      "label": "プロバイダー"
+    },
     "dialect": {
       "label": "方言（任意）",
       "placeholder": "例: postgres"

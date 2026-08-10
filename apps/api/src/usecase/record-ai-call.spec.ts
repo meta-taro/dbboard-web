@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AiDisabledError, AiError, AiUpstreamError } from "../domain/ai/ai-error";
+import { AiError, AiUpstreamError } from "../domain/ai/ai-error";
 import {
   NO_AI_CAPABILITIES,
   type AiProvider,
@@ -57,25 +57,16 @@ function asAi(record: HistoryRecord): Extract<HistoryRecord, { kind: "ai" }> {
   return record;
 }
 
+// "No provider configured" used to be decided here, by a `provider ===
+// undefined` branch at the top of runRecordedAiCall. Slice B moved that
+// decision into the registry, which is the only thing that knows how many
+// providers exist, and this function now receives a resolved provider.
+// The guarantee that case carried — AiDisabledError, and nothing written,
+// because an absent provider is a deployment fact rather than an AI call
+// outcome — is asserted in static-ai-provider-registry.spec.ts (the
+// error) and in both use-case specs (the empty history).
+
 describe("runRecordedAiCall", () => {
-  it("throws AiDisabledError and records nothing when no provider is configured", async () => {
-    const { store, written } = makeStore();
-    const history = new RecordHistory(store, () => CLOCK_START);
-
-    const err = await runRecordedAiCall(
-      undefined,
-      history,
-      { intent: "explain", prompt: "SELECT 1", invoke: vi.fn() },
-      () => CLOCK_START,
-    ).catch((e: unknown) => e);
-
-    expect(err).toBeInstanceOf(AiDisabledError);
-    // No provider was called, so there is no `provider`/`model` to name
-    // and the schema requires both — an absent provider is a deployment
-    // fact, not an AI call outcome.
-    expect(written).toStrictEqual([]);
-  });
-
   it("records a kind:'ai' v:2 success record and returns the response untouched", async () => {
     const { store, written } = makeStore();
     let clock = CLOCK_START;

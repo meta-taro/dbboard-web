@@ -150,6 +150,9 @@
       "explain": "Diese Abfrage erklären",
       "suggest": "SQL generieren"
     },
+    "provider": {
+      "label": "Anbieter"
+    },
     "dialect": {
       "label": "Dialekt (optional)",
       "placeholder": "z. B. postgres"

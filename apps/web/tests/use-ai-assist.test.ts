@@ -279,4 +279,98 @@ describe("useAiAssist", () => {
       wrapper.unmount();
     });
   });
+  // Ticket 0032 slice B — which configured provider answers. It is an
+  // option on the composable rather than an argument to explain() /
+  // suggestSql() because the selection is one piece of panel state
+  // applied to both calls, not something a caller decides per request.
+  // A getter, so changing the selector does not mean rebuilding the
+  // composable and losing the response already on screen.
+  describe("provider", () => {
+    function makeProviderHarness(provider: () => string | undefined) {
+      const holder: { api: AiApi | null } = { api: null };
+      const Component = defineComponent({
+        setup() {
+          holder.api = useAiAssist({ apiBase: "http://test", provider });
+          return () => h("div");
+        },
+      });
+      return { Component, holder };
+    }
+
+    it("names the selected provider on an explain", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeProviderHarness(() => "deep");
+      const wrapper = mount(Component);
+
+      await holder.api!.explain("SELECT 1");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/explain", {
+        method: "POST",
+        body: { sql: "SELECT 1", provider: "deep" },
+      });
+      wrapper.unmount();
+    });
+
+    it("names the selected provider on a suggest", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeProviderHarness(() => "fast");
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("count users");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: { prompt: "count users", provider: "fast" },
+      });
+      wrapper.unmount();
+    });
+
+    it("re-reads the getter per call, so changing the selector changes who answers", async () => {
+      mockFetch.mockResolvedValue({ text: "ok", model: "m" });
+      let current: string | undefined = "fast";
+      const { Component, holder } = makeProviderHarness(() => current);
+      const wrapper = mount(Component);
+
+      await holder.api!.explain("SELECT 1");
+      current = "deep";
+      await holder.api!.explain("SELECT 2");
+      await flushPromises();
+
+      const bodies = mockFetch.mock.calls.map((c) => c[1]?.body as Record<string, unknown>);
+      expect(bodies.map((b) => b.provider)).toEqual(["fast", "deep"]);
+      wrapper.unmount();
+    });
+
+    // A deployment with one provider sends no name at all, which is the
+    // request Stage 1 made. Sending the default explicitly would work,
+    // but it would also make every old deployment's traffic change shape
+    // for no reason the server can act on.
+    it("omits the key when nothing is selected", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeProviderHarness(() => undefined);
+      const wrapper = mount(Component);
+
+      await holder.api!.explain("SELECT 1");
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("provider");
+      wrapper.unmount();
+    });
+
+    it("omits the key when no getter was given at all", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("anything");
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("provider");
+      wrapper.unmount();
+    });
+  });
 });

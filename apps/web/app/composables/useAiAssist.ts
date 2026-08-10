@@ -35,6 +35,19 @@ interface WireAiResponse {
 
 export interface UseAiAssistOptions {
   apiBase?: string;
+  /**
+   * Which configured provider should answer (ticket 0032 slice B). An
+   * option rather than an argument to explain() / suggestSql(): the
+   * selection is one piece of panel state applied to both calls, not
+   * something a caller decides per request.
+   *
+   * A getter, not a value, so changing the selector does not mean
+   * rebuilding the composable and losing the response already on
+   * screen. Returning undefined omits the field, and the server falls
+   * back to its own default — which is the request every deployment
+   * made before this option existed.
+   */
+  provider?: () => string | undefined;
 }
 
 function resolveApiBase(explicit: string | undefined): string {
@@ -51,6 +64,9 @@ export function useAiAssist(options?: UseAiAssistOptions) {
 
   async function call(path: string, body: Record<string, unknown>, mode: AiMode): Promise<void> {
     state.value = "loading";
+    // Read at call time, not at setup time: the selector is live.
+    const provider = options?.provider?.();
+    if (provider !== undefined) body.provider = provider;
     try {
       const res = await apiFetch<WireAiResponse>(`${apiBase}${path}`, {
         method: "POST",

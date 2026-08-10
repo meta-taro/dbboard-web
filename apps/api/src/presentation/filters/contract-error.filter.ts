@@ -21,6 +21,12 @@ const CATEGORY_STATUS: Record<ErrorCategory, number> = {
   // `connection` (upstream third-party service failed).
   ai_disabled: 404,
   ai_provider: 502,
+  // 422 rather than 404, and the distinction is load-bearing: 404 means
+  // this deployment has no AI and the panel should hide, while a name
+  // the server does not recognise means the client's selector is stale.
+  // Answering both the same way would make a bad id look like AI being
+  // switched off.
+  ai_unknown_provider: 422,
 };
 
 @Catch(CategorizedError)

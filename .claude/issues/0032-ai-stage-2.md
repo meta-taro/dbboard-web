@@ -208,3 +208,74 @@ has the SQL, which is the context it needs.
 Gate green: format, lint, typecheck, 1211 api + 1208 web tests. `pnpm -r test`
 reports one skipped file (the D1 live suite, which needs maintainer-held
 credentials — see 0031).
+
+### B — more than one provider (done)
+
+Definition-of-done item 2, and item 9 re-checked.
+
+Desktop's version of this is a settings window: `ai-providers.toml` beside the
+OS keychain, a list you edit, a key you paste (ADR-0025). Web can have the
+list and cannot have the window. A server has no keychain, and accepting a key
+over HTTP would put credential writing behind a bearer token — which baseline
+§15 reserves for the operator, deliberately and after a real incident. So what
+crossed is not the UI but the thing the UI existed to produce: more than one
+configured provider, and a way to say which one answers.
+
+The config reader mirrors ADR-0025's _parse posture_ rather than its syntax. A
+duplicate id, an unset `_KIND` or `_API_KEY`, a kind this build cannot
+construct, and a `DBBOARD_AI_DEFAULT` naming nothing are all boot failures. A
+deployment that starts while silently missing a provider tells its operator
+nothing; the user finds the gap instead, which is the wrong order. Ids are
+`[a-z0-9-]+` so that the id → variable-suffix mapping (`-` → `_`, uppercased)
+cannot make two ids collide on one variable.
+
+`DBBOARD_ANTHROPIC_API_KEY` did not become a special case. It is read as an
+ordinary entry, first in the list, id `anthropic` — so a Stage 1 deployment
+gets a one-entry registry that behaves exactly as its single provider did, and
+one that later adds a list keeps the default it had yesterday.
+
+Resolution moved out of the recorded call and in front of it. `runRecordedAiCall`
+no longer has a `provider === undefined` branch: by the time it runs there is a
+provider. That matters for the record, not just for tidiness — a refusal now
+writes nothing, because no provider was reached, and the v:2 schema requires a
+provider and a model that would have to be invented.
+
+Two refusals, two statuses, and the split is the point:
+
+- Nothing configured → `404 ai_disabled`, the answer Slice 2 already gave. The
+  panel reads it as "this deployment has no AI" and renders the neutral notice.
+- A name this deployment does not have → `422 ai_unknown_provider`, naming the
+  id. That is a bad request, not a configuration.
+
+`GET /ai/providers` answers 404 on an empty registry rather than
+`200 { providers: [] }`, and the decision lives in the use case rather than the
+controller. Otherwise the panel would have to decide for itself what an empty
+array means, and its conclusion would have to agree with what `/ai/explain`
+says — three signals that could disagree instead of one that cannot.
+
+On the web side the selection is panel state, so it is an option on
+`useAiAssist` rather than a fourth positional on `suggestSql`, and a getter
+rather than a value: changing the selector must not rebuild the composable and
+drop the response already on screen. The panel names a provider only when
+there is more than one. One provider is not a choice — rendering a select with
+a single option asks the user to confirm something they cannot change, and
+putting its id on the wire would change the shape of every Stage 1
+deployment's requests for nothing the server can act on.
+
+`useAiProviders` is separate from `useAiAssist` because their lifetimes
+differ: one question at mount, many on button presses, and a failure of either
+must not put the other into an error state. A provider list that fails to load
+for an ordinary reason leaves the panel fully usable — the server still has a
+default, and a request naming nobody still reaches it. Only `ai_disabled`
+changes what the panel shows, and it now arrives before the user presses
+anything rather than after a failed explain.
+
+Coverage was relocated, not dropped, at the two places behaviour was deleted.
+The `runRecordedAiCall` disabled-branch case and the six `bootstrap/config.ts`
+AI env cases each have a comment at the old site naming the new home
+(`static-ai-provider-registry.spec.ts`, the two use-case specs, and
+`ai-providers.config.spec.ts` against the same two variable names).
+
+Gate green: format, lint, typecheck, 1266 api + 1250 web tests. `pnpm -r test`
+still reports one skipped file (the D1 live suite, maintainer-held credentials,
+see 0031).

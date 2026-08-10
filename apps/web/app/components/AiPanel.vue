@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useAiAssist } from "../composables/useAiAssist";
+import { useAiProviders } from "../composables/useAiProviders";
 import type { TableInfo } from "../composables/useSchemaBrowser";
 import { fromCategorised } from "../utils/display-error";
 import ErrorBanner from "./ErrorBanner.vue";
@@ -27,19 +28,50 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const {
+  providers,
+  selected: selectedProvider,
+  select: selectProvider,
+  isDisabled: providersDisabled,
+  load: loadProviders,
+} = useAiProviders({ apiBase: props.apiBase });
+
+const hasChoice = computed(() => providers.value.length > 1);
+
 const { lastResponse, state, lastError, explain, suggestSql } = useAiAssist({
   apiBase: props.apiBase,
+  // Named only when there is a choice to record. One configured provider
+  // is not a choice: rendering a select with a single option asks the
+  // user to confirm something they cannot change, and putting its id on
+  // the wire would make every Stage 1 deployment's requests change shape
+  // for nothing the server can act on.
+  provider: () => (hasChoice.value ? selectedProvider.value : undefined),
 });
 
 const dialect = ref("");
 const prompt = ref("");
+
+// Asked once, when the panel appears. The list is only needed to render
+// the selector — a request that names nobody still reaches the server's
+// default — so a failure here leaves the panel usable rather than
+// blocking it, and only `ai_disabled` changes what the panel shows.
+onMounted(() => {
+  void loadProviders();
+});
 
 const isLoading = computed(() => state.value === "loading");
 // `ai_disabled` is the documented Slice 2 signal that the provider isn't
 // configured (env var unset). Retrying-on-click would just keep hitting
 // the same 404, so we latch the UI into a neutral notice and disable
 // both action buttons rather than rendering a generic error banner.
-const isDisabledMode = computed(() => lastError.value?.category === "ai_disabled");
+//
+// Since slice B the same answer can arrive from `GET /ai/providers`
+// before the user presses anything, which is the earliest the panel can
+// know — either source latches the same notice.
+const isDisabledMode = computed(
+  () => providersDisabled.value || lastError.value?.category === "ai_disabled",
+);
 const buttonsDisabled = computed(() => isLoading.value || isDisabledMode.value);
 
 const explainResponse = computed(() =>
@@ -60,6 +92,13 @@ async function onExplain() {
 
 async function onSuggest() {
   await suggestSql(prompt.value, dialectArg.value, props.tables);
+}
+
+// Bound with :value / @change rather than v-model so the selection stays
+// owned by the composable, which is the half that knows which ids exist
+// and refuses one that does not.
+function onProviderChange(event: Event) {
+  selectProvider((event.target as HTMLSelectElement).value);
 }
 
 function onInsert() {
@@ -85,6 +124,22 @@ function onInsert() {
       dense
       :error="fromCategorised(lastError, t)"
     />
+
+    <div v-if="hasChoice" class="dialect-row">
+      <label class="dialect-label" for="ai-provider">{{ t("ai.provider.label") }}</label>
+      <select
+        id="ai-provider"
+        data-testid="ai-provider-select"
+        class="dialect-input"
+        :value="selectedProvider"
+        :disabled="isLoading"
+        @change="onProviderChange"
+      >
+        <option v-for="provider in providers" :key="provider.id" :value="provider.id">
+          {{ provider.name }}
+        </option>
+      </select>
+    </div>
 
     <div class="dialect-row">
       <label class="dialect-label" for="ai-dialect">{{ t("ai.dialect.label") }}</label>

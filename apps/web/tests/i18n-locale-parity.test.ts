@@ -94,6 +94,7 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("ai.heading");
     expect(enPaths).toContain("ai.section.explain");
     expect(enPaths).toContain("ai.section.suggest");
+    expect(enPaths).toContain("ai.provider.label");
     expect(enPaths).toContain("ai.dialect.label");
     expect(enPaths).toContain("ai.dialect.placeholder");
     expect(enPaths).toContain("ai.explain.button");

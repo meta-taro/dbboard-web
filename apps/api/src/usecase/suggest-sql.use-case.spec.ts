@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { AiDisabledError, AiError, AiUpstreamError } from "../domain/ai/ai-error";
+import { AiUnknownProviderError } from "../domain/ai/ai-provider-registry.port";
 import {
   NO_AI_CAPABILITIES,
   type AiProvider,
   type AiResponse,
   type SuggestRequest,
 } from "../domain/ai/ai-provider.port";
+import { StaticAiProviderRegistry } from "../infrastructure/static-ai-provider-registry";
 import { RecordHistory } from "./record-history.use-case";
 import { SuggestSql } from "./suggest-sql.use-case";
 
@@ -24,9 +26,34 @@ function makeProvider(overrides: Partial<AiProvider> = {}): AiProvider {
   };
 }
 
-function makeHistory(): { history: RecordHistory; recordAiSuccess: ReturnType<typeof vi.fn> } {
+// See explain-sql.use-case.spec.ts — the use case takes a registry now,
+// so a single provider is spelled as a one-entry one.
+function registryOf(...providers: AiProvider[]): StaticAiProviderRegistry {
+  const entries = providers.map((provider, i) => ({
+    id: `p${i}`,
+    name: `p${i}`,
+    kind: "anthropic" as const,
+    model: provider.getModel(),
+    provider,
+  }));
+  return new StaticAiProviderRegistry(entries, "p0");
+}
+
+function emptyRegistry(): StaticAiProviderRegistry {
+  return new StaticAiProviderRegistry([], undefined);
+}
+
+function makeHistory(): {
+  history: RecordHistory;
+  recordAiSuccess: ReturnType<typeof vi.fn>;
+  record: ReturnType<typeof vi.fn>;
+} {
+  // `record` is exposed as well as the spy: the disabled and
+  // unknown-provider paths must write *nothing at all*, and a spy on one
+  // of the two recorder methods cannot say that.
+  const record = vi.fn(() => Promise.resolve());
   const history = new RecordHistory({
-    record: () => Promise.resolve(),
+    record,
     // eslint-disable-next-line require-yield
     iterate: async function* () {
       throw new Error("not used in these tests");
@@ -35,7 +62,7 @@ function makeHistory(): { history: RecordHistory; recordAiSuccess: ReturnType<ty
   const recordAiSuccess = vi.spyOn(history, "recordAiSuccess") as unknown as ReturnType<
     typeof vi.fn
   >;
-  return { history, recordAiSuccess };
+  return { history, recordAiSuccess, record };
 }
 
 const RESPONSE: AiResponse = {
@@ -47,18 +74,21 @@ const RESPONSE: AiResponse = {
 };
 
 describe("SuggestSql", () => {
-  it("throws AiDisabledError when no provider is configured", async () => {
-    const { history } = makeHistory();
-    const useCase = new SuggestSql(undefined, history);
+  it("throws AiDisabledError when no provider is configured, and writes nothing", async () => {
+    const { history, record } = makeHistory();
+    const useCase = new SuggestSql(emptyRegistry(), history);
     await expect(useCase.execute({ prompt: "users by signup date" })).rejects.toBeInstanceOf(
       AiDisabledError,
     );
+    // See explain-sql.use-case.spec.ts — the disabled refusal lives in
+    // the registry now, so its no-record guarantee is asserted here.
+    expect(record).not.toHaveBeenCalled();
   });
 
   it("delegates to provider.suggestSql with the request verbatim", async () => {
     const { history } = makeHistory();
     const suggestSql = vi.fn().mockResolvedValue(RESPONSE);
-    const useCase = new SuggestSql(makeProvider({ suggestSql }), history);
+    const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
     const request: SuggestRequest = { prompt: "all users", dialect: "postgres" };
 
     const result = await useCase.execute(request);
@@ -70,7 +100,7 @@ describe("SuggestSql", () => {
   it("records the suggest_sql intent with the natural-language prompt", async () => {
     const { history, recordAiSuccess } = makeHistory();
     const suggestSql = vi.fn().mockResolvedValue(RESPONSE);
-    const useCase = new SuggestSql(makeProvider({ suggestSql }), history);
+    const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
 
     await useCase.execute({ prompt: "all users" });
 
@@ -85,7 +115,7 @@ describe("SuggestSql", () => {
     const { history } = makeHistory();
     const cause = new AiError("upstream went sideways");
     const suggestSql = vi.fn().mockRejectedValue(cause);
-    const useCase = new SuggestSql(makeProvider({ suggestSql }), history);
+    const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
 
     const err = await useCase.execute({ prompt: "x" }).catch((e: unknown) => e);
 
@@ -97,8 +127,47 @@ describe("SuggestSql", () => {
     const { history } = makeHistory();
     const bug = new TypeError("undefined.foo");
     const suggestSql = vi.fn().mockRejectedValue(bug);
-    const useCase = new SuggestSql(makeProvider({ suggestSql }), history);
+    const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
 
     await expect(useCase.execute({ prompt: "x" })).rejects.toBe(bug);
+  });
+
+  describe("provider selection (0032 slice B)", () => {
+    it("asks the named provider, not the default", async () => {
+      const { history } = makeHistory();
+      const first = vi.fn().mockResolvedValue(RESPONSE);
+      const second = vi.fn().mockResolvedValue(RESPONSE);
+      const useCase = new SuggestSql(
+        registryOf(makeProvider({ suggestSql: first }), makeProvider({ suggestSql: second })),
+        history,
+      );
+
+      await useCase.execute({ prompt: "all users", provider: "p1" });
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledOnce();
+    });
+
+    it("does not pass the provider id down to the provider — it is addressing, not content", async () => {
+      const { history } = makeHistory();
+      const suggestSql = vi.fn().mockResolvedValue(RESPONSE);
+      const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
+
+      await useCase.execute({ prompt: "all users", provider: "p0" });
+
+      expect(suggestSql).toHaveBeenCalledExactlyOnceWith({ prompt: "all users" });
+    });
+
+    it("rejects an unconfigured name without calling anyone or recording anything", async () => {
+      const { history, recordAiSuccess } = makeHistory();
+      const suggestSql = vi.fn().mockResolvedValue(RESPONSE);
+      const useCase = new SuggestSql(registryOf(makeProvider({ suggestSql })), history);
+
+      await expect(useCase.execute({ prompt: "x", provider: "nope" })).rejects.toBeInstanceOf(
+        AiUnknownProviderError,
+      );
+      expect(suggestSql).not.toHaveBeenCalled();
+      expect(recordAiSuccess).not.toHaveBeenCalled();
+    });
   });
 });

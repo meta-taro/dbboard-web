@@ -22,23 +22,17 @@ const rawApiSecret = process.env.DBBOARD_API_SECRET;
 export const API_SECRET: string | undefined =
   rawApiSecret !== undefined && rawApiSecret.length > 0 ? rawApiSecret : undefined;
 
-// Optional AI provider config — Phase 6 Slice 1. Absence of the key is
-// the disable switch: `app.module.ts` returns `undefined` for the
-// `AI_PROVIDER` token and consumers mark the injection `@Optional()`.
-// Variable names mirror desktop's `DBBOARD_ANTHROPIC_*` so an operator
-// running both clients shares a single env block.
-const rawAnthropicApiKey = process.env.DBBOARD_ANTHROPIC_API_KEY;
-export const ANTHROPIC_API_KEY: string | undefined =
-  rawAnthropicApiKey !== undefined && rawAnthropicApiKey.length > 0
-    ? rawAnthropicApiKey
-    : undefined;
-
-const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
-const rawAnthropicModel = process.env.DBBOARD_ANTHROPIC_MODEL;
-export const ANTHROPIC_MODEL: string =
-  rawAnthropicModel !== undefined && rawAnthropicModel.length > 0
-    ? rawAnthropicModel
-    : DEFAULT_ANTHROPIC_MODEL;
+// The AI provider config used to live here as two exports, read at
+// import time. Ticket 0032 slice B moved it to
+// bootstrap/ai-providers.config.ts, because a list of providers cannot
+// be read once at import: the reader now takes the environment as an
+// argument, which is also what lets its tests describe one environment
+// per case instead of resetting modules around each one.
+//
+// `DBBOARD_ANTHROPIC_API_KEY` / `DBBOARD_ANTHROPIC_MODEL` still work
+// unchanged — they became the first entry of the list rather than a
+// special case. Their behaviour (blank means unset, and the model
+// default) is asserted in ai-providers.config.spec.ts.
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"]);
 

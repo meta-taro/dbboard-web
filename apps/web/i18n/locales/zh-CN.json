@@ -150,6 +150,9 @@
       "explain": "解释此查询",
       "suggest": "生成 SQL"
     },
+    "provider": {
+      "label": "服务商"
+    },
     "dialect": {
       "label": "方言（可选）",
       "placeholder": "例如：postgres"

@@ -45,4 +45,31 @@ describe("AiExplainRequestDto", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]?.property).toBe("dialect");
   });
+  // 0032 slice B. `provider` names which configured provider answers.
+  // The DTO only checks it is a non-empty string — whether that name
+  // exists is the registry's question, and answering it twice would mean
+  // two places deciding what is configured.
+  it("accepts an optional provider name", () => {
+    const { dto, errors } = validate({ sql: "SELECT 1", provider: "opus" });
+    expect(errors).toHaveLength(0);
+    expect(dto.provider).toBe("opus");
+  });
+
+  it("leaves provider undefined when omitted, so the default answers", () => {
+    const { dto, errors } = validate({ sql: "SELECT 1" });
+    expect(errors).toHaveLength(0);
+    expect(dto.provider).toBeUndefined();
+  });
+
+  it("rejects a non-string provider", () => {
+    const { errors } = validate({ sql: "SELECT 1", provider: 7 });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.property).toBe("provider");
+  });
+
+  it("rejects an empty provider rather than reading it as unset", () => {
+    const { errors } = validate({ sql: "SELECT 1", provider: "" });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.property).toBe("provider");
+  });
 });

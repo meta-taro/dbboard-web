@@ -1,12 +1,14 @@
-import type { AiProvider, AiResponse, ExplainRequest } from "../domain/ai/ai-provider.port";
+import type { AiProviderRegistry } from "../domain/ai/ai-provider-registry.port";
+import type { AiResponse, ExplainRequest } from "../domain/ai/ai-provider.port";
 import { runRecordedAiCall } from "./record-ai-call";
 import type { RecordHistory } from "./record-history.use-case";
 
 // ExplainSql is the use-case seam between the controller and the AI
 // provider port. It owns three concerns the controller should not:
-//   1. The deployment may have no provider configured — translate that
-//      into a wire-mapped AiDisabledError (→ 404) so the UI can hide
-//      the AI panel instead of treating the absence as an error.
+//   1. Which provider answers. The registry decides, and its two
+//      refusals reach the wire differently: nothing configured is a
+//      404 (→ the UI hides the AI panel rather than showing an error),
+//      a name this deployment does not have is a 422.
 //   2. The adapter throws its own AiError on upstream failure — wrap
 //      it in AiUpstreamError (→ 502) so the wire status comes from
 //      one place. Cause is preserved for diagnostics.
@@ -18,22 +20,33 @@ import type { RecordHistory } from "./record-history.use-case";
 // — those are programming bugs, not AI outcomes. See record-ai-call.ts
 // for the shared body.
 
+// `provider` is addressing, not content: it says who answers, and it is
+// stripped before the request reaches whoever does. Widening the port's
+// request type here rather than in the port keeps the port describing
+// what a provider is asked, which never includes its own name.
+export type ExplainCommand = ExplainRequest & { provider?: string };
+
 export class ExplainSql {
   constructor(
-    private readonly provider: AiProvider | undefined,
+    private readonly registry: AiProviderRegistry,
     private readonly history: RecordHistory,
     private readonly nowMs: () => number = () => Date.now(),
   ) {}
 
-  async execute(request: ExplainRequest): Promise<AiResponse> {
+  async execute(command: ExplainCommand): Promise<AiResponse> {
+    const { provider: providerId, ...request } = command;
+    // Resolution happens before the recorded call so that a refusal
+    // writes nothing: no provider was reached, so there is no provider
+    // or model to name, and the record schema requires both.
+    const provider = this.registry.resolve(providerId);
     return runRecordedAiCall(
-      this.provider,
+      provider,
       this.history,
       {
         intent: "explain",
         // For an explain, the SQL under discussion *is* the prompt.
         prompt: request.sql,
-        invoke: (provider) => provider.explain(request),
+        invoke: (resolved) => resolved.explain(request),
       },
       this.nowMs,
     );

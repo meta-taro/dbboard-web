@@ -6,14 +6,15 @@ import { HttpStatus, ValidationPipe } from "@nestjs/common";
 import { AppModule } from "../src/app.module";
 import { contentTypeGuard } from "../src/bootstrap/content-type.middleware";
 import { AiError } from "../src/domain/ai/ai-error";
+import { AI_PROVIDER_REGISTRY } from "../src/domain/ai/ai-provider-registry.port";
 import {
-  AI_PROVIDER,
   NO_AI_CAPABILITIES,
   type AiProvider,
   type AiResponse,
   type ExplainRequest,
   type SuggestRequest,
 } from "../src/domain/ai/ai-provider.port";
+import { StaticAiProviderRegistry } from "../src/infrastructure/static-ai-provider-registry";
 import type { HistoryRecord } from "../src/domain/history-record";
 import { ContractErrorFilter } from "../src/presentation/filters/contract-error.filter";
 import { RequestLevelRejectionFilter } from "../src/presentation/filters/request-level-rejection.filter";
@@ -71,14 +72,16 @@ function stubProvider(overrides: ProviderOverrides = {}): AiProvider {
 }
 
 // Mirror of createApp() from src/main.ts, but composed against a
-// pre-built TestingModule so the integration suite can override
-// AI_PROVIDER per-test without juggling process.env. Re-uses the same
-// global middleware / pipes / filters so the wire surface matches
+// pre-built TestingModule so the integration suite can override the
+// provider registry per-test without juggling process.env. Re-uses the
+// same global middleware / pipes / filters so the wire surface matches
 // production behaviour byte-for-byte.
-async function buildAppWith(provider: AiProvider | undefined): Promise<NestExpressApplication> {
+async function buildAppWithRegistry(
+  registry: StaticAiProviderRegistry,
+): Promise<NestExpressApplication> {
   process.env.DBBOARD_API_SECRET = SECRET;
   const builder = Test.createTestingModule({ imports: [AppModule] });
-  builder.overrideProvider(AI_PROVIDER).useValue(provider);
+  builder.overrideProvider(AI_PROVIDER_REGISTRY).useValue(registry);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
   app.use(contentTypeGuard);
@@ -95,6 +98,29 @@ async function buildAppWith(provider: AiProvider | undefined): Promise<NestExpre
   app.useGlobalFilters(new RequestLevelRejectionFilter(), new ContractErrorFilter());
   await app.init();
   return app;
+}
+
+// The pre-slice-B shape: one provider, or none. Kept as a helper because
+// most of this suite is about the routes rather than about which
+// provider answers, and a one-entry registry is what "configured" meant
+// before the registry existed.
+function buildAppWith(provider: AiProvider | undefined): Promise<NestExpressApplication> {
+  return buildAppWithRegistry(
+    provider === undefined
+      ? new StaticAiProviderRegistry([], undefined)
+      : new StaticAiProviderRegistry(
+          [
+            {
+              id: "stub",
+              name: "stub",
+              kind: "anthropic",
+              model: provider.getModel(),
+              provider,
+            },
+          ],
+          "stub",
+        ),
+  );
 }
 
 describe("AI HTTP routes (0020)", () => {
@@ -370,6 +396,231 @@ describe("AI HTTP routes (0020)", () => {
       // record would have to invent the `provider` and `model` the
       // schema requires.
       expect(await exportedRecords()).toStrictEqual([]);
+    });
+  });
+});
+
+// Ticket 0032 slice B — several configured providers, and a caller that
+// may name one. The disabled deployment above is the same deployment
+// with an empty registry, which is why these cases live alongside it.
+describe("AI provider selection (0032 slice B)", () => {
+  let app: NestExpressApplication;
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    process.env = ORIGINAL_ENV;
+    vi.restoreAllMocks();
+  });
+
+  function twoProviders(overrides: { fast?: ProviderOverrides; deep?: ProviderOverrides } = {}) {
+    const fast = stubProvider(overrides.fast);
+    const deep = stubProvider(overrides.deep);
+    return {
+      fast,
+      deep,
+      registry: new StaticAiProviderRegistry(
+        [
+          {
+            id: "fast",
+            name: "Fast",
+            kind: "anthropic",
+            model: "claude-sonnet-4-6",
+            provider: fast,
+          },
+          { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", provider: deep },
+        ],
+        "deep",
+      ),
+    };
+  }
+
+  describe("GET /ai/providers", () => {
+    it("lists every configured provider and marks the default", async () => {
+      app = await buildAppWithRegistry(twoProviders().registry);
+
+      const res = await request(app.getHttpServer())
+        .get("/ai/providers")
+        .set("Authorization", `Bearer ${SECRET}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toStrictEqual({
+        providers: [
+          {
+            id: "fast",
+            name: "Fast",
+            kind: "anthropic",
+            model: "claude-sonnet-4-6",
+            default: false,
+          },
+          { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+        ],
+      });
+    });
+
+    it("never puts a key or a client on the wire", async () => {
+      app = await buildAppWithRegistry(twoProviders().registry);
+
+      const res = await request(app.getHttpServer())
+        .get("/ai/providers")
+        .set("Authorization", `Bearer ${SECRET}`);
+
+      // The descriptor is built from the registry, which holds live
+      // clients constructed with the operator's keys. Asserting on the
+      // serialised text rather than the parsed body is deliberate: a
+      // nested field would still be in here.
+      expect(res.text).not.toMatch(/apiKey|api_key|sk-/i);
+    });
+
+    it("returns 404 + ai_disabled when nothing is configured, so the panel hides", async () => {
+      app = await buildAppWithRegistry(new StaticAiProviderRegistry([], undefined));
+
+      const res = await request(app.getHttpServer())
+        .get("/ai/providers")
+        .set("Authorization", `Bearer ${SECRET}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toStrictEqual({
+        error: { category: "ai_disabled", message: "AI provider is not configured" },
+      });
+    });
+
+    it("returns 401 without a bearer header — the list is deployment configuration", async () => {
+      app = await buildAppWithRegistry(twoProviders().registry);
+
+      const res = await request(app.getHttpServer()).get("/ai/providers");
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("naming a provider on a request", () => {
+    it("routes POST /ai/explain to the named provider rather than the default", async () => {
+      const explainFast = vi.fn().mockResolvedValue({ text: "fast says", model: "claude-fast" });
+      const explainDeep = vi.fn().mockResolvedValue({ text: "deep says", model: "claude-deep" });
+      const { registry } = twoProviders({
+        fast: { explain: explainFast },
+        deep: { explain: explainDeep },
+      });
+      app = await buildAppWithRegistry(registry);
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1", provider: "fast" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toStrictEqual({ text: "fast says", model: "claude-fast" });
+      expect(explainDeep).not.toHaveBeenCalled();
+      // The id addressed the request; it is not part of it.
+      expect(explainFast).toHaveBeenCalledExactlyOnceWith({ sql: "SELECT 1" });
+    });
+
+    it("routes POST /ai/suggest to the named provider too", async () => {
+      const suggestFast = vi.fn().mockResolvedValue({ text: "SELECT 1;", model: "claude-fast" });
+      const suggestDeep = vi.fn().mockResolvedValue({ text: "SELECT 2;", model: "claude-deep" });
+      const { registry } = twoProviders({
+        fast: { suggestSql: suggestFast },
+        deep: { suggestSql: suggestDeep },
+      });
+      app = await buildAppWithRegistry(registry);
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/suggest")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ prompt: "all users", provider: "fast" });
+
+      expect(res.status).toBe(200);
+      expect(suggestDeep).not.toHaveBeenCalled();
+      expect(suggestFast).toHaveBeenCalledExactlyOnceWith({ prompt: "all users" });
+    });
+
+    it("falls to the default when the field is omitted", async () => {
+      const explainDeep = vi.fn().mockResolvedValue({ text: "deep says", model: "claude-deep" });
+      const { registry } = twoProviders({ deep: { explain: explainDeep } });
+      app = await buildAppWithRegistry(registry);
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1" });
+
+      expect(res.status).toBe(200);
+      expect(explainDeep).toHaveBeenCalledOnce();
+    });
+
+    it("answers 422 + ai_unknown_provider, naming the id, for a provider that is not configured", async () => {
+      app = await buildAppWithRegistry(twoProviders().registry);
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1", provider: "gpt-4o" });
+
+      // Not 404: the deployment does have AI, and a selector out of step
+      // with the server must not read as "AI is off" and hide the panel.
+      expect(res.status).toBe(422);
+      expect(res.body.error.category).toBe("ai_unknown_provider");
+      expect(res.body.error.message).toContain("gpt-4o");
+    });
+
+    it("still answers 404 for a named provider when nothing is configured at all", async () => {
+      app = await buildAppWithRegistry(new StaticAiProviderRegistry([], undefined));
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1", provider: "fast" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.category).toBe("ai_disabled");
+    });
+
+    it("records the answering provider's served model, not the default's", async () => {
+      const explainFast = vi.fn().mockResolvedValue({ text: "fast says", model: "claude-fast" });
+      const { registry } = twoProviders({ fast: { explain: explainFast } });
+      app = await buildAppWithRegistry(registry);
+
+      await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1", provider: "fast" });
+
+      const res = await request(app.getHttpServer())
+        .get("/history/export.jsonl")
+        .set("Authorization", `Bearer ${SECRET}`);
+      const records = res.text
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => JSON.parse(line) as HistoryRecord);
+
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({ kind: "ai", model: "claude-fast" });
+    });
+
+    it("records nothing for an unknown provider — nothing was asked, so nothing was spent", async () => {
+      app = await buildAppWithRegistry(twoProviders().registry);
+
+      await request(app.getHttpServer())
+        .post("/ai/explain")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ sql: "SELECT 1", provider: "gpt-4o" });
+
+      const res = await request(app.getHttpServer())
+        .get("/history/export.jsonl")
+        .set("Authorization", `Bearer ${SECRET}`);
+      expect(res.text.trim()).toBe("");
     });
   });
 });

@@ -39,4 +39,11 @@ export class AiSuggestRequestDto {
   @ValidateNested({ each: true })
   @Type(() => AiTableInfoDto)
   schema?: AiTableInfoDto[];
+
+  // Which configured provider answers (0032 slice B) — see
+  // AiExplainRequestDto for why existence is not checked here.
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  provider?: string;
 }

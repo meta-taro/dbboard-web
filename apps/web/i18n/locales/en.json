@@ -150,6 +150,9 @@
       "explain": "Explain this query",
       "suggest": "Generate SQL"
     },
+    "provider": {
+      "label": "Provider"
+    },
     "dialect": {
       "label": "Dialect (optional)",
       "placeholder": "e.g. postgres"

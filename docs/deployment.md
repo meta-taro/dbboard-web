@@ -249,11 +249,13 @@ database flow works without a key and no AI route is documented on the
 shared HTTP contract. Enable it only when you want SQL-explain or
 NL→SQL features exposed to the Nuxt UI.
 
-Two environment variables drive the seam:
+### One provider
+
+Two environment variables, unchanged since Slice 1:
 
 | Variable                    | Default             | Notes                                                                                                                                                        |
 | --------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DBBOARD_ANTHROPIC_API_KEY` | _(unset)_           | Absence is the disable switch. When unset, the `AI_PROVIDER` DI token resolves to `undefined` and consumers must mark the injection `@Optional()`.           |
+| `DBBOARD_ANTHROPIC_API_KEY` | _(unset)_           | Absence is the disable switch. Setting it yields a one-provider registry whose id is `anthropic`.                                                            |
 | `DBBOARD_ANTHROPIC_MODEL`   | `claude-sonnet-4-6` | Model id forwarded to `Anthropic#messages.create`. The Anthropic API may resolve an alias (`claude-sonnet-4-6`) to a concrete dated version on the response. |
 
 Variable names mirror the desktop client's `DBBOARD_ANTHROPIC_*` env
@@ -261,12 +263,55 @@ block so a single `.env` covers both clients. The desktop side uses the
 same key for the same purpose — there is no per-client key rotation to
 manage.
 
-HTTP routes (Slice 2):
+### More than one provider (ticket 0032 slice B)
 
-| Route              | Body                                        | Success               | Disabled          | Upstream failure  |
-| ------------------ | ------------------------------------------- | --------------------- | ----------------- | ----------------- |
-| `POST /ai/explain` | `{ "sql": "...", "dialect"?: "postgres" }`  | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
-| `POST /ai/suggest` | `{ "prompt": "...", "dialect"?: "sqlite" }` | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
+Desktop keeps its provider list in `ai-providers.toml` beside the OS
+keychain (desktop ADR-0025). A server has no keychain, and accepting a
+key over HTTP would put credential writing behind a bearer token, which
+baseline §15 reserves for the operator — so on web the list is
+environment-only and there is no settings UI to add one at runtime.
+
+List the ids in `DBBOARD_AI_PROVIDERS`, then give each a block whose
+variable suffix is the id uppercased with `-` replaced by `_`. Ids are
+lowercase letters, digits and hyphens only, which is what keeps that
+mapping unambiguous.
+
+| Variable                  | Required | Default                    | Notes                                                    |
+| ------------------------- | -------- | -------------------------- | -------------------------------------------------------- |
+| `DBBOARD_AI_PROVIDERS`    | no       | _(empty)_                  | Comma-separated ids, in the order the panel offers them. |
+| `DBBOARD_AI_<ID>_KIND`    | yes      | —                          | One of: `anthropic`.                                     |
+| `DBBOARD_AI_<ID>_API_KEY` | yes      | —                          | The credential for that provider.                        |
+| `DBBOARD_AI_<ID>_MODEL`   | no       | the kind's default model   | `claude-sonnet-4-6` for `anthropic`.                     |
+| `DBBOARD_AI_<ID>_NAME`    | no       | the id                     | Label shown in the panel's selector.                     |
+| `DBBOARD_AI_DEFAULT`      | no       | the first configured entry | Answers requests that name no provider.                  |
+
+`DBBOARD_ANTHROPIC_API_KEY`, when set, is always the _first_ entry — so
+adding a list to a running deployment keeps the default it had before.
+
+Misconfiguration fails the boot rather than starting a deployment that
+is quietly missing a provider: a duplicate id, an unset `_KIND` or
+`_API_KEY`, a kind this build cannot construct, and a
+`DBBOARD_AI_DEFAULT` naming nothing are all startup errors. This mirrors
+ADR-0025's parse posture, not its syntax.
+
+HTTP routes (Slice 2, extended by 0032 slice B):
+
+| Route               | Body                                                             | Success               | Disabled          | Unknown provider          | Upstream failure  |
+| ------------------- | ---------------------------------------------------------------- | --------------------- | ----------------- | ------------------------- | ----------------- |
+| `GET /ai/providers` | —                                                                | `200 { providers }`   | `404 ai_disabled` | —                         | —                 |
+| `POST /ai/explain`  | `{ "sql": "...", "dialect"?: "postgres", "provider"?: "deep" }`  | `200 { text, model }` | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider` |
+| `POST /ai/suggest`  | `{ "prompt": "...", "dialect"?: "sqlite", "provider"?: "deep" }` | `200 { text, model }` | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider` |
+
+Each descriptor from `GET /ai/providers` is
+`{ id, name, kind, model, default }` — no key, and no client. A
+deployment with no provider answers `404` here too rather than
+`200 { "providers": [] }`, so the panel gets one answer to "is AI on"
+instead of three that could disagree.
+
+The 404/422 split is the difference between a deployment that has no AI
+and a request that named a provider this deployment does not have. The
+first is a configuration the UI renders as "not available"; the second
+is a bad request, and the message names the id.
 
 `POST /ai/suggest` also accepts an optional `schema` — the tables the
 caller introspected, as `[{ "schema": "public" \| null, "name": "users" }]`
@@ -319,10 +364,9 @@ Privacy and contract notes:
 - **No persisted key storage.** The key lives in env only — there is
   no settings UI or OS keychain integration.
 
-Toggle disabled at any time by clearing `DBBOARD_ANTHROPIC_API_KEY` and
-restarting the API process; the factory short-circuits to `undefined`
-on the next boot and both routes return `404 ai_disabled` until the
-key is restored.
+Toggle disabled at any time by clearing every provider variable and
+restarting the API process; the registry boots empty on the next start
+and all three routes return `404 ai_disabled` until a key is restored.
 
 ## Secret rotation
 

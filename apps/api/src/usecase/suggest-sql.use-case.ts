@@ -1,26 +1,31 @@
-import type { AiProvider, AiResponse, SuggestRequest } from "../domain/ai/ai-provider.port";
+import type { AiProviderRegistry } from "../domain/ai/ai-provider-registry.port";
+import type { AiResponse, SuggestRequest } from "../domain/ai/ai-provider.port";
 import { runRecordedAiCall } from "./record-ai-call";
 import type { RecordHistory } from "./record-history.use-case";
 
 // Twin of ExplainSql for natural-language → SQL suggestion. Same
-// disabled / upstream / bubble / recording policy — see
+// resolution / upstream / bubble / recording policy — see
 // explain-sql.use-case.ts for the rationale.
+
+export type SuggestCommand = SuggestRequest & { provider?: string };
 
 export class SuggestSql {
   constructor(
-    private readonly provider: AiProvider | undefined,
+    private readonly registry: AiProviderRegistry,
     private readonly history: RecordHistory,
     private readonly nowMs: () => number = () => Date.now(),
   ) {}
 
-  async execute(request: SuggestRequest): Promise<AiResponse> {
+  async execute(command: SuggestCommand): Promise<AiResponse> {
+    const { provider: providerId, ...request } = command;
+    const provider = this.registry.resolve(providerId);
     return runRecordedAiCall(
-      this.provider,
+      provider,
       this.history,
       {
         intent: "suggest_sql",
         prompt: request.prompt,
-        invoke: (provider) => provider.suggestSql(request),
+        invoke: (resolved) => resolved.suggestSql(request),
       },
       this.nowMs,
     );

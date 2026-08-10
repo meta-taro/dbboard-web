@@ -16,4 +16,13 @@ export class AiExplainRequestDto {
   @IsString()
   @IsNotEmpty()
   dialect?: string;
+
+  // Which configured provider answers (0032 slice B). Omitted means the
+  // deployment's default. Only the shape is checked here — whether the
+  // name exists is the registry's question, and answering it twice
+  // would mean two places deciding what is configured.
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  provider?: string;
 }

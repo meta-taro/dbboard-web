@@ -5,10 +5,11 @@
 // `conflict` is web-only too: desktop's inline editor reports a failed
 // affected-row gate straight into its own UI and has no HTTP status to
 // choose, so there is nothing to mirror. It reuses the same envelope.
-// The two AI categories (ai_disabled / ai_provider) are web-only —
-// /ai/* routes exist only on this service per desktop ADR-0023
-// Decision 3, so they live outside docs/api-contract.md but reuse the
-// same envelope shape for client consistency.
+// The three AI categories (ai_disabled / ai_provider /
+// ai_unknown_provider) are web-only — /ai/* routes exist only on this
+// service per desktop ADR-0023 Decision 3, so they live outside
+// docs/api-contract.md but reuse the same envelope shape for client
+// consistency.
 //
 // Adding a category here means adding a row to
 // ContractErrorFilter.CATEGORY_STATUS, otherwise the filter throws.
@@ -21,7 +22,8 @@ export type ErrorCategory =
   | "capability"
   | "conflict"
   | "ai_disabled"
-  | "ai_provider";
+  | "ai_provider"
+  | "ai_unknown_provider";
 
 export abstract class CategorizedError extends Error {
   abstract readonly category: ErrorCategory;

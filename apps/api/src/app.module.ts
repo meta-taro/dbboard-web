@@ -1,7 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Module } from "@nestjs/common";
-import { ANTHROPIC_API_KEY, ANTHROPIC_MODEL } from "./bootstrap/config";
-import { AI_PROVIDER, type AiProvider } from "./domain/ai/ai-provider.port";
+import { readAiProvidersConfig, type AiProviderConfigEntry } from "./bootstrap/ai-providers.config";
+import {
+  AI_PROVIDER_REGISTRY,
+  type AiProviderRegistry,
+} from "./domain/ai/ai-provider-registry.port";
 import { DATABASE_ADAPTER } from "./domain/database-adapter.port";
 import { AnthropicProvider, type AnthropicClient } from "./infrastructure/anthropic-provider";
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
@@ -9,6 +12,10 @@ import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
 import { SshHostKeyProber } from "./infrastructure/ssh-host-key-prober";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
+import {
+  StaticAiProviderRegistry,
+  type AiProviderEntry,
+} from "./infrastructure/static-ai-provider-registry";
 import { AiController } from "./presentation/ai.controller";
 import { CapabilitiesController } from "./presentation/capabilities.controller";
 import { ConnectionCapabilitiesController } from "./presentation/connection-capabilities.controller";
@@ -35,6 +42,7 @@ import { GetCapabilities } from "./usecase/get-capabilities.use-case";
 import { GetConnectionCapabilities } from "./usecase/get-connection-capabilities.use-case";
 import { GetHealth } from "./usecase/get-health.use-case";
 import { HISTORY_STORE, type HistoryStore } from "./usecase/history-store.port";
+import { ListAiProviders } from "./usecase/list-ai-providers.use-case";
 import { ListConnectionTables } from "./usecase/list-connection-tables.use-case";
 import { ListConnections } from "./usecase/list-connections.use-case";
 import { ListDrivers } from "./usecase/list-drivers.use-case";
@@ -57,6 +65,35 @@ import { UpdateRow } from "./usecase/update-row.use-case";
 // 0003 ships the NullAdapter as the default. 0004 will replace
 // DATABASE_ADAPTER's useClass / useFactory with the Postgres adapter
 // without touching controllers or use cases.
+
+// One configured provider becomes one live client. The switch is
+// exhaustive over `AiProviderKind`: adding a kind to KNOWN_KINDS in
+// bootstrap/ai-providers.config.ts without adding a branch here fails
+// to compile on the `never` assignment, which is the point of keeping
+// the kinds a union rather than a string.
+//
+// The `as unknown as AnthropicClient` cast adapts the SDK's overloaded
+// `messages.create` to the narrow non-streaming slice the provider
+// depends on (see anthropic-provider.ts for why the structural
+// assertion lives at the wiring seam).
+function buildEntry(entry: AiProviderConfigEntry): AiProviderEntry {
+  switch (entry.kind) {
+    case "anthropic": {
+      const client = new Anthropic({ apiKey: entry.apiKey });
+      return {
+        id: entry.id,
+        name: entry.name,
+        kind: entry.kind,
+        model: entry.model,
+        provider: new AnthropicProvider(client as unknown as AnthropicClient, entry.model),
+      };
+    }
+    default: {
+      const unreachable: never = entry.kind;
+      throw new Error(`unsupported AI provider kind: ${String(unreachable)}`);
+    }
+  }
+}
 
 @Module({
   controllers: [
@@ -172,42 +209,47 @@ import { UpdateRow } from "./usecase/update-row.use-case";
       inject: [SSH_HOST_KEY_PROBE],
     },
     { provide: HISTORY_STORE, useClass: InMemoryHistoryStore },
-    // AI provider (Phase 6 Slice 1). Returns `undefined` when no API
-    // key is configured — consumers MUST mark the injection
-    // `@Optional()`. The `as unknown as AnthropicClient` cast adapts
-    // the SDK's overloaded `messages.create` to the narrow non-
-    // streaming slice the provider depends on (see anthropic-provider.ts
-    // for why the structural assertion lives at the wiring seam).
+    // AI providers (Phase 6 Slice 1, widened to a registry by ticket
+    // 0032 slice B). The list comes from the environment and is fixed
+    // for the life of the process; an empty registry is the disabled
+    // deployment, and it still boots — CLAUDE.md rule 4.
+    //
+    // A misconfigured list throws here, during startup, rather than
+    // dropping the offending provider: an operator who mistyped a
+    // variable should find out from the process, not from a user who
+    // picked the provider that quietly went missing.
     {
-      provide: AI_PROVIDER,
-      useFactory: (): AnthropicProvider | undefined => {
-        if (ANTHROPIC_API_KEY === undefined) return undefined;
-        const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-        return new AnthropicProvider(client as unknown as AnthropicClient, ANTHROPIC_MODEL);
+      provide: AI_PROVIDER_REGISTRY,
+      useFactory: (): AiProviderRegistry => {
+        const config = readAiProvidersConfig(process.env);
+        return new StaticAiProviderRegistry(config.entries.map(buildEntry), config.defaultId);
       },
     },
-    // ExplainSql / SuggestSql consume the AI_PROVIDER token, which may
-    // resolve to `undefined` when no API key is configured. The use
-    // case translates that absence into AiDisabledError (→ 404) at
-    // call time, so the wiring stays simple here. `optional: true`
-    // belt-and-braces against a future refactor that removes the
-    // AI_PROVIDER registration entirely.
+    // The three AI use cases share the registry. It is not optional:
+    // "no provider" is a state the registry represents (an empty list),
+    // not an absent dependency — which is what lets one place decide
+    // whether AI is off, instead of each injection site deciding again.
     //
-    // `RecordHistory` is injected, not optional: since history v:2
-    // (ticket 0023) AI calls are recorded alongside SQL calls, and a
-    // provider-less deployment still resolves this fine because the
-    // recorder is only reached once a provider has answered.
+    // `RecordHistory` is injected too: since history v:2 (ticket 0023)
+    // AI calls are recorded alongside SQL calls, and a provider-less
+    // deployment still resolves this fine because the recorder is only
+    // reached once a provider has answered.
     {
       provide: ExplainSql,
-      useFactory: (provider: AiProvider | undefined, history: RecordHistory) =>
-        new ExplainSql(provider, history),
-      inject: [{ token: AI_PROVIDER, optional: true }, RecordHistory],
+      useFactory: (registry: AiProviderRegistry, history: RecordHistory) =>
+        new ExplainSql(registry, history),
+      inject: [AI_PROVIDER_REGISTRY, RecordHistory],
     },
     {
       provide: SuggestSql,
-      useFactory: (provider: AiProvider | undefined, history: RecordHistory) =>
-        new SuggestSql(provider, history),
-      inject: [{ token: AI_PROVIDER, optional: true }, RecordHistory],
+      useFactory: (registry: AiProviderRegistry, history: RecordHistory) =>
+        new SuggestSql(registry, history),
+      inject: [AI_PROVIDER_REGISTRY, RecordHistory],
+    },
+    {
+      provide: ListAiProviders,
+      useFactory: (registry: AiProviderRegistry) => new ListAiProviders(registry),
+      inject: [AI_PROVIDER_REGISTRY],
     },
     {
       provide: RecordHistory,

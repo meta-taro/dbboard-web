@@ -1,10 +1,12 @@
-import { AiDisabledError, AiError, AiUpstreamError } from "../domain/ai/ai-error";
+import { AiError, AiUpstreamError } from "../domain/ai/ai-error";
 import type { AiProvider, AiResponse } from "../domain/ai/ai-provider.port";
 import type { AiRecordContext, RecordHistory } from "./record-history.use-case";
 
-// The shared body of every AI use case: resolve the provider, time the
-// call, translate failures to the wire taxonomy, and write a history
-// v:2 `kind: "ai"` record. ExplainSql and SuggestSql differ only in
+// The shared body of every AI use case: time the call, translate
+// failures to the wire taxonomy, and write a history v:2 `kind: "ai"`
+// record. Resolving *which* provider answers happens before this, in
+// the registry — by the time we are here there is one, and the disabled
+// deployment never reaches this function. ExplainSql and SuggestSql differ only in
 // which provider method they call and what counts as the prompt, so the
 // logic lives here — that way the two intents cannot drift apart in
 // what they record.
@@ -21,19 +23,11 @@ export interface AiCallSpec {
 }
 
 export async function runRecordedAiCall(
-  provider: AiProvider | undefined,
+  provider: AiProvider,
   history: RecordHistory,
   spec: AiCallSpec,
   nowMs: () => number,
 ): Promise<AiResponse> {
-  if (provider === undefined) {
-    // Nothing to record: no provider was called, so there is no
-    // `provider` or `model` to name and the schema requires both. The
-    // absence of a configured provider is a deployment fact, not an AI
-    // call outcome.
-    throw new AiDisabledError("AI provider is not configured");
-  }
-
   const ctx: AiRecordContext = {
     intent: spec.intent,
     prompt: spec.prompt,

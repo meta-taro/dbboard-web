@@ -150,6 +150,9 @@
       "explain": "Объяснить этот запрос",
       "suggest": "Сгенерировать SQL"
     },
+    "provider": {
+      "label": "Провайдер"
+    },
     "dialect": {
       "label": "Диалект (необязательно)",
       "placeholder": "напр. postgres"

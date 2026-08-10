@@ -25,6 +25,12 @@ export interface AiProviderDescriptor {
   kind: string;
   model: string;
   default: boolean;
+  // Whether this provider answers the streaming routes with real
+  // token-granularity chunks (ADR-0026 Decision 8). Every provider can
+  // be *called* on those routes — the default delegate yields the whole
+  // answer as one chunk — so without this flag the panel could only
+  // offer a streaming mode that, for some providers, streams nothing.
+  streaming: boolean;
 }
 
 export interface AiProviderRegistry {

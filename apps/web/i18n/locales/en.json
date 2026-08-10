@@ -157,6 +157,12 @@
       "label": "Dialect (optional)",
       "placeholder": "e.g. postgres"
     },
+    "stream": {
+      "toggle": "Stream response"
+    },
+    "cancel": {
+      "button": "Cancel"
+    },
     "explain": {
       "button": "Explain",
       "empty": "Run explain to see Claude's interpretation of your SQL."
@@ -171,8 +177,12 @@
     "response": {
       "model": "Model: {model}"
     },
+    "tokens": {
+      "meter": "Tokens: {tin} in / {tout} out"
+    },
     "state": {
-      "loading": "Working…"
+      "loading": "Working…",
+      "cancelled": "Cancelled."
     },
     "disabled": {
       "heading": "AI assist is not configured",
@@ -187,7 +197,8 @@
       "type-conversion": "Type conversion error",
       "capability": "Capability unavailable",
       "ai-disabled": "AI assist unavailable",
-      "ai-provider": "AI provider error"
+      "ai-provider": "AI provider error",
+      "ai-unknown-provider": "Unknown AI provider"
     },
     "copy": "Copy",
     "copied": "Copied",

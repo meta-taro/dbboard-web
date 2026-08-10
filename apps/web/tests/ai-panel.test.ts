@@ -1,13 +1,19 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../app/composables/internal/http";
+import { openSseStream, type SseStreamInit } from "../app/composables/internal/sse";
 import AiPanel from "../app/components/AiPanel.vue";
 
 vi.mock("../app/composables/internal/http", () => ({
   apiFetch: vi.fn(),
 }));
 
+vi.mock("../app/composables/internal/sse", () => ({
+  openSseStream: vi.fn(),
+}));
+
 const mockFetch = vi.mocked(apiFetch);
+const mockStream = vi.mocked(openSseStream);
 
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({
@@ -30,14 +36,52 @@ const baseProps = { currentSql: "SELECT 1", apiBase: "http://test" };
 // below keep asserting exact bodies.
 const ONE_PROVIDER = {
   providers: [
-    { id: "anthropic", name: "anthropic", kind: "anthropic", model: "claude-x", default: true },
+    {
+      id: "anthropic",
+      name: "anthropic",
+      kind: "anthropic",
+      model: "claude-x",
+      default: true,
+      streaming: true,
+    },
+  ],
+};
+
+// The other Stage 1 shape: a provider that answers the streaming routes
+// but has no SSE transport behind them, so it would yield the whole
+// answer in one chunk. ADR-0026 Decision 8 keeps the toggle off screen
+// for it rather than offering a mode that streams nothing.
+const ONE_NON_STREAMING_PROVIDER = {
+  providers: [
+    {
+      id: "anthropic",
+      name: "anthropic",
+      kind: "anthropic",
+      model: "claude-x",
+      default: true,
+      streaming: false,
+    },
   ],
 };
 
 const TWO_PROVIDERS = {
   providers: [
-    { id: "fast", name: "Fast", kind: "anthropic", model: "claude-sonnet-4-6", default: false },
-    { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+    {
+      id: "fast",
+      name: "Fast",
+      kind: "anthropic",
+      model: "claude-sonnet-4-6",
+      default: false,
+      streaming: true,
+    },
+    {
+      id: "deep",
+      name: "Deep",
+      kind: "anthropic",
+      model: "claude-opus-4-8",
+      default: true,
+      streaming: false,
+    },
   ],
 };
 
@@ -55,9 +99,36 @@ function lastBody(): Record<string, unknown> {
   return mockFetch.mock.lastCall?.[1]?.body as Record<string, unknown>;
 }
 
+// Turns a list of already-decoded StreamEvents into what openSseStream
+// hands back. The transport's own framing is covered by tests/sse.test.ts.
+function streamOf(events: unknown[]): AsyncGenerator<unknown> {
+  return (async function* () {
+    for (const event of events) yield event;
+  })();
+}
+
+// Yields its events and then parks until the caller aborts, which is how
+// a real stream behaves while the model is still producing tokens — the
+// only state in which the panel offers a Cancel button.
+function hangingStream(
+  events: unknown[],
+): (url: string, init: SseStreamInit) => AsyncGenerator<unknown> {
+  return (_url, init) =>
+    (async function* () {
+      for (const event of events) yield event;
+      await new Promise<void>((resolve) => {
+        init.signal?.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      throw new DOMException("The operation was aborted.", "AbortError");
+    })();
+}
+
 describe("AiPanel", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    mockStream.mockReset();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -386,6 +457,240 @@ describe("AiPanel", () => {
         method: "POST",
         body: { sql: "SELECT 1" },
       });
+      wrapper.unmount();
+    });
+  });
+
+  // Ticket 0032 slice C, desktop ADR-0026. Desktop swaps its single Send
+  // button for Cancel while a stream runs; web has two sections and so
+  // one Cancel beside the status line, which is the same offer made once
+  // instead of twice.
+  describe("streaming", () => {
+    const START = { type: "message_start", tokensIn: 12, model: "claude-x" };
+    const STOP = { type: "message_stop", stopReason: "end_turn" };
+
+    async function mountStreaming(props: Record<string, unknown> = baseProps) {
+      const wrapper = await mountPanel(props);
+      await wrapper.find("[data-testid='ai-stream-toggle']").setValue(true);
+      return wrapper;
+    }
+
+    it("offers the toggle, unchecked, when the selected provider streams", async () => {
+      const wrapper = await mountPanel();
+      const toggle = wrapper.find<HTMLInputElement>("[data-testid='ai-stream-toggle']");
+      expect(toggle.exists()).toBe(true);
+      expect(toggle.element.checked).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("hides the toggle when the selected provider does not stream", async () => {
+      const wrapper = await mountPanel(baseProps, ONE_NON_STREAMING_PROVIDER);
+      expect(wrapper.find("[data-testid='ai-stream-toggle']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("shows the toggle once a streaming provider is chosen", async () => {
+      const wrapper = await mountPanel(baseProps, TWO_PROVIDERS);
+      expect(wrapper.find("[data-testid='ai-stream-toggle']").exists()).toBe(false);
+
+      await wrapper.find("[data-testid='ai-provider-select']").setValue("fast");
+
+      expect(wrapper.find("[data-testid='ai-stream-toggle']").exists()).toBe(true);
+      wrapper.unmount();
+    });
+
+    // ADR-0026 Decision 9: unchecked is bit-for-bit the deployment that
+    // existed before this slice. Nothing about the request changes, and
+    // the SSE transport is never reached.
+    it("leaves the atomic route alone while the toggle is unchecked", async () => {
+      const wrapper = await mountPanel();
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenLastCalledWith("http://test/ai/explain", {
+        method: "POST",
+        body: { sql: "SELECT 1" },
+      });
+      expect(mockStream).not.toHaveBeenCalled();
+      wrapper.unmount();
+    });
+
+    it("streams an explain and renders the answer as it arrives", async () => {
+      const wrapper = await mountStreaming();
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          START,
+          { type: "text_delta", text: "This " },
+          { type: "text_delta", text: "selects 1." },
+          STOP,
+        ]),
+      );
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockStream.mock.lastCall?.[0]).toBe("http://test/ai/explain/stream");
+      expect(mockStream.mock.lastCall?.[1].body).toEqual({ sql: "SELECT 1" });
+      expect(wrapper.find("[data-testid='ai-explain-output']").text()).toContain("This selects 1.");
+      wrapper.unmount();
+    });
+
+    it("streams a suggest, carrying the same prompt and table list", async () => {
+      const tables = [{ schema: "public", name: "users" }];
+      const wrapper = await mountStreaming({ ...baseProps, tables });
+      mockStream.mockReturnValueOnce(
+        streamOf([START, { type: "text_delta", text: "SELECT 42;" }, STOP]),
+      );
+
+      await wrapper.find("[data-testid='ai-suggest-prompt']").setValue("count users");
+      await wrapper.find("[data-testid='ai-suggest-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockStream.mock.lastCall?.[0]).toBe("http://test/ai/suggest/stream");
+      expect(mockStream.mock.lastCall?.[1].body).toEqual({
+        prompt: "count users",
+        schema: tables,
+      });
+      expect(wrapper.find("[data-testid='ai-suggest-output']").text()).toContain("SELECT 42;");
+      wrapper.unmount();
+    });
+
+    it("carries the dialect and the chosen provider into a streamed request", async () => {
+      const wrapper = await mountPanel(baseProps, TWO_PROVIDERS);
+      await wrapper.find("[data-testid='ai-provider-select']").setValue("fast");
+      await wrapper.find("[data-testid='ai-stream-toggle']").setValue(true);
+      mockStream.mockReturnValueOnce(streamOf([START, STOP]));
+
+      await wrapper.find("[data-testid='ai-dialect-input']").setValue("postgres");
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockStream.mock.lastCall?.[1].body).toEqual({
+        sql: "SELECT 1",
+        dialect: "postgres",
+        provider: "fast",
+      });
+      wrapper.unmount();
+    });
+
+    // A toggle left checked while the user moves to a provider that does
+    // not stream would otherwise send the streaming route anyway. The
+    // toggle disappearing is not enough — the dispatch has to agree.
+    it("falls back to the atomic route when the chosen provider stops streaming", async () => {
+      const wrapper = await mountPanel(baseProps, TWO_PROVIDERS);
+      await wrapper.find("[data-testid='ai-provider-select']").setValue("fast");
+      await wrapper.find("[data-testid='ai-stream-toggle']").setValue(true);
+      await wrapper.find("[data-testid='ai-provider-select']").setValue("deep");
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockStream).not.toHaveBeenCalled();
+      expect(lastBody()).toEqual({ sql: "SELECT 1", provider: "deep" });
+      wrapper.unmount();
+    });
+
+    it("renders the token meter the stream reports", async () => {
+      const wrapper = await mountStreaming();
+      mockStream.mockReturnValueOnce(
+        streamOf([START, { type: "usage", tokensIn: 12, tokensOut: 34 }, STOP]),
+      );
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      const meter = wrapper.find("[data-testid='ai-token-meter']");
+      expect(meter.exists()).toBe(true);
+      expect(meter.text()).toContain('ai.tokens.meter|{"tin":12,"tout":34}');
+      wrapper.unmount();
+    });
+
+    it("shows no meter before anything has reported usage", async () => {
+      const wrapper = await mountPanel();
+      expect(wrapper.find("[data-testid='ai-token-meter']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    // ADR-0026 Decision 10. Cancel is offered for as long as there is a
+    // stream to stop, and only then: an atomic call has nothing behind
+    // it that a click could interrupt.
+    it("offers Cancel only while a stream is running", async () => {
+      const wrapper = await mountStreaming();
+      expect(wrapper.find("[data-testid='ai-cancel-button']").exists()).toBe(false);
+
+      mockStream.mockImplementationOnce(hangingStream([START, { type: "text_delta", text: "Hi" }]));
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid='ai-cancel-button']").exists()).toBe(true);
+      expect(
+        wrapper.find<HTMLButtonElement>("[data-testid='ai-explain-button']").element.disabled,
+      ).toBe(true);
+
+      await wrapper.find("[data-testid='ai-cancel-button']").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid='ai-cancel-button']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    // ADR-0026 Decision 12. Cancelling is not failing: the partial answer
+    // stays, and the panel says "Cancelled." rather than raising a banner
+    // the user would read as something having gone wrong.
+    it("keeps the partial answer and reports the cancel without an error banner", async () => {
+      const wrapper = await mountStreaming();
+      mockStream.mockImplementationOnce(
+        hangingStream([START, { type: "text_delta", text: "This selects" }]),
+      );
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+      await wrapper.find("[data-testid='ai-cancel-button']").trigger("click");
+      await flushPromises();
+
+      const cancelled = wrapper.find("[data-testid='ai-cancelled']");
+      expect(cancelled.exists()).toBe(true);
+      expect(cancelled.text()).toContain("ai.state.cancelled");
+      expect(wrapper.find("[data-testid='ai-error']").exists()).toBe(false);
+      expect(wrapper.find("[data-testid='ai-explain-output']").text()).toContain("This selects");
+      wrapper.unmount();
+    });
+
+    it("clears the cancelled line once the next stream starts", async () => {
+      const wrapper = await mountStreaming();
+      mockStream.mockImplementationOnce(hangingStream([START]));
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+      await wrapper.find("[data-testid='ai-cancel-button']").trigger("click");
+      await flushPromises();
+      expect(wrapper.find("[data-testid='ai-cancelled']").exists()).toBe(true);
+
+      mockStream.mockReturnValueOnce(
+        streamOf([START, { type: "text_delta", text: "second" }, STOP]),
+      );
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid='ai-cancelled']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("renders an error banner when the stream reports one in band", async () => {
+      const wrapper = await mountStreaming();
+      mockStream.mockReturnValueOnce(
+        streamOf([START, { type: "error", category: "provider", message: "Upstream is down" }]),
+      );
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      const banner = wrapper.find("[data-testid='ai-error']");
+      expect(banner.exists()).toBe(true);
+      expect(banner.text()).toContain("Upstream is down");
+      expect(wrapper.find("[data-testid='ai-cancelled']").exists()).toBe(false);
       wrapper.unmount();
     });
   });

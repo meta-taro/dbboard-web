@@ -16,7 +16,8 @@ export type ErrorCategory =
   | "type_conversion"
   | "capability"
   | "ai_disabled"
-  | "ai_provider";
+  | "ai_provider"
+  | "ai_unknown_provider";
 
 export interface CategorisedError {
   category: ErrorCategory;
@@ -36,6 +37,7 @@ const UNDERSCORE_TO_HYPHEN: Record<string, string> = {
   type_conversion: "type-conversion",
   ai_disabled: "ai-disabled",
   ai_provider: "ai-provider",
+  ai_unknown_provider: "ai-unknown-provider",
 };
 
 export function toI18nKey(category: ErrorCategory): `error.prefix.${string}` {

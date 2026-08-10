@@ -18,6 +18,7 @@ describe("toI18nKey", () => {
     ["type_conversion", "error.prefix.type-conversion"],
     ["ai_disabled", "error.prefix.ai-disabled"],
     ["ai_provider", "error.prefix.ai-provider"],
+    ["ai_unknown_provider", "error.prefix.ai-unknown-provider"],
   ] as const)("maps %s → %s", (category, key) => {
     expect(toI18nKey(category)).toBe(key);
   });
@@ -51,5 +52,22 @@ describe("parseError", () => {
     const result = parseError(err);
     expect(result.category).toBe("ai_provider");
     expect(result.i18nKey).toBe("error.prefix.ai-provider");
+  });
+
+  // Ticket 0032 slice B added a third AI category on the API side and
+  // left the same gap again: a selector that has drifted out of step
+  // with the server gets a 422, and the panel rendered the raw key.
+  it("preserves ai_unknown_provider category + emits the hyphen i18n key", () => {
+    const err = {
+      data: {
+        error: {
+          category: "ai_unknown_provider",
+          message: 'AI provider "gpt-4o" is not configured',
+        },
+      },
+    };
+    const result = parseError(err);
+    expect(result.category).toBe("ai_unknown_provider");
+    expect(result.i18nKey).toBe("error.prefix.ai-unknown-provider");
   });
 });

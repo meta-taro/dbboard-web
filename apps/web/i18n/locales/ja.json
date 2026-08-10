@@ -157,6 +157,12 @@
       "label": "方言（任意）",
       "placeholder": "例: postgres"
     },
+    "stream": {
+      "toggle": "回答をストリーミング"
+    },
+    "cancel": {
+      "button": "中止"
+    },
     "explain": {
       "button": "解説",
       "empty": "解説を実行すると、Claude による SQL の解釈が表示されます。"
@@ -171,8 +177,12 @@
     "response": {
       "model": "モデル: {model}"
     },
+    "tokens": {
+      "meter": "トークン: 入力 {tin} / 出力 {tout}"
+    },
     "state": {
-      "loading": "処理中…"
+      "loading": "処理中…",
+      "cancelled": "中止しました。"
     },
     "disabled": {
       "heading": "AI アシストは未設定です",
@@ -187,7 +197,8 @@
       "type-conversion": "型変換エラー",
       "capability": "機能非対応",
       "ai-disabled": "AI アシストは利用できません",
-      "ai-provider": "AI プロバイダエラー"
+      "ai-provider": "AI プロバイダエラー",
+      "ai-unknown-provider": "未知の AI プロバイダ"
     },
     "copy": "コピー",
     "copied": "コピーしました",

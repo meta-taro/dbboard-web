@@ -294,24 +294,48 @@ is quietly missing a provider: a duplicate id, an unset `_KIND` or
 `DBBOARD_AI_DEFAULT` naming nothing are all startup errors. This mirrors
 ADR-0025's parse posture, not its syntax.
 
-HTTP routes (Slice 2, extended by 0032 slice B):
+HTTP routes (Slice 2, extended by 0032 slices B and C):
 
-| Route               | Body                                                             | Success               | Disabled          | Unknown provider          | Upstream failure  |
-| ------------------- | ---------------------------------------------------------------- | --------------------- | ----------------- | ------------------------- | ----------------- |
-| `GET /ai/providers` | —                                                                | `200 { providers }`   | `404 ai_disabled` | —                         | —                 |
-| `POST /ai/explain`  | `{ "sql": "...", "dialect"?: "postgres", "provider"?: "deep" }`  | `200 { text, model }` | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider` |
-| `POST /ai/suggest`  | `{ "prompt": "...", "dialect"?: "sqlite", "provider"?: "deep" }` | `200 { text, model }` | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider` |
+| Route                     | Body                                                             | Success                 | Disabled          | Unknown provider          | Upstream failure      |
+| ------------------------- | ---------------------------------------------------------------- | ----------------------- | ----------------- | ------------------------- | --------------------- |
+| `GET /ai/providers`       | —                                                                | `200 { providers }`     | `404 ai_disabled` | —                         | —                     |
+| `POST /ai/explain`        | `{ "sql": "...", "dialect"?: "postgres", "provider"?: "deep" }`  | `200 { text, model }`   | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider`     |
+| `POST /ai/suggest`        | `{ "prompt": "...", "dialect"?: "sqlite", "provider"?: "deep" }` | `200 { text, model }`   | `404 ai_disabled` | `422 ai_unknown_provider` | `502 ai_provider`     |
+| `POST /ai/explain/stream` | as `/ai/explain`                                                 | `200 text/event-stream` | `404 ai_disabled` | `422 ai_unknown_provider` | in-band `error` event |
+| `POST /ai/suggest/stream` | as `/ai/suggest`                                                 | `200 text/event-stream` | `404 ai_disabled` | `422 ai_unknown_provider` | in-band `error` event |
 
 Each descriptor from `GET /ai/providers` is
-`{ id, name, kind, model, default }` — no key, and no client. A
-deployment with no provider answers `404` here too rather than
+`{ id, name, kind, model, default, streaming }` — no key, and no client.
+A deployment with no provider answers `404` here too rather than
 `200 { "providers": [] }`, so the panel gets one answer to "is AI on"
 instead of three that could disagree.
+
+`streaming` says whether that provider answers the two `/stream` routes
+with real token-granularity chunks (desktop ADR-0026 Decision 8). Every
+provider answers them — one with no SSE transport yields the whole
+answer as a single chunk — so the flag is what lets the panel offer its
+"Stream response" toggle only where the mode means something.
 
 The 404/422 split is the difference between a deployment that has no AI
 and a request that named a provider this deployment does not have. The
 first is a configuration the UI renders as "not available"; the second
 is a bad request, and the message names the id.
+
+The two `/stream` routes take the same bodies and make the same two
+refusals, as ordinary JSON envelopes: the provider is resolved before
+the response is touched, so a `404` or `422` still arrives with a status
+code. Past that point the answer is `text/event-stream` and there is no
+status code left, so an upstream failure arrives **in band** — one more
+frame, of type `error`. Frames are `data: <json>\n\n` with no `event:`
+names, one `StreamEvent` each: `message_start`, `text_delta`, `usage`,
+`message_stop`, `error`. Responses carry `X-Accel-Buffering: no`, without
+which a proxy would hold every delta back until the answer finished.
+
+Cancelling is the client closing the connection. The server notices,
+aborts the upstream call, and writes the history record it would have
+written anyway — one record per call, at the terminus, cancelled ones
+included. Token counts come from the `usage` frames and are cumulative,
+so each one replaces the last rather than adding to it.
 
 `POST /ai/suggest` also accepts an optional `schema` — the tables the
 caller introspected, as `[{ "schema": "public" \| null, "name": "users" }]`
@@ -327,7 +351,7 @@ entry — no `name`, or a `schema` that is neither a string nor null — is a
 `422`, not a silently dropped field. No separate size cap: the 64 KiB
 body limit already bounds the list.
 
-Both routes sit behind the same bearer-auth middleware as the rest of
+All of the `/ai/*` routes sit behind the same bearer-auth middleware as the rest of
 the API (no per-route exemption — `GET /health` remains the only
 unauthenticated path). The two new error categories (`ai_disabled` and
 `ai_provider`) are web-only and intentionally absent from

@@ -48,6 +48,10 @@ export class StaticAiProviderRegistry implements AiProviderRegistry {
       kind: entry.kind,
       model: entry.model,
       default: entry.id === this.defaultId,
+      // Asked of the provider rather than stored on the entry: the
+      // entry is configuration, and whether a client streams is a
+      // property of the adapter, not of what the operator typed.
+      streaming: entry.provider.getCapabilities().streaming,
     }));
   }
 

@@ -157,6 +157,12 @@
       "label": "Dialecto (opcional)",
       "placeholder": "por ej. postgres"
     },
+    "stream": {
+      "toggle": "Transmitir respuesta"
+    },
+    "cancel": {
+      "button": "Cancelar"
+    },
     "explain": {
       "button": "Explicar",
       "empty": "Ejecuta la explicación para ver la interpretación de tu SQL por parte de Claude."
@@ -171,8 +177,12 @@
     "response": {
       "model": "Modelo: {model}"
     },
+    "tokens": {
+      "meter": "Tokens: {tin} entrada / {tout} salida"
+    },
     "state": {
-      "loading": "Procesando…"
+      "loading": "Procesando…",
+      "cancelled": "Cancelado."
     },
     "disabled": {
       "heading": "El asistente IA no está configurado",
@@ -187,7 +197,8 @@
       "type-conversion": "Error de conversión de tipo",
       "capability": "Función no disponible",
       "ai-disabled": "Asistente IA no disponible",
-      "ai-provider": "Error del proveedor de IA"
+      "ai-provider": "Error del proveedor de IA",
+      "ai-unknown-provider": "Proveedor de IA desconocido"
     },
     "copy": "Copiar",
     "copied": "Copiado",

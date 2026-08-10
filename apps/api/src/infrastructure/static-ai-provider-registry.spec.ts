@@ -9,17 +9,17 @@ import { StaticAiProviderRegistry } from "./static-ai-provider-registry";
 // configured is an error rather than a quiet substitution (Decision 3,
 // "no silent fallback between providers").
 
-function makeProvider(id: string, model: string): AiProvider {
+function makeProvider(id: string, model: string, streaming = false): AiProvider {
   return {
     getId: () => id,
     getModel: () => model,
-    getCapabilities: () => NO_AI_CAPABILITIES,
+    getCapabilities: () => ({ ...NO_AI_CAPABILITIES, streaming }),
     explain: vi.fn(),
     suggestSql: vi.fn(),
   };
 }
 
-const SONNET = makeProvider("anthropic", "claude-sonnet-4-6");
+const SONNET = makeProvider("anthropic", "claude-sonnet-4-6", true);
 const OPUS = makeProvider("anthropic", "claude-opus-4-8");
 
 function twoEntries() {
@@ -64,9 +64,29 @@ describe("StaticAiProviderRegistry", () => {
           kind: "anthropic",
           model: "claude-sonnet-4-6",
           default: false,
+          streaming: true,
         },
-        { id: "opus", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+        {
+          id: "opus",
+          name: "Deep",
+          kind: "anthropic",
+          model: "claude-opus-4-8",
+          default: true,
+          streaming: false,
+        },
       ]);
+    });
+
+    // ADR-0026 Decision 8: the flag is a promise about *how* the answer
+    // arrives, and the panel gates its streaming toggle on it. Reporting
+    // true for a provider whose stream is the one-chunk delegate would
+    // offer the user a mode that does nothing.
+    it("reports each provider's own streaming capability, not the deployment's", () => {
+      expect(
+        twoEntries()
+          .list()
+          .map((d) => d.streaming),
+      ).toStrictEqual([true, false]);
     });
 
     it("does not expose the provider instances through list()", () => {

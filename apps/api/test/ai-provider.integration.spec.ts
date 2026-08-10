@@ -78,6 +78,9 @@ describe("AppModule AI provider wiring (0019, 0032 slice B)", () => {
         kind: "anthropic",
         model: "claude-sonnet-4-6",
         default: true,
+        // The real AnthropicProvider overrides the streaming methods
+        // (ADR-0026 Decision 8), so the wired deployment says so.
+        streaming: true,
       },
     ]);
     // The resolved object is a real AnthropicProvider — the factory has

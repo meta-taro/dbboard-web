@@ -157,6 +157,12 @@
       "label": "Dialekt (optional)",
       "placeholder": "z. B. postgres"
     },
+    "stream": {
+      "toggle": "Antwort streamen"
+    },
+    "cancel": {
+      "button": "Abbrechen"
+    },
     "explain": {
       "button": "Erklären",
       "empty": "Führe „Erklären“ aus, um Claudes Interpretation deines SQL zu sehen."
@@ -171,8 +177,12 @@
     "response": {
       "model": "Modell: {model}"
     },
+    "tokens": {
+      "meter": "Tokens: {tin} rein / {tout} raus"
+    },
     "state": {
-      "loading": "Wird verarbeitet…"
+      "loading": "Wird verarbeitet…",
+      "cancelled": "Abgebrochen."
     },
     "disabled": {
       "heading": "KI-Assistent ist nicht konfiguriert",
@@ -187,7 +197,8 @@
       "type-conversion": "Typkonvertierungsfehler",
       "capability": "Funktion nicht verfügbar",
       "ai-disabled": "KI-Assistent nicht verfügbar",
-      "ai-provider": "Fehler des KI-Anbieters"
+      "ai-provider": "Fehler des KI-Anbieters",
+      "ai-unknown-provider": "Unbekannter KI-Anbieter"
     },
     "copy": "Kopieren",
     "copied": "Kopiert",

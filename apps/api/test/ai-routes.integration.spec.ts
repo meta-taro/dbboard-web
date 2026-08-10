@@ -456,8 +456,16 @@ describe("AI provider selection (0032 slice B)", () => {
             kind: "anthropic",
             model: "claude-sonnet-4-6",
             default: false,
+            streaming: false,
           },
-          { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+          {
+            id: "deep",
+            name: "Deep",
+            kind: "anthropic",
+            model: "claude-opus-4-8",
+            default: true,
+            streaming: false,
+          },
         ],
       });
     });

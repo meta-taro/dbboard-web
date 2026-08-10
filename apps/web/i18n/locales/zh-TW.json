@@ -157,6 +157,12 @@
       "label": "方言（選填）",
       "placeholder": "例如：postgres"
     },
+    "stream": {
+      "toggle": "串流輸出回答"
+    },
+    "cancel": {
+      "button": "取消"
+    },
     "explain": {
       "button": "解釋",
       "empty": "執行解釋以查看 Claude 對您 SQL 的理解。"
@@ -171,8 +177,12 @@
     "response": {
       "model": "模型：{model}"
     },
+    "tokens": {
+      "meter": "權杖：輸入 {tin} / 輸出 {tout}"
+    },
     "state": {
-      "loading": "處理中…"
+      "loading": "處理中…",
+      "cancelled": "已取消。"
     },
     "disabled": {
       "heading": "AI 助理未設定",
@@ -187,7 +197,8 @@
       "type-conversion": "型別轉換錯誤",
       "capability": "不支援此功能",
       "ai-disabled": "AI 助理無法使用",
-      "ai-provider": "AI 提供者錯誤"
+      "ai-provider": "AI 提供者錯誤",
+      "ai-unknown-provider": "未知的 AI 提供者"
     },
     "copy": "複製",
     "copied": "已複製",

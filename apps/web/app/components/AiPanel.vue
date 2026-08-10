@@ -34,12 +34,25 @@ const {
   selected: selectedProvider,
   select: selectProvider,
   isDisabled: providersDisabled,
+  selectedStreams,
   load: loadProviders,
 } = useAiProviders({ apiBase: props.apiBase });
 
 const hasChoice = computed(() => providers.value.length > 1);
 
-const { lastResponse, state, lastError, explain, suggestSql } = useAiAssist({
+const {
+  lastResponse,
+  state,
+  lastError,
+  tokensIn,
+  tokensOut,
+  wasCancelled,
+  explain,
+  suggestSql,
+  streamExplain,
+  streamSuggestSql,
+  cancel,
+} = useAiAssist({
   apiBase: props.apiBase,
   // Named only when there is a choice to record. One configured provider
   // is not a choice: rendering a select with a single option asks the
@@ -51,6 +64,9 @@ const { lastResponse, state, lastError, explain, suggestSql } = useAiAssist({
 
 const dialect = ref("");
 const prompt = ref("");
+// Off by default, so a deployment that never touches the toggle behaves
+// exactly as it did before this slice (ADR-0026 Decision 9).
+const streamMode = ref(false);
 
 // Asked once, when the panel appears. The list is only needed to render
 // the selector — a request that names nobody still reaches the server's
@@ -61,6 +77,8 @@ onMounted(() => {
 });
 
 const isLoading = computed(() => state.value === "loading");
+const isStreaming = computed(() => state.value === "streaming");
+const isBusy = computed(() => isLoading.value || isStreaming.value);
 // `ai_disabled` is the documented Slice 2 signal that the provider isn't
 // configured (env var unset). Retrying-on-click would just keep hitting
 // the same 404, so we latch the UI into a neutral notice and disable
@@ -72,7 +90,7 @@ const isLoading = computed(() => state.value === "loading");
 const isDisabledMode = computed(
   () => providersDisabled.value || lastError.value?.category === "ai_disabled",
 );
-const buttonsDisabled = computed(() => isLoading.value || isDisabledMode.value);
+const buttonsDisabled = computed(() => isBusy.value || isDisabledMode.value);
 
 const explainResponse = computed(() =>
   lastResponse.value?.mode === "explain" ? lastResponse.value : null,
@@ -81,16 +99,36 @@ const suggestResponse = computed(() =>
   lastResponse.value?.mode === "suggest" ? lastResponse.value : null,
 );
 
+// The toggle is checked *and* the provider behind it actually streams.
+// Leaving the toggle out of the DOM is not enough on its own: switching
+// to a provider without an SSE transport hides it while its ref stays
+// true, and the request would still go to the streaming route.
+const useStreaming = computed(() => streamMode.value && selectedStreams.value);
+
+const hasTokens = computed(() => tokensIn.value !== null || tokensOut.value !== null);
+const tokenParams = computed(() => ({
+  tin: tokensIn.value ?? 0,
+  tout: tokensOut.value ?? 0,
+}));
+
 const dialectArg = computed<string | undefined>(() => {
   const trimmed = dialect.value.trim();
   return trimmed === "" ? undefined : trimmed;
 });
 
 async function onExplain() {
+  if (useStreaming.value) {
+    await streamExplain(props.currentSql, dialectArg.value);
+    return;
+  }
   await explain(props.currentSql, dialectArg.value);
 }
 
 async function onSuggest() {
+  if (useStreaming.value) {
+    await streamSuggestSql(prompt.value, dialectArg.value, props.tables);
+    return;
+  }
   await suggestSql(prompt.value, dialectArg.value, props.tables);
 }
 
@@ -132,7 +170,7 @@ function onInsert() {
         data-testid="ai-provider-select"
         class="dialect-input"
         :value="selectedProvider"
-        :disabled="isLoading"
+        :disabled="isBusy"
         @change="onProviderChange"
       >
         <option v-for="provider in providers" :key="provider.id" :value="provider.id">
@@ -154,6 +192,24 @@ function onInsert() {
       />
     </div>
 
+    <!--
+      Only for a provider that answers the streaming routes chunk by
+      chunk (ADR-0026 Decision 8). Every provider answers them, so an
+      ungated toggle would promise an answer arriving in pieces and, for
+      some of them, deliver it all at once.
+    -->
+    <div v-if="selectedStreams" class="toggle-row">
+      <input
+        id="ai-stream"
+        v-model="streamMode"
+        data-testid="ai-stream-toggle"
+        class="toggle-input"
+        type="checkbox"
+        :disabled="isBusy"
+      />
+      <label class="toggle-label" for="ai-stream">{{ t("ai.stream.toggle") }}</label>
+    </div>
+
     <section data-testid="ai-explain-section" class="section">
       <h4 class="section-heading">{{ t("ai.section.explain") }}</h4>
       <button
@@ -165,12 +221,16 @@ function onInsert() {
       >
         {{ t("ai.explain.button") }}
       </button>
-      <p v-if="!explainResponse && !isLoading" data-testid="ai-explain-empty" class="empty">
+      <p v-if="!explainResponse && !isBusy" data-testid="ai-explain-empty" class="empty">
         {{ t("ai.explain.empty") }}
       </p>
       <article v-if="explainResponse" data-testid="ai-explain-output" class="output">
         <pre class="output-text">{{ explainResponse.text }}</pre>
-        <p class="output-model">{{ t("ai.response.model", { model: explainResponse.model }) }}</p>
+        <!-- Empty until message_start names it, which is one frame into a
+             stream — so the line waits rather than showing a blank model. -->
+        <p v-if="explainResponse.model" class="output-model">
+          {{ t("ai.response.model", { model: explainResponse.model }) }}
+        </p>
       </article>
     </section>
 
@@ -198,12 +258,14 @@ function onInsert() {
       >
         {{ t("ai.suggest.button") }}
       </button>
-      <p v-if="!suggestResponse && !isLoading" data-testid="ai-suggest-empty" class="empty">
+      <p v-if="!suggestResponse && !isBusy" data-testid="ai-suggest-empty" class="empty">
         {{ t("ai.suggest.empty") }}
       </p>
       <article v-if="suggestResponse" data-testid="ai-suggest-output" class="output">
         <pre class="output-text">{{ suggestResponse.text }}</pre>
-        <p class="output-model">{{ t("ai.response.model", { model: suggestResponse.model }) }}</p>
+        <p v-if="suggestResponse.model" class="output-model">
+          {{ t("ai.response.model", { model: suggestResponse.model }) }}
+        </p>
         <button
           type="button"
           data-testid="ai-suggest-insert"
@@ -215,7 +277,36 @@ function onInsert() {
       </article>
     </section>
 
-    <p v-if="isLoading" data-testid="ai-loading" class="loading">{{ t("ai.state.loading") }}</p>
+    <p v-if="hasTokens" data-testid="ai-token-meter" class="meter">
+      {{ t("ai.tokens.meter", tokenParams) }}
+    </p>
+
+    <!--
+      Cancelling is not failing (ADR-0026 Decision 12): its own line, no
+      banner, and whatever arrived before the stop stays above it.
+    -->
+    <p v-if="wasCancelled" data-testid="ai-cancelled" class="loading" role="status">
+      {{ t("ai.state.cancelled") }}
+    </p>
+
+    <div v-if="isBusy" class="status-row">
+      <p data-testid="ai-loading" class="loading">{{ t("ai.state.loading") }}</p>
+      <!--
+        Offered while a stream runs and not during an atomic call: there
+        the request is already in flight behind `fetch`, with nothing a
+        click could stop (ADR-0026 Decision 10, as far as web can honour
+        it).
+      -->
+      <button
+        v-if="isStreaming"
+        type="button"
+        data-testid="ai-cancel-button"
+        class="insert-button"
+        @click="cancel"
+      >
+        {{ t("ai.cancel.button") }}
+      </button>
+    </div>
   </aside>
 </template>
 
@@ -269,6 +360,21 @@ function onInsert() {
 .dialect-label {
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toggle-input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.toggle-label {
+  font-size: 0.85rem;
 }
 
 .dialect-input {
@@ -383,5 +489,18 @@ function onInsert() {
   color: var(--text-muted);
   font-style: italic;
   font-size: 0.85rem;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.meter {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>

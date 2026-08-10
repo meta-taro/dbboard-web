@@ -21,8 +21,22 @@ function registryOf(providers: AiProviderDescriptor[]): AiProviderRegistry {
 }
 
 const TWO: AiProviderDescriptor[] = [
-  { id: "fast", name: "Fast", kind: "anthropic", model: "claude-sonnet-4-6", default: false },
-  { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+  {
+    id: "fast",
+    name: "Fast",
+    kind: "anthropic",
+    model: "claude-sonnet-4-6",
+    default: false,
+    streaming: true,
+  },
+  {
+    id: "deep",
+    name: "Deep",
+    kind: "anthropic",
+    model: "claude-opus-4-8",
+    default: true,
+    streaming: true,
+  },
 ];
 
 describe("ListAiProviders", () => {

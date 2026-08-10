@@ -279,3 +279,95 @@ AI env cases each have a comment at the old site naming the new home
 Gate green: format, lint, typecheck, 1266 api + 1250 web tests. `pnpm -r test`
 still reports one skipped file (the D1 live suite, maintainer-held credentials,
 see 0031).
+
+### C — streaming, cancel, token meter (done)
+
+Definition-of-done items 3, 4, 5 and 6. Two commits, because the halves fail
+differently and nothing in the browser could be written against a route that
+did not exist yet: the API half is `528035e`, the browser half is this one.
+
+`StreamEvent` is a normalized five-variant union (`message_start`,
+`text_delta`, `usage`, `message_stop`, `error`) rather than the provider's own
+frames, which is ADR-0026 Decision 3 and the reason slice D can add OpenAI
+without touching a consumer. The port's `stream*` methods have **default
+implementations that delegate to the atomic call and yield the answer as a
+single chunk** (Decision 2): a provider is never required to stream, and the
+routes never have to ask whether this one can. What varies is the honesty flag
+`streaming`, which is what the panel gates its toggle on (Decision 8) — every
+provider answers the streaming routes, so without the flag the toggle would
+promise chunks and, for a delegate, deliver one.
+
+The routes are `POST /ai/explain/stream` and `POST /ai/suggest/stream`, taking
+the same bodies as their atomic siblings. **Provider resolution runs before
+the response is touched**, so `404 ai_disabled` and `422 ai_unknown_provider`
+are still JSON envelopes with status codes; only a failure past the headers
+becomes an in-band `error` frame. A stream cannot un-send a 200, and a client
+that must parse SSE to discover the deployment has no AI would be a worse
+contract than the one slice B just built. Framing is `data: <json>\n\n` with no
+`event:` names — the type is inside the object, so a reader needs one branch
+rather than two. `X-Accel-Buffering: no` because a proxy that buffers turns
+streaming back into an atomic call without saying so.
+
+Cancel is drop-the-stream (Decision 5). `pipeAiStream` races `iterator.next()`
+against the client hangup, and on hangup calls `iterator.return()` so the
+generator's `finally` runs: that aborts the upstream request and writes the
+record. **Exactly one history record per call, at the terminus, cancelled ones
+included** — carrying the text assembled so far, the tokens actually spent and
+`cancelled` as its own status rather than as a failure. Its numbers are rung
+1's v:2 `tokens_in` / `tokens_out`, which is why ADR-0026 waited for it.
+
+The meter **replaces on each `usage` frame rather than summing** (Decision 7).
+Anthropic's `message_delta.usage.output_tokens` is already cumulative, so
+addition would roughly double the figure; item 5's test drives a stream
+reporting 20 then 45 output tokens and asserts 45, which a summing
+implementation would fail with 65. A `null` count is "this event reported
+none", not "none were spent", so it leaves the previous figure standing rather
+than erasing what `message_start` already gave.
+
+The browser half is three pieces. `internal/sse.ts` is a generator over
+`fetch`, because `apiFetch` forwards to `$fetch` and there is no point in that
+call where a half-arrived answer exists; frame decoding is a pure function kept
+apart from the reader loop so the awkward case — a frame split across two
+chunks — is testable without a socket. Its `finally` cancels the reader, so a
+consumer that stops early closes the request rather than leaving the provider
+generating tokens nobody will read. `useAiAssist` gained a `streaming` state
+(distinct from `loading`: one has nothing to show, the other has a partial
+answer and a Cancel button), `tokensIn` / `tokensOut` / `wasCancelled`, and a
+per-invocation `StreamRun` whose identity is checked before any write — so a
+superseded stream cannot land frames on the run that replaced it, and an abort
+issued to clear the way is not reported as the user cancelling. `AiPanel`
+gained the toggle, the Cancel button, the meter and a `Cancelled` line.
+
+Two decisions in the panel are worth the sentences they cost:
+
+- **The dispatch is gated, not just the DOM.** `useStreaming = streamMode &&
+selectedStreams`. Hiding the checkbox for a provider that does not stream
+  leaves its ref `true` behind the hidden box, and the next Send would still
+  take the streaming route — the test that pins this switches provider while
+  the toggle is on and asserts the atomic call.
+- **Cancel is offered only while streaming.** Decision 10 enables it whenever
+  the panel is busy; web's atomic path is a `fetch` already in flight inside
+  `apiFetch` with nothing a click could stop, so a button there would be an
+  offer the browser cannot keep. `cancel()` stays idempotent and safe to call
+  when idle, so the divergence is in what is rendered and not in the API.
+
+Cancelling renders as its own line with no error banner, and whatever text
+arrived before the stop stays on screen (Decision 12) — a cancel is a thing the
+user did, not a thing that went wrong. The toggle is unchecked by default
+(Decision 9), so a deployment that never touches it behaves exactly as it did
+before this slice: item 9 re-checked, and `docs/api-contract.md` still zero
+against `86b324f` (item 10).
+
+Item 6's two-halves capability test is asserted the way rung 7 Decision 1
+established: `streaming: true` against the Anthropic adapter's real override,
+`false` against a provider left on the delegate, so the flag is proved against
+behaviour rather than against a literal that agrees with itself.
+
+`docs/deployment.md` gained the two `/stream` rows, the descriptor's
+`streaming` field, and the SSE / cancel / token paragraphs. Five keys across
+eleven locales (`ai.stream.toggle`, `ai.cancel.button`, `ai.tokens.meter`,
+`ai.state.cancelled`, `error.prefix.ai-unknown-provider` — the last one slice
+B's 422 had left untranslated).
+
+Gate green: format, lint, typecheck, 1324 api + 1354 web tests. Still the one
+skipped file (the D1 live suite, maintainer-held credentials, see 0031).

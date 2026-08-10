@@ -27,6 +27,14 @@ export interface AiProviderDescriptor {
   kind: string;
   model: string;
   default: boolean;
+  /**
+   * Whether this provider answers the streaming routes with real
+   * token-granularity chunks (ADR-0026 Decision 8). All of them answer
+   * those routes — one without an SSE transport yields the whole answer
+   * as a single chunk — so without this the panel could only offer a
+   * streaming mode that, for some providers, streams nothing.
+   */
+  streaming: boolean;
 }
 
 interface WireProvidersResponse {
@@ -100,6 +108,11 @@ export function useAiProviders(options?: UseAiProvidersOptions) {
     state: readonly(state),
     lastError: readonly(lastError),
     isDisabled: computed(() => disabled.value),
+    // Derived here rather than in the panel so the panel never has to
+    // hold the descriptor list to answer one boolean about it.
+    selectedStreams: computed(
+      () => providers.value.find((p) => p.id === selected.value)?.streaming ?? false,
+    ),
     load,
     select,
   };

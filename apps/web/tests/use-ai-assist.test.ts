@@ -2,6 +2,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { apiFetch } from "../app/composables/internal/http";
+import { openSseStream, type SseStreamInit } from "../app/composables/internal/sse";
 import { useAiAssist } from "../app/composables/useAiAssist";
 
 // Phase 6 Slice 3 (ticket 0022) — UI-layer composable wrapping the
@@ -16,7 +17,40 @@ vi.mock("../app/composables/internal/http", () => ({
   apiFetch: vi.fn(),
 }));
 
+vi.mock("../app/composables/internal/sse", () => ({
+  openSseStream: vi.fn(),
+}));
+
 const mockFetch = vi.mocked(apiFetch);
+const mockStream = vi.mocked(openSseStream);
+
+// Turns a list of already-decoded StreamEvents into what openSseStream
+// hands back. The transport's own framing is covered by tests/sse.test.ts;
+// here the events are the input.
+function streamOf(events: unknown[]): AsyncGenerator<unknown> {
+  return (async function* () {
+    for (const event of events) yield event;
+  })();
+}
+
+// Yields its events and then parks until the caller aborts, which is how
+// a real stream behaves while the model is still producing tokens. The
+// abort surfaces the way fetch surfaces one, so the composable is tested
+// against the shape it will actually see.
+function hangingStream(
+  events: unknown[],
+): (url: string, init: SseStreamInit) => AsyncGenerator<unknown> {
+  return (_url, init) =>
+    (async function* () {
+      for (const event of events) yield event;
+      await new Promise<void>((resolve) => {
+        init.signal?.addEventListener("abort", () => {
+          resolve();
+        });
+      });
+      throw new DOMException("The operation was aborted.", "AbortError");
+    })();
+}
 
 type AiApi = ReturnType<typeof useAiAssist>;
 
@@ -31,9 +65,23 @@ function makeHarness(apiBase = "http://test") {
   return { Component, holder };
 }
 
+// A getter, so changing the selector does not mean rebuilding the
+// composable and losing the response already on screen.
+function makeProviderHarness(provider: () => string | undefined) {
+  const holder: { api: AiApi | null } = { api: null };
+  const Component = defineComponent({
+    setup() {
+      holder.api = useAiAssist({ apiBase: "http://test", provider });
+      return () => h("div");
+    },
+  });
+  return { Component, holder };
+}
+
 describe("useAiAssist", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    mockStream.mockReset();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -279,24 +327,12 @@ describe("useAiAssist", () => {
       wrapper.unmount();
     });
   });
+
   // Ticket 0032 slice B — which configured provider answers. It is an
   // option on the composable rather than an argument to explain() /
   // suggestSql() because the selection is one piece of panel state
   // applied to both calls, not something a caller decides per request.
-  // A getter, so changing the selector does not mean rebuilding the
-  // composable and losing the response already on screen.
   describe("provider", () => {
-    function makeProviderHarness(provider: () => string | undefined) {
-      const holder: { api: AiApi | null } = { api: null };
-      const Component = defineComponent({
-        setup() {
-          holder.api = useAiAssist({ apiBase: "http://test", provider });
-          return () => h("div");
-        },
-      });
-      return { Component, holder };
-    }
-
     it("names the selected provider on an explain", async () => {
       mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
       const { Component, holder } = makeProviderHarness(() => "deep");
@@ -371,6 +407,293 @@ describe("useAiAssist", () => {
       const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
       expect(body).not.toHaveProperty("provider");
       wrapper.unmount();
+    });
+  });
+
+  // Ticket 0032 slice C2 — the streaming twins. Same bodies, same
+  // provider selection, same error surface; what differs is that the
+  // answer arrives in pieces and can be stopped part-way (ADR-0026).
+  describe("streaming", () => {
+    const START = { type: "message_start", tokensIn: 12, model: "claude-x" };
+    const STOP = { type: "message_stop", stopReason: "end_turn" };
+
+    it("streamExplain() POSTs {sql} to /ai/explain/stream", async () => {
+      mockStream.mockReturnValueOnce(streamOf([START, { type: "text_delta", text: "hi" }, STOP]));
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(mockStream).toHaveBeenCalledWith(
+        "http://test/ai/explain/stream",
+        expect.objectContaining({ body: { sql: "SELECT 1" } }),
+      );
+      wrapper.unmount();
+    });
+
+    it("streamSuggestSql() POSTs {prompt} to /ai/suggest/stream", async () => {
+      mockStream.mockReturnValueOnce(streamOf([START, STOP]));
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamSuggestSql("count users");
+
+      expect(mockStream).toHaveBeenCalledWith(
+        "http://test/ai/suggest/stream",
+        expect.objectContaining({ body: { prompt: "count users" } }),
+      );
+      wrapper.unmount();
+    });
+
+    it("carries dialect, schema and the selected provider, same as the atomic calls", async () => {
+      mockStream.mockReturnValueOnce(streamOf([START, STOP]));
+      const { Component, holder } = makeProviderHarness(() => "deep");
+      const wrapper = mount(Component);
+
+      await holder.api!.streamSuggestSql("count users", "postgres", []);
+
+      expect(mockStream).toHaveBeenCalledWith(
+        "http://test/ai/suggest/stream",
+        expect.objectContaining({
+          body: { prompt: "count users", dialect: "postgres", schema: [], provider: "deep" },
+        }),
+      );
+      wrapper.unmount();
+    });
+
+    it("accumulates text_delta into one response and reports the model from message_start", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          START,
+          { type: "text_delta", text: "This " },
+          { type: "text_delta", text: "selects " },
+          { type: "text_delta", text: "everything." },
+          STOP,
+        ]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(holder.api!.lastResponse.value).toEqual({
+        text: "This selects everything.",
+        model: "claude-x",
+        mode: "explain",
+      });
+      expect(holder.api!.state.value).toBe("idle");
+      expect(holder.api!.lastError.value).toBeNull();
+      wrapper.unmount();
+    });
+
+    it("reports state 'streaming' while the answer is still arriving", async () => {
+      mockStream.mockImplementationOnce(
+        hangingStream([START, { type: "text_delta", text: "Hel" }]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      const pending = holder.api!.streamExplain("SELECT 1");
+      await flushPromises();
+
+      expect(holder.api!.state.value).toBe("streaming");
+      expect(holder.api!.lastResponse.value?.text).toBe("Hel");
+
+      holder.api!.cancel();
+      await pending;
+      wrapper.unmount();
+    });
+
+    // ADR-0026 Decision 7. Anthropic reports `output_tokens` cumulatively,
+    // so a meter that added each report would show 35 for a 25-token
+    // answer — and the number would look plausible.
+    it("replaces the token meter on each usage report rather than summing", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          START,
+          { type: "usage", tokensIn: 12, tokensOut: 10 },
+          { type: "usage", tokensIn: 12, tokensOut: 25 },
+          STOP,
+        ]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(holder.api!.tokensOut.value).toBe(25);
+      expect(holder.api!.tokensIn.value).toBe(12);
+      wrapper.unmount();
+    });
+
+    it("keeps the previous count when a usage event reports null", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          START,
+          { type: "usage", tokensIn: 12, tokensOut: 25 },
+          { type: "usage", tokensIn: null, tokensOut: null },
+          STOP,
+        ]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(holder.api!.tokensIn.value).toBe(12);
+      expect(holder.api!.tokensOut.value).toBe(25);
+      wrapper.unmount();
+    });
+
+    it("clears the meter and the previous answer when a new stream starts", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([START, { type: "usage", tokensIn: 12, tokensOut: 25 }, STOP]),
+      );
+      mockStream.mockReturnValueOnce(
+        streamOf([{ type: "message_start", tokensIn: null, model: null }, STOP]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+      await holder.api!.streamExplain("SELECT 2");
+
+      expect(holder.api!.tokensIn.value).toBeNull();
+      expect(holder.api!.tokensOut.value).toBeNull();
+      expect(holder.api!.lastResponse.value?.text).toBe("");
+      wrapper.unmount();
+    });
+
+    // The stream has already sent its 200, so a failure past that point
+    // arrives in band (ai-sse.ts). It must land in the same banner an
+    // atomic failure lands in, or a streamed error would render nothing.
+    it("surfaces an in-band error event as a provider error", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          START,
+          { type: "text_delta", text: "partial" },
+          { type: "error", category: "network", message: "Upstream connection reset" },
+        ]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(holder.api!.state.value).toBe("error");
+      expect(holder.api!.lastError.value).toEqual({
+        category: "ai_provider",
+        message: "Upstream connection reset",
+        i18nKey: "error.prefix.ai-provider",
+      });
+      wrapper.unmount();
+    });
+
+    it("surfaces a pre-stream refusal through the same envelope path as the atomic calls", async () => {
+      mockStream.mockImplementationOnce(() => {
+        throw Object.assign(new Error("404"), {
+          data: { error: { category: "ai_disabled", message: "AI provider is not configured" } },
+        });
+      });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamExplain("SELECT 1");
+
+      expect(holder.api!.state.value).toBe("error");
+      expect(holder.api!.lastError.value?.category).toBe("ai_disabled");
+      wrapper.unmount();
+    });
+
+    it("surfaces an unknown provider refusal with its own i18n key", async () => {
+      mockStream.mockImplementationOnce(() => {
+        throw Object.assign(new Error("422"), {
+          data: {
+            error: {
+              category: "ai_unknown_provider",
+              message: 'AI provider "gpt-4o" is not configured',
+            },
+          },
+        });
+      });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamSuggestSql("count users");
+
+      expect(holder.api!.lastError.value?.i18nKey).toBe("error.prefix.ai-unknown-provider");
+      wrapper.unmount();
+    });
+
+    // ADR-0026 Decision 12: cancelling is not failing. No banner, the
+    // partial answer stays on screen, and the panel says "Cancelled."
+    describe("cancel", () => {
+      it("keeps the partial answer, sets wasCancelled and leaves no error", async () => {
+        mockStream.mockImplementationOnce(
+          hangingStream([START, { type: "text_delta", text: "Half an ans" }]),
+        );
+        const { Component, holder } = makeHarness();
+        const wrapper = mount(Component);
+
+        const pending = holder.api!.streamExplain("SELECT 1");
+        await flushPromises();
+        holder.api!.cancel();
+        await pending;
+
+        expect(holder.api!.wasCancelled.value).toBe(true);
+        expect(holder.api!.state.value).toBe("idle");
+        expect(holder.api!.lastError.value).toBeNull();
+        expect(holder.api!.lastResponse.value?.text).toBe("Half an ans");
+        wrapper.unmount();
+      });
+
+      // The signal must reach the transport, not merely stop the reader:
+      // an upstream left generating bills for tokens nobody receives.
+      it("aborts the signal it handed the transport", async () => {
+        let seen: AbortSignal | undefined;
+        mockStream.mockImplementationOnce((_url: string, init: SseStreamInit) => {
+          seen = init.signal;
+          return hangingStream([START])(_url, init);
+        });
+        const { Component, holder } = makeHarness();
+        const wrapper = mount(Component);
+
+        const pending = holder.api!.streamExplain("SELECT 1");
+        await flushPromises();
+        expect(seen?.aborted).toBe(false);
+
+        holder.api!.cancel();
+        expect(seen?.aborted).toBe(true);
+        await pending;
+        wrapper.unmount();
+      });
+
+      it("is a no-op when nothing is in flight", () => {
+        const { Component, holder } = makeHarness();
+        const wrapper = mount(Component);
+
+        expect(() => holder.api!.cancel()).not.toThrow();
+        expect(holder.api!.state.value).toBe("idle");
+        expect(holder.api!.wasCancelled.value).toBe(false);
+        wrapper.unmount();
+      });
+
+      it("clears the cancelled flag when the next stream starts", async () => {
+        mockStream.mockImplementationOnce(hangingStream([START]));
+        mockStream.mockReturnValueOnce(streamOf([START, STOP]));
+        const { Component, holder } = makeHarness();
+        const wrapper = mount(Component);
+
+        const first = holder.api!.streamExplain("SELECT 1");
+        await flushPromises();
+        holder.api!.cancel();
+        await first;
+
+        await holder.api!.streamExplain("SELECT 2");
+
+        expect(holder.api!.wasCancelled.value).toBe(false);
+        wrapper.unmount();
+      });
     });
   });
 });

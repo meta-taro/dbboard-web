@@ -31,8 +31,22 @@ function makeHarness(apiBase = "http://test") {
 
 const TWO = {
   providers: [
-    { id: "fast", name: "Fast", kind: "anthropic", model: "claude-sonnet-4-6", default: false },
-    { id: "deep", name: "Deep", kind: "anthropic", model: "claude-opus-4-8", default: true },
+    {
+      id: "fast",
+      name: "Fast",
+      kind: "anthropic",
+      model: "claude-sonnet-4-6",
+      default: false,
+      streaming: true,
+    },
+    {
+      id: "deep",
+      name: "Deep",
+      kind: "anthropic",
+      model: "claude-opus-4-8",
+      default: true,
+      streaming: false,
+    },
   ],
 };
 
@@ -162,5 +176,33 @@ describe("useAiProviders", () => {
 
     expect(holder.api!.selected.value).toBe("deep");
     wrapper.unmount();
+  });
+
+  // ADR-0026 Decision 8. The toggle is a promise that the answer will
+  // arrive in pieces, and every provider answers the streaming routes —
+  // one that has no SSE transport just yields the whole thing at once.
+  // Gating on the flag is what keeps the toggle from being a no-op.
+  describe("streaming capability", () => {
+    it("reports whether the selected provider streams", async () => {
+      mockFetch.mockResolvedValueOnce(TWO);
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.load();
+      await flushPromises();
+      expect(holder.api!.selectedStreams.value).toBe(false);
+
+      holder.api!.select("fast");
+      expect(holder.api!.selectedStreams.value).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("reports false before anything has been loaded", () => {
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      expect(holder.api!.selectedStreams.value).toBe(false);
+      wrapper.unmount();
+    });
   });
 });

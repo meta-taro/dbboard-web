@@ -15,6 +15,7 @@ import { useEditContext } from "../../../composables/useEditContext";
 import { useQueryExecution } from "../../../composables/useQueryExecution";
 import type { TableInfo } from "../../../composables/useSchemaBrowser";
 import { useSidebarWidth } from "../../../composables/useSidebarWidth";
+import { useTableDescriptions } from "../../../composables/useTableDescriptions";
 import { fromCategorised } from "../../../utils/display-error";
 
 const { t } = useI18n();
@@ -68,6 +69,13 @@ const schemaRef = ref<InstanceType<typeof SchemaBrowser> | null>(null);
 const aiTables = computed<ReadonlyArray<TableInfo> | undefined>(() =>
   schemaRef.value?.state === "idle" ? schemaRef.value.tables : undefined,
 );
+
+// Column detail for the AI panel (ticket 0032 slice E). The panel is
+// connection-agnostic by design, so the page hands it the two things that
+// are not: whether this connection can describe tables at all, and the
+// fan-out that does it. Passing the id instead would put a second fetcher
+// inside a component whose whole contract is that it owns no connection.
+const { supported: canDescribe, describeAll } = useTableDescriptions(connectionId);
 
 const sqlInput = ref("");
 /** The statement behind the rows on screen, kept so a save can show what it
@@ -239,7 +247,13 @@ function onEditorKeydown(event: KeyboardEvent) {
           </template>
         </section>
 
-        <AiPanel :current-sql="sqlInput" :tables="aiTables" @insert="onInsertIdentifier" />
+        <AiPanel
+          :current-sql="sqlInput"
+          :tables="aiTables"
+          :can-describe="canDescribe"
+          :describe-tables="describeAll"
+          @insert="onInsertIdentifier"
+        />
       </div>
 
       <SidebarSplitter

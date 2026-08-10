@@ -17,7 +17,7 @@ import { useRuntimeConfig } from "#imports";
 import { apiFetch } from "./internal/http";
 import { parseError, toI18nKey, type CategorisedError } from "./internal/i18n-error";
 import { openSseStream } from "./internal/sse";
-import type { TableInfo } from "./useSchemaBrowser";
+import type { TableInfo, TableSchema } from "./useSchemaBrowser";
 
 // "streaming" is distinct from "loading" because the two look different
 // on screen: a loading call has nothing to show, a streaming one has a
@@ -57,6 +57,25 @@ function asStreamEvent(raw: unknown): WireStreamEvent | null {
   if (typeof raw !== "object" || raw === null) return null;
   const type = (raw as { type?: unknown }).type;
   return typeof type === "string" ? (raw as WireStreamEvent) : null;
+}
+
+/**
+ * The suggest body, built once for both the atomic and the streaming
+ * route. Shared rather than duplicated because the two routes validate
+ * against the same DTO: a field added to one and forgotten on the other
+ * would be a difference only a streaming user ever hit.
+ */
+function suggestBody(
+  prompt: string,
+  dialect: string | undefined,
+  schema: readonly TableInfo[] | undefined,
+  fullSchema: readonly TableSchema[] | undefined,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { prompt };
+  if (dialect !== undefined) body.dialect = dialect;
+  if (schema !== undefined) body.schema = schema;
+  if (fullSchema !== undefined) body.full_schema = fullSchema;
+  return body;
 }
 
 /**
@@ -135,16 +154,22 @@ export function useAiAssist(options?: UseAiAssistOptions) {
    * and reaches the prompt; passing nothing omits the key, which is what
    * a caller with no connection open does and what keeps this call
    * identical to the one made before the field existed.
+   *
+   * `fullSchema` is the described half (ADR-0028 Decision 9) — a fourth
+   * argument rather than a replacement for the third, because both halves
+   * travel together and the terse list is what the API falls back to when
+   * the prefetch came back with nothing. An empty list is forwarded as an
+   * empty list for that reason: "every table failed to describe" is the
+   * server's fallback to decide, not a shape the browser rewrites into
+   * "we never asked".
    */
   async function suggestSql(
     prompt: string,
     dialect?: string,
     schema?: readonly TableInfo[],
+    fullSchema?: readonly TableSchema[],
   ): Promise<void> {
-    const body: Record<string, unknown> = { prompt };
-    if (dialect !== undefined) body.dialect = dialect;
-    if (schema !== undefined) body.schema = schema;
-    await call("/ai/suggest", body, "suggest");
+    await call("/ai/suggest", suggestBody(prompt, dialect, schema, fullSchema), "suggest");
   }
 
   function apply(event: WireStreamEvent): void {
@@ -257,11 +282,9 @@ export function useAiAssist(options?: UseAiAssistOptions) {
     prompt: string,
     dialect?: string,
     schema?: readonly TableInfo[],
+    fullSchema?: readonly TableSchema[],
   ): Promise<void> {
-    const body: Record<string, unknown> = { prompt };
-    if (dialect !== undefined) body.dialect = dialect;
-    if (schema !== undefined) body.schema = schema;
-    await stream("/ai/suggest/stream", body, "suggest");
+    await stream("/ai/suggest/stream", suggestBody(prompt, dialect, schema, fullSchema), "suggest");
   }
 
   return {

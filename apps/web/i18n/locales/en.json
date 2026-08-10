@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "Stream response"
     },
+    "details": {
+      "toggle": "Include column details",
+      "loading": "Fetching table schemas…",
+      "warning": "Could not describe {count} table(s); continuing without them."
+    },
     "cancel": {
       "button": "Cancel"
     },

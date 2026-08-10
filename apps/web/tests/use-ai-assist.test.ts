@@ -328,6 +328,102 @@ describe("useAiAssist", () => {
     });
   });
 
+  // ADR-0028 Decision 9 (full half) — the described tables, when the
+  // panel prefetched them. A fourth argument rather than a replacement
+  // for the third: both halves travel together, and the terse list is
+  // what the API falls back to when the fan-out came back empty.
+  describe("full_schema", () => {
+    const USERS = {
+      table: { schema: "public", name: "users" },
+      columns: [
+        {
+          name: "id",
+          declared_type: "integer",
+          nullable: false,
+          primary_key: true,
+          ordinal: 1,
+          default_value: null,
+        },
+      ],
+      primary_key: ["id"],
+    };
+
+    it("suggestSql() sends the described tables alongside the terse list", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql(
+        "recent orders",
+        "postgres",
+        [{ schema: "public", name: "users" }],
+        [USERS],
+      );
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: {
+          prompt: "recent orders",
+          dialect: "postgres",
+          schema: [{ schema: "public", name: "users" }],
+          full_schema: [USERS],
+        },
+      });
+      wrapper.unmount();
+    });
+
+    it("suggestSql() omits the key entirely when the panel did not prefetch", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("anything", undefined, []);
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("full_schema");
+      wrapper.unmount();
+    });
+
+    it("suggestSql() sends an empty prefetch as an empty list — the API falls back", async () => {
+      // Every table failed to describe. The key still goes on the wire so
+      // the fallback is the server's decision to make, not a shape the
+      // browser silently rewrote into "we never asked".
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("anything", undefined, [{ schema: null, name: "t" }], []);
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: { prompt: "anything", schema: [{ schema: null, name: "t" }], full_schema: [] },
+      });
+      wrapper.unmount();
+    });
+
+    it("streamSuggestSql() carries it too — one body shape for both routes", async () => {
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          { type: "message_start", tokensIn: 1, model: "m" },
+          { type: "message_stop", stopReason: "end_turn" },
+        ]),
+      );
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.streamSuggestSql("recent orders", undefined, undefined, [USERS]);
+
+      expect(mockStream).toHaveBeenCalledWith(
+        "http://test/ai/suggest/stream",
+        expect.objectContaining({ body: { prompt: "recent orders", full_schema: [USERS] } }),
+      );
+      wrapper.unmount();
+    });
+  });
+
   // Ticket 0032 slice B — which configured provider answers. It is an
   // option on the composable rather than an argument to explain() /
   // suggestSql() because the selection is one piece of panel state

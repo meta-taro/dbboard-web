@@ -81,3 +81,156 @@ describe("buildSuggestPrompt", () => {
     expect(buildSuggestPrompt({ prompt: "anything" })).toBe("Request: anything");
   });
 });
+
+// ADR-0028 Decision 9: when the caller prefetched per-table descriptions
+// they replace the terse name list. The rendering is desktop's
+// `render_table_schema` byte for byte — a prompt hint, not valid DDL, so
+// `declared_type` and `default_value` are passed through as the engine's
+// raw text and a missing type is omitted rather than guessed.
+describe("buildSuggestPrompt with full_schema", () => {
+  const column = (
+    name: string,
+    declared_type: string | null,
+    nullable: boolean,
+    ordinal: number,
+    default_value: string | null = null,
+    primary_key = false,
+  ) => ({ name, declared_type, nullable, primary_key, ordinal, default_value });
+
+  it("renders each table as a compact CREATE TABLE, preferring it over the names", () => {
+    expect(
+      buildSuggestPrompt({
+        prompt: "everyone who signed up today",
+        dialect: "postgres",
+        // Both halves may be on the wire; the full one wins.
+        schema: [{ schema: "public", name: "users" }],
+        full_schema: [
+          {
+            table: { schema: "public", name: "users" },
+            columns: [
+              column("id", "integer", false, 1, "nextval('users_id_seq'::regclass)", true),
+              column("email", "character varying", false, 2),
+              column("nickname", null, true, 3),
+            ],
+            primary_key: ["id"],
+          },
+        ],
+      }),
+    ).toBe(
+      "Tables:\n" +
+        "CREATE TABLE public.users (\n" +
+        "  id integer NOT NULL DEFAULT nextval('users_id_seq'::regclass),\n" +
+        "  email character varying NOT NULL,\n" +
+        "  nickname,\n" +
+        "  PRIMARY KEY (id)\n" +
+        ");\n\n" +
+        "Dialect: postgres\n\n" +
+        "Request: everyone who signed up today",
+    );
+  });
+
+  it("omits the primary-key line when the table has none", () => {
+    expect(
+      buildSuggestPrompt({
+        prompt: "anything",
+        full_schema: [
+          {
+            table: { schema: null, name: "audit_log" },
+            columns: [column("entry", "TEXT", true, 1)],
+            primary_key: [],
+          },
+        ],
+      }),
+    ).toBe("Tables:\nCREATE TABLE audit_log (\n  entry TEXT\n);\n\nRequest: anything");
+  });
+
+  it("keeps a composite key in key order rather than column order", () => {
+    expect(
+      buildSuggestPrompt({
+        prompt: "anything",
+        full_schema: [
+          {
+            table: { schema: null, name: "memberships" },
+            columns: [
+              column("team_id", "uuid", false, 1, null, true),
+              column("user_id", "uuid", false, 2, null, true),
+            ],
+            // Declared (user_id, team_id) — the reverse of ordinal order,
+            // which is exactly what filtering `columns` would lose.
+            primary_key: ["user_id", "team_id"],
+          },
+        ],
+      }),
+    ).toBe(
+      "Tables:\n" +
+        "CREATE TABLE memberships (\n" +
+        "  team_id uuid NOT NULL,\n" +
+        "  user_id uuid NOT NULL,\n" +
+        "  PRIMARY KEY (user_id, team_id)\n" +
+        ");\n\n" +
+        "Request: anything",
+    );
+  });
+
+  it("separates several tables with a single newline", () => {
+    expect(
+      buildSuggestPrompt({
+        prompt: "anything",
+        full_schema: [
+          {
+            table: { schema: null, name: "a" },
+            columns: [column("x", "int", true, 1)],
+            primary_key: [],
+          },
+          {
+            table: { schema: null, name: "b" },
+            columns: [column("y", "int", true, 1)],
+            primary_key: [],
+          },
+        ],
+      }),
+    ).toBe(
+      "Tables:\n" +
+        "CREATE TABLE a (\n  x int\n);\n" +
+        "CREATE TABLE b (\n  y int\n);\n\n" +
+        "Request: anything",
+    );
+  });
+
+  it("falls back to the terse names when the prefetch produced nothing", () => {
+    // An empty list means the fan-out came back with no usable
+    // description — not that the connection has no tables.
+    expect(
+      buildSuggestPrompt({
+        prompt: "anything",
+        schema: [{ schema: null, name: "users" }],
+        full_schema: [],
+      }),
+    ).toBe("Tables:\n- users\n\nRequest: anything");
+  });
+
+  it("falls back all the way to the empty statement when both halves are empty", () => {
+    expect(buildSuggestPrompt({ prompt: "anything", schema: [], full_schema: [] })).toBe(
+      "Tables:\n(no tables introspected)\n\nRequest: anything",
+    );
+  });
+
+  it("renders the block even when the caller sent no terse list at all", () => {
+    expect(
+      buildSuggestPrompt({
+        prompt: "anything",
+        full_schema: [
+          {
+            table: { schema: null, name: "a" },
+            columns: [column("x", "int", true, 1)],
+            primary_key: [],
+          },
+        ],
+      }),
+    ).toBe("Tables:\nCREATE TABLE a (\n  x int\n);\n\nRequest: anything");
+  });
+
+  it("omits the block when neither half was sent", () => {
+    expect(buildSuggestPrompt({ prompt: "anything", full_schema: [] })).toBe("Request: anything");
+  });
+});

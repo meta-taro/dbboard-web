@@ -264,6 +264,73 @@ describe("AI HTTP routes (0020)", () => {
       });
     });
 
+    it("passes the described tables through, absent nullables normalised (ADR-0028 Decision 9)", async () => {
+      const suggestSql = vi.fn().mockResolvedValue({ text: "SELECT 1;", model: "claude-x" });
+      app = await buildAppWith(stubProvider({ suggestSql }));
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/suggest")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({
+          prompt: "recent orders",
+          schema: [{ name: "orders" }],
+          full_schema: [
+            {
+              // No `schema` key, and a column with neither a declared
+              // type nor a default: three absences the domain spells
+              // `null`, so the boundary is where they become one.
+              table: { name: "orders" },
+              columns: [{ name: "id", nullable: false, primary_key: true, ordinal: 1 }],
+              primary_key: ["id"],
+            },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(suggestSql).toHaveBeenCalledExactlyOnceWith({
+        prompt: "recent orders",
+        schema: [{ schema: null, name: "orders" }],
+        full_schema: [
+          {
+            table: { schema: null, name: "orders" },
+            columns: [
+              {
+                name: "id",
+                declared_type: null,
+                nullable: false,
+                primary_key: true,
+                ordinal: 1,
+                default_value: null,
+              },
+            ],
+            primary_key: ["id"],
+          },
+        ],
+      });
+    });
+
+    it("returns 422 when a described column is malformed", async () => {
+      app = await buildAppWith(stubProvider());
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/suggest")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({
+          prompt: "x",
+          full_schema: [
+            {
+              table: { name: "orders" },
+              columns: [{ name: "id", nullable: "false", primary_key: true, ordinal: 1 }],
+              primary_key: [],
+            },
+          ],
+        });
+
+      expect(res.status).toBe(422);
+    });
+
     it("returns 422 when a schema entry is malformed", async () => {
       app = await buildAppWith(stubProvider());
 
@@ -741,6 +808,56 @@ describe("AI streaming routes (0032 slice C)", () => {
       prompt: "every user",
       dialect: "postgres",
       schema: [{ schema: null, name: "users" }],
+    });
+  });
+
+  it("streams with the described tables too — both routes share one normaliser", async () => {
+    const suggestSql = vi.fn().mockResolvedValue({ text: "SELECT 1;", model: "claude-x" });
+    app = await buildAppWith(stubProvider({ suggestSql }));
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/suggest/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({
+        prompt: "every user",
+        full_schema: [
+          {
+            table: { schema: "public", name: "users" },
+            columns: [
+              {
+                name: "id",
+                declared_type: "integer",
+                nullable: false,
+                primary_key: true,
+                ordinal: 1,
+                default_value: null,
+              },
+            ],
+            primary_key: ["id"],
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(suggestSql).toHaveBeenCalledExactlyOnceWith({
+      prompt: "every user",
+      full_schema: [
+        {
+          table: { schema: "public", name: "users" },
+          columns: [
+            {
+              name: "id",
+              declared_type: "integer",
+              nullable: false,
+              primary_key: true,
+              ordinal: 1,
+              default_value: null,
+            },
+          ],
+          primary_key: ["id"],
+        },
+      ],
     });
   });
 

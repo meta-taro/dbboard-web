@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "流式输出回答"
     },
+    "details": {
+      "toggle": "包含列详细信息",
+      "loading": "正在获取表结构…",
+      "warning": "有 {count} 个表无法获取结构，将忽略这些表继续。"
+    },
     "cancel": {
       "button": "取消"
     },

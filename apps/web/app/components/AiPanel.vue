@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useAiAssist } from "../composables/useAiAssist";
 import { useAiProviders } from "../composables/useAiProviders";
-import type { TableInfo } from "../composables/useSchemaBrowser";
+import type { TableInfo, TableSchema } from "../composables/useSchemaBrowser";
+import type { DescribeFanOut } from "../composables/useTableDescriptions";
 import { fromCategorised } from "../utils/display-error";
 import ErrorBanner from "./ErrorBanner.vue";
 
@@ -20,6 +21,21 @@ interface Props {
    * thing and is forwarded: the connection was read and has none.
    */
   tables?: readonly TableInfo[];
+  /**
+   * Whether this connection can describe its tables (ADR-0028 Decision 4).
+   * False leaves the "include column details" box on screen but greyed
+   * out, which says the feature exists and this connection cannot offer
+   * it — letting the box be ticked would trade that for a `Capability`
+   * error after every Suggest.
+   */
+  canDescribe?: boolean;
+  /**
+   * Describes {@link tables}, bounded and never rejecting (ADR-0028
+   * Decision 9). A callback rather than a connection id for the same
+   * reason `tables` is a prop: the page owns the connection, and a panel
+   * that fetched for itself would have to know which one it sits beside.
+   */
+  describeTables?: (tables: readonly TableInfo[]) => Promise<DescribeFanOut>;
 }
 
 const props = defineProps<Props>();
@@ -67,6 +83,16 @@ const prompt = ref("");
 // Off by default, so a deployment that never touches the toggle behaves
 // exactly as it did before this slice (ADR-0026 Decision 9).
 const streamMode = ref(false);
+// Likewise off by default (ADR-0028 Decision 9), and not persisted: a
+// prefetch of every table is worth asking for each time it happens.
+const detailsMode = ref(false);
+// True only for as long as the fan-out runs. The composable is still
+// idle then — nothing has been asked of the model yet — so this is the
+// panel's own busy flag rather than something `state` can report.
+const describing = ref(false);
+// How many tables the last fan-out could not describe. Zero renders
+// nothing; the count is what the warning says.
+const describeFailures = ref(0);
 
 // Asked once, when the panel appears. The list is only needed to render
 // the selector — a request that names nobody still reaches the server's
@@ -90,7 +116,7 @@ const isBusy = computed(() => isLoading.value || isStreaming.value);
 const isDisabledMode = computed(
   () => providersDisabled.value || lastError.value?.category === "ai_disabled",
 );
-const buttonsDisabled = computed(() => isBusy.value || isDisabledMode.value);
+const buttonsDisabled = computed(() => isBusy.value || isDisabledMode.value || describing.value);
 
 const explainResponse = computed(() =>
   lastResponse.value?.mode === "explain" ? lastResponse.value : null,
@@ -104,6 +130,11 @@ const suggestResponse = computed(() =>
 // to a provider without an SSE transport hides it while its ref stays
 // true, and the request would still go to the streaming route.
 const useStreaming = computed(() => streamMode.value && selectedStreams.value);
+
+// Same guard, same reason: a box left ticked on a connection that has
+// since said it cannot describe must not keep firing a fan-out that can
+// only fail. The capability decides, not the last thing the user clicked.
+const useDetails = computed(() => detailsMode.value && props.canDescribe === true);
 
 const hasTokens = computed(() => tokensIn.value !== null || tokensOut.value !== null);
 const tokenParams = computed(() => ({
@@ -124,12 +155,38 @@ async function onExplain() {
   await explain(props.currentSql, dialectArg.value);
 }
 
+/**
+ * Describes the tables ahead of a Suggest, or returns undefined when the
+ * user did not ask for column detail — the API then falls back to the
+ * terse list, which is what it does for every connection that cannot
+ * describe at all.
+ *
+ * A fan-out that came back short warns and returns what it has (ADR-0028
+ * Decision 9). Withholding the Suggest over it would make one
+ * undescribable table cost the user the whole answer.
+ */
+async function collectDetails(): Promise<readonly TableSchema[] | undefined> {
+  describeFailures.value = 0;
+  if (!useDetails.value || props.describeTables === undefined) return undefined;
+  if (props.tables === undefined || props.tables.length === 0) return undefined;
+
+  describing.value = true;
+  try {
+    const result = await props.describeTables(props.tables);
+    describeFailures.value = result.failed;
+    return result.schemas;
+  } finally {
+    describing.value = false;
+  }
+}
+
 async function onSuggest() {
+  const fullSchema = await collectDetails();
   if (useStreaming.value) {
-    await streamSuggestSql(prompt.value, dialectArg.value, props.tables);
+    await streamSuggestSql(prompt.value, dialectArg.value, props.tables, fullSchema);
     return;
   }
-  await suggestSql(prompt.value, dialectArg.value, props.tables);
+  await suggestSql(prompt.value, dialectArg.value, props.tables, fullSchema);
 }
 
 // Bound with :value / @change rather than v-model so the selection stays
@@ -210,6 +267,23 @@ function onInsert() {
       <label class="toggle-label" for="ai-stream">{{ t("ai.stream.toggle") }}</label>
     </div>
 
+    <!--
+      Rendered whatever the connection can do, and disabled when it
+      cannot describe (ADR-0028 Decision 4) — greying it out says the
+      feature exists and is unavailable here, which hiding it does not.
+    -->
+    <div class="toggle-row">
+      <input
+        id="ai-details"
+        v-model="detailsMode"
+        data-testid="ai-details-toggle"
+        class="toggle-input"
+        type="checkbox"
+        :disabled="!canDescribe || isBusy || describing"
+      />
+      <label class="toggle-label" for="ai-details">{{ t("ai.details.toggle") }}</label>
+    </div>
+
     <section data-testid="ai-explain-section" class="section">
       <h4 class="section-heading">{{ t("ai.section.explain") }}</h4>
       <button
@@ -276,6 +350,19 @@ function onInsert() {
         </button>
       </article>
     </section>
+
+    <!--
+      A partial fan-out is a warning, not a failure: the request went out
+      with the tables that did answer, so this sits outside the error
+      banner and says only how many are missing from it.
+    -->
+    <p v-if="describeFailures > 0" data-testid="ai-details-warning" class="warning" role="status">
+      {{ t("ai.details.warning", { count: describeFailures }) }}
+    </p>
+
+    <p v-if="describing" data-testid="ai-details-loading" class="loading" role="status">
+      {{ t("ai.details.loading") }}
+    </p>
 
     <p v-if="hasTokens" data-testid="ai-token-meter" class="meter">
       {{ t("ai.tokens.meter", tokenParams) }}
@@ -489,6 +576,12 @@ function onInsert() {
   color: var(--text-muted);
   font-style: italic;
   font-size: 0.85rem;
+}
+
+.warning {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .status-row {

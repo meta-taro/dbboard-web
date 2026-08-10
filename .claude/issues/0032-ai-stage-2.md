@@ -443,3 +443,70 @@ rather than implying a control that does not exist (baseline §10).
 Gate green: format, lint, typecheck, 1399 api + 1354 web tests (api was 1324
 before this slice; the provider suite is 36 cases against a stubbed transport,
 the same suite Anthropic answers). Still the one skipped file.
+
+### E — `full_schema` (done)
+
+DoD item 8: `full_schema` is sent only when the connection advertises
+`describe_table` and the box is ticked, and a partial fan-out still fires the
+request. Five layers, bottom-up, each RED before GREEN.
+
+The port grew `full_schema?: TableSchema[]` alongside slice A's `schema`, and
+`ai-prompts.ts` prefers it when non-empty (ADR-0028 Decision 8). Prefers, not
+merges: the two lists describe the same tables at different depths, and
+rendering both would put every table name in the prompt twice and invite the
+model to treat the terse copy as a second, smaller schema. The DTO validates
+the nested shape — `AiTableSchemaDto` with `AiColumnInfoDto[]` — rather than
+accepting `unknown[]`, because this is upstream input that ends up inside a
+prompt string.
+
+The fan-out is its own composable, `useTableDescriptions`, and not a method on
+`useSchemaBrowser`, even though both call `GET /connections/:id/table-schema`.
+The sidebar describes one table because a user expanded it; this describes all
+of them because a Suggest is about to fire. Same route, different lifetime.
+Concurrency is capped at 8 by a slots-by-index worker pool, matching desktop's
+`tokio::sync::Semaphore` budget — the point is the ceiling, not the number: a
+200-table Postgres schema must not open 200 connections because someone ticked
+a box. Written by index rather than pushed, so two identical prompts cannot
+differ by which describe returned first. `describeAll` **never rejects**: a
+table that cannot be described is one the model will not hear about, not a
+reason to withhold the Suggest, so the return is `{schemas, failed}` with a
+count rather than the failures themselves — nothing downstream acts on _which_
+ones, and a per-table error list would be a second thing to keep in step for a
+message that never names them. **Nothing is cached** (Decision 7): a schema
+change on the server has to reach the next Suggest.
+
+The panel's seam is two props, `canDescribe: boolean` and
+`describeTables: (tables) => Promise<DescribeFanOut>`, not a `connectionId`.
+`AiPanel`'s standing claim is that it owns no connection, and handing it an id
+would put a second fetcher inside the one component whose contract is that it
+has none. The page joins them: `useTableDescriptions(connectionId)` supplies
+the probe and the fan-out.
+
+The box is disabled, not hidden, when the capability is absent — greying it out
+is honest about a thing this connection cannot do, where letting the user tick
+it would surface a `Capability` error after every Suggest (Decision 4). It is
+unchecked by default (Decision 9) and gated on **both** halves,
+`useDetails = detailsMode && canDescribe === true`, for the reason slice C
+found with the stream toggle: a ticked box on a connection that later reports
+no capability leaves the ref true behind a disabled control, and the next Send
+would still fan out. `describing` is the panel's own busy flag — the composable
+is `idle` throughout the prefetch, so without it the Send button stays live and
+a second click re-enters the same fan-out.
+
+Partial failure is a `role="status"` line carrying the count, **outside** the
+error banner, and the Suggest fires anyway (Decision 9). It is cleared at the
+head of the next `collectDetails`, so a warning from a previous prompt cannot
+sit under a clean one.
+
+The three new keys reuse desktop's own en/ja copy verbatim
+(`ai-include-details`, `ai-prefetching`, `ai-prefetch-warning`); the other nine
+locales were translated to the register of the neighbouring `ai.*` strings.
+Web's placeholder is `{count}`, not fluent's `{ $count }`, and the parity test
+pins that as well as the key set.
+
+Gate green: format, lint, typecheck, **1412 web** (was 1354) and **1355 api**
+passing. The api figure is lower than slice D's 1399 because the two
+testcontainers files could not run at all this time — the Docker daemon on this
+machine is unresponsive (`docker info` itself does not return), so their 68
+cases timed out in `beforeAll` rather than skipping. Nothing in this slice
+touches the MySQL or Postgres adapters; CI has the daemon.

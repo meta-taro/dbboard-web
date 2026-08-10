@@ -32,6 +32,26 @@ function toSchema(tables: AiSuggestRequestDto["schema"]): SuggestRequest["schema
   return tables?.map((table) => ({ schema: table.schema ?? null, name: table.name }));
 }
 
+// Its twin for the described half (ADR-0028 Decision 9). Same job and
+// the same reason: `declared_type` and `default_value` are absent on the
+// wire when the engine reported none, and the domain spells that null.
+// Rebuilt field by field rather than spread so a field added to the DTO
+// cannot reach the domain value without someone deciding it should.
+function toFullSchema(tables: AiSuggestRequestDto["full_schema"]): SuggestRequest["full_schema"] {
+  return tables?.map((table) => ({
+    table: { schema: table.table.schema ?? null, name: table.table.name },
+    columns: table.columns.map((column) => ({
+      name: column.name,
+      declared_type: column.declared_type ?? null,
+      nullable: column.nullable,
+      primary_key: column.primary_key,
+      ordinal: column.ordinal,
+      default_value: column.default_value ?? null,
+    })),
+    primary_key: table.primary_key,
+  }));
+}
+
 // Web-only AI surface — GET /ai/providers, POST /ai/explain and
 // POST /ai/suggest. These routes are NOT in docs/api-contract.md per desktop ADR-0023
 // Decision 3 (AI stays in-process on desktop; web exposes a thin
@@ -88,6 +108,7 @@ export class AiController {
         prompt: body.prompt,
         dialect: body.dialect,
         schema: toSchema(body.schema),
+        full_schema: toFullSchema(body.full_schema),
         provider: body.provider,
       }),
     );
@@ -128,6 +149,7 @@ export class AiController {
       prompt: body.prompt,
       dialect: body.dialect,
       schema: toSchema(body.schema),
+      full_schema: toFullSchema(body.full_schema),
       provider: body.provider,
     });
     await pipeAiStream(res, events);

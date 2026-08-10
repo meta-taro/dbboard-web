@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "Transmitir resposta"
     },
+    "details": {
+      "toggle": "Incluir detalhes das colunas",
+      "loading": "Obtendo os esquemas das tabelas…",
+      "warning": "Não foi possível descrever {count} tabela(s); continuando sem elas."
+    },
     "cancel": {
       "button": "Cancelar"
     },

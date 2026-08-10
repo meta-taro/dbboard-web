@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   restorePanelConstructed: vi.fn(),
   loadEditContext: vi.fn(),
   editContextConstructed: vi.fn(),
+  describeAll: vi.fn(),
+  tableDescriptionsConstructed: vi.fn(),
 }));
 
 let resultRef: Ref<{
@@ -66,6 +68,19 @@ vi.mock("../app/composables/useEditContext", () => ({
       noPk: noPkRef,
       load: mocks.loadEditContext,
     };
+  },
+}));
+
+// Ticket 0032 slice E. Stubbed for the same reason as the two above: the
+// real composable probes `GET /connections/:id/capabilities` on mount, and
+// the page's job is only to construct it for this connection and hand its
+// two answers to the panel. use-table-descriptions.test.ts owns the rest.
+let describeSupportedRef: Ref<boolean>;
+
+vi.mock("../app/composables/useTableDescriptions", () => ({
+  useTableDescriptions: (id: string, options?: unknown) => {
+    mocks.tableDescriptionsConstructed(id, options);
+    return { supported: describeSupportedRef, describeAll: mocks.describeAll };
   },
 }));
 
@@ -142,12 +157,17 @@ vi.mock("../app/composables/useConnections", () => ({
 // reuses the schema browser's caret-aware splicer. Composable surface
 // and panel behaviour are covered by use-ai-assist.test.ts and
 // ai-panel.test.ts.
-let aiPanelProps: { currentSql?: string; tables?: ReadonlyArray<unknown> } | null = null;
+let aiPanelProps: {
+  currentSql?: string;
+  tables?: ReadonlyArray<unknown>;
+  canDescribe?: boolean;
+  describeTables?: unknown;
+} | null = null;
 
 vi.mock("../app/components/AiPanel.vue", () => ({
   default: defineComponent({
     name: "AiPanel",
-    props: ["currentSql", "tables"],
+    props: ["currentSql", "tables", "canDescribe", "describeTables"],
     emits: ["insert"],
     setup(props) {
       mocks.aiPanelConstructed();
@@ -206,6 +226,7 @@ describe("SqlPage", () => {
     stateRef = ref<"idle" | "loading" | "error">("idle");
     schemaTablesRef = ref([]);
     schemaStateRef = ref<"idle" | "loading" | "error">("loading");
+    describeSupportedRef = ref(false);
     aiPanelProps = null;
     lastErrorRef = ref<{
       category: string;
@@ -222,6 +243,8 @@ describe("SqlPage", () => {
     mocks.restorePanelConstructed.mockReset();
     mocks.loadEditContext.mockReset();
     mocks.editContextConstructed.mockReset();
+    mocks.describeAll.mockReset();
+    mocks.tableDescriptionsConstructed.mockReset();
     // The sidebar remembers its width, so without a storage of its own per
     // test the first drag would decide the starting width of every test
     // after it. See use-theme.test.ts: the environment's own `localStorage`
@@ -965,6 +988,48 @@ describe("SqlPage", () => {
       // tell the model the connection has no tables when the truth is that
       // we never found out.
       expect(aiPanelProps?.tables).toBeUndefined();
+      wrapper.unmount();
+    });
+  });
+
+  // Ticket 0032 slice E. Same join, one layer down: the connection knows
+  // whether it can describe its tables, and the panel is the thing that
+  // offers the box — so the page is again the only place the two meet.
+  describe("column details handed to the AI panel", () => {
+    it("asks about this connection's describe support", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(mocks.tableDescriptionsConstructed).toHaveBeenCalledWith("route-id", undefined);
+      wrapper.unmount();
+    });
+
+    it("leaves the box unavailable until the capability probe says otherwise", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      expect(aiPanelProps?.canDescribe).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("offers the box once the connection advertises describe_table", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      describeSupportedRef.value = true;
+      await flushPromises();
+
+      expect(aiPanelProps?.canDescribe).toBe(true);
+      wrapper.unmount();
+    });
+
+    it("hands the panel the fan-out rather than the connection id", async () => {
+      const wrapper = mount(SqlPage, mountOptions);
+      await flushPromises();
+
+      // The panel calls this; it never learns which connection it is for,
+      // which is what keeps it mountable anywhere.
+      expect(aiPanelProps?.describeTables).toBe(mocks.describeAll);
       wrapper.unmount();
     });
   });

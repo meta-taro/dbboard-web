@@ -39,6 +39,32 @@ export interface ColumnInfo {
   default_value?: string | null;
 }
 
+/**
+ * A column as `GET /connections/:id/table-schema` reports it: every field
+ * filled in, because that route only exists on adapters that can answer
+ * all of them (ADR-0028 Decision 5).
+ *
+ * A separate type from `ColumnInfo` rather than a tightening of it. The
+ * optionality above is load-bearing for the shallow `LIMIT 0` path, and
+ * the AI's `full_schema` needs the opposite guarantee — the API rejects a
+ * half-described column rather than prompt the model with one.
+ */
+export interface DescribedColumn {
+  name: string;
+  declared_type: string | null;
+  nullable: boolean;
+  primary_key: boolean;
+  ordinal: number;
+  default_value: string | null;
+}
+
+/** One described table — the describe route's whole answer. */
+export interface TableSchema {
+  table: TableInfo;
+  columns: DescribedColumn[];
+  primary_key: string[];
+}
+
 export type SchemaState = "idle" | "loading" | "error";
 
 interface ListTablesResponse {
@@ -54,12 +80,6 @@ interface QueryResponse {
 interface CapabilitiesResponse {
   id: string;
   capabilities: Record<string, boolean>;
-}
-
-interface TableSchemaResponse {
-  table: TableInfo;
-  columns: ColumnInfo[];
-  primary_key: string[];
 }
 
 export interface UseSchemaBrowserOptions {
@@ -136,7 +156,7 @@ export function useSchemaBrowser(connectionId: string, options?: UseSchemaBrowse
       // characters — see the route's own note on why not a path segment.
       const params = new URLSearchParams({ table });
       if (schema !== null) params.set("schema", schema);
-      const res = await apiFetch<TableSchemaResponse>(
+      const res = await apiFetch<TableSchema>(
         `${apiBase}/connections/${connectionId}/table-schema?${params.toString()}`,
       );
       // No fallback on failure: the route was chosen because it works here,

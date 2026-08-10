@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "응답 스트리밍"
     },
+    "details": {
+      "toggle": "열 세부 정보 포함",
+      "loading": "테이블 스키마를 가져오는 중…",
+      "warning": "{count}개 테이블을 가져오지 못했습니다. 해당 테이블을 제외하고 계속합니다."
+    },
     "cancel": {
       "button": "취소"
     },

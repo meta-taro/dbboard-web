@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "Antwort streamen"
     },
+    "details": {
+      "toggle": "Spaltendetails einbeziehen",
+      "loading": "Tabellenschemas werden abgerufen…",
+      "warning": "{count} Tabelle(n) konnten nicht beschrieben werden; es wird ohne sie fortgefahren."
+    },
     "cancel": {
       "button": "Abbrechen"
     },

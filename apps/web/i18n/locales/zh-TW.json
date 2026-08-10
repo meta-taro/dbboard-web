@@ -160,6 +160,11 @@
     "stream": {
       "toggle": "串流輸出回答"
     },
+    "details": {
+      "toggle": "包含欄位詳細資訊",
+      "loading": "正在取得資料表結構…",
+      "warning": "有 {count} 個資料表無法取得結構，將略過這些資料表繼續。"
+    },
     "cancel": {
       "button": "取消"
     },

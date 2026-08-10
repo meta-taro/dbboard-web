@@ -344,6 +344,234 @@ describe("AiPanel", () => {
     });
   });
 
+  // ADR-0028 Decision 9 (described half). The panel owns the checkbox and
+  // the spinner; the page owns the connection, so the fan-out arrives as a
+  // callback rather than the panel learning a connection id.
+  describe("column details", () => {
+    const tables = [
+      { schema: "public", name: "users" },
+      { schema: null, name: "orders" },
+    ];
+
+    const USERS = {
+      table: { schema: "public", name: "users" },
+      columns: [
+        {
+          name: "id",
+          declared_type: "integer",
+          nullable: false,
+          primary_key: true,
+          ordinal: 1,
+          default_value: null,
+        },
+      ],
+      primary_key: ["id"],
+    };
+
+    function describeOk(schemas: unknown[] = [USERS], failed = 0) {
+      return vi.fn().mockResolvedValue({ schemas, failed });
+    }
+
+    /** Mounted with the capability, the tables and the fan-out wired in. */
+    async function mountDescribable(describeTables = describeOk()) {
+      const wrapper = await mountPanel({
+        ...baseProps,
+        tables,
+        canDescribe: true,
+        describeTables,
+      });
+      return { wrapper, describeTables };
+    }
+
+    async function suggestWith(wrapper: ReturnType<typeof mount>) {
+      await wrapper.find("[data-testid='ai-suggest-prompt']").setValue("count users");
+      await wrapper.find("[data-testid='ai-suggest-button']").trigger("click");
+      await flushPromises();
+    }
+
+    // Desktop greys the box out rather than hiding it: a user who has
+    // heard the feature exists should see why it is unavailable here,
+    // not wonder whether this build has it (ADR-0028 Decision 4).
+    it("renders the box disabled when the connection cannot describe tables", async () => {
+      const wrapper = await mountPanel({ ...baseProps, tables });
+      const box = wrapper.find<HTMLInputElement>("[data-testid='ai-details-toggle']");
+
+      expect(box.exists()).toBe(true);
+      expect(box.element.disabled).toBe(true);
+      expect(box.element.checked).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("enables the box, still unchecked, once the connection advertises it", async () => {
+      const { wrapper } = await mountDescribable();
+      const box = wrapper.find<HTMLInputElement>("[data-testid='ai-details-toggle']");
+
+      expect(box.element.disabled).toBe(false);
+      expect(box.element.checked).toBe(false);
+      wrapper.unmount();
+    });
+
+    // Decision 9's default. Unchecked has to be the request that existed
+    // before this slice, down to the absent key.
+    it("describes nothing and sends nothing while the box is unchecked", async () => {
+      const { wrapper, describeTables } = await mountDescribable();
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await suggestWith(wrapper);
+
+      expect(describeTables).not.toHaveBeenCalled();
+      expect(lastBody()).not.toHaveProperty("full_schema");
+      wrapper.unmount();
+    });
+
+    it("describes the tables and sends both halves when the box is ticked", async () => {
+      const { wrapper, describeTables } = await mountDescribable();
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await suggestWith(wrapper);
+
+      expect(describeTables).toHaveBeenCalledWith(tables);
+      expect(mockFetch).toHaveBeenLastCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: { prompt: "count users", schema: tables, full_schema: [USERS] },
+      });
+      wrapper.unmount();
+    });
+
+    // The same guard the stream toggle needs: a ticked box whose
+    // capability goes away must not keep prefetching against a
+    // connection that has said it cannot answer.
+    it("stops describing when the capability goes away under a ticked box", async () => {
+      const { wrapper, describeTables } = await mountDescribable();
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      await wrapper.setProps({ canDescribe: false });
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await suggestWith(wrapper);
+
+      expect(describeTables).not.toHaveBeenCalled();
+      expect(lastBody()).not.toHaveProperty("full_schema");
+      wrapper.unmount();
+    });
+
+    it("says it is fetching schemas while the fan-out runs", async () => {
+      let release: (() => void) | null = null;
+      const describeTables = vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () => {
+              resolve({ schemas: [USERS], failed: 0 });
+            };
+          }),
+      );
+      const { wrapper } = await mountDescribable(describeTables);
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await wrapper.find("[data-testid='ai-suggest-prompt']").setValue("count users");
+      await wrapper.find("[data-testid='ai-suggest-button']").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid='ai-details-loading']").exists()).toBe(true);
+      // Nothing has been asked of the model yet — only the provider list.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // The button cannot be pressed a second time into the same prefetch.
+      expect(
+        wrapper.find<HTMLButtonElement>("[data-testid='ai-suggest-button']").element.disabled,
+      ).toBe(true);
+
+      release!();
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid='ai-details-loading']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    // Decision 9: a partial fan-out is a warning, not a stop. The tables
+    // that answered are worth prompting with.
+    it("warns about the tables it could not describe and still asks", async () => {
+      const { wrapper } = await mountDescribable(describeOk([USERS], 2));
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await suggestWith(wrapper);
+
+      expect(wrapper.find("[data-testid='ai-details-warning']").text()).toBe(
+        'ai.details.warning|{"count":2}',
+      );
+      expect(lastBody()).toMatchObject({ full_schema: [USERS] });
+      wrapper.unmount();
+    });
+
+    it("shows no warning when every table answered", async () => {
+      const { wrapper } = await mountDescribable();
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await suggestWith(wrapper);
+
+      expect(wrapper.find("[data-testid='ai-details-warning']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("clears a stale warning when the next suggest goes out", async () => {
+      const describeTables = vi
+        .fn()
+        .mockResolvedValueOnce({ schemas: [USERS], failed: 2 })
+        .mockResolvedValueOnce({ schemas: [USERS], failed: 0 });
+      const { wrapper } = await mountDescribable(describeTables);
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      await suggestWith(wrapper);
+      expect(wrapper.find("[data-testid='ai-details-warning']").exists()).toBe(true);
+
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      await suggestWith(wrapper);
+
+      expect(wrapper.find("[data-testid='ai-details-warning']").exists()).toBe(false);
+      wrapper.unmount();
+    });
+
+    it("carries the described tables into a streamed suggest too", async () => {
+      const { wrapper, describeTables } = await mountDescribable();
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      await wrapper.find("[data-testid='ai-stream-toggle']").setValue(true);
+      mockStream.mockReturnValueOnce(
+        streamOf([
+          { type: "message_start", tokensIn: 1, model: "m" },
+          { type: "message_stop", stopReason: "end_turn" },
+        ]),
+      );
+
+      await suggestWith(wrapper);
+
+      expect(describeTables).toHaveBeenCalledWith(tables);
+      expect(mockStream.mock.lastCall?.[1].body).toEqual({
+        prompt: "count users",
+        schema: tables,
+        full_schema: [USERS],
+      });
+      wrapper.unmount();
+    });
+
+    it("leaves explain alone — column detail is a suggest-only refinement", async () => {
+      const { wrapper, describeTables } = await mountDescribable();
+      await wrapper.find("[data-testid='ai-details-toggle']").setValue(true);
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(describeTables).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenLastCalledWith("http://test/ai/explain", {
+        method: "POST",
+        body: { sql: "SELECT 1" },
+      });
+      wrapper.unmount();
+    });
+  });
+
   // Ticket 0032 slice B. Desktop puts the provider list in a settings
   // window; web has no settings window and no place to accept a key, so
   // the list is the operator's env block and the only thing left for the

@@ -106,6 +106,9 @@ describe("locale parity with en", () => {
     expect(enPaths).toContain("ai.suggest.insert");
     expect(enPaths).toContain("ai.response.model");
     expect(enPaths).toContain("ai.state.loading");
+    expect(enPaths).toContain("ai.details.toggle");
+    expect(enPaths).toContain("ai.details.loading");
+    expect(enPaths).toContain("ai.details.warning");
     expect(enPaths).toContain("ai.disabled.heading");
     expect(enPaths).toContain("ai.disabled.body");
     expect(enPaths).toContain("result.export.label");
@@ -138,6 +141,8 @@ describe("locale parity with en", () => {
       expect(String(flat.history.duration)).toContain("{ms}");
       expect(String(flat.result.affected)).toContain("{rows}");
       expect(String(flat.ai.response.model)).toContain("{model}");
+      const ai = flat.ai as unknown as { details: Record<string, string> };
+      expect(String(ai.details.warning)).toContain("{count}");
       const result = flat.result as unknown as { sort: Record<string, string> };
       expect(String(result.sort.button)).toContain("{column}");
       expect(String(result.sort.level)).toContain("{level}");

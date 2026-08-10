@@ -12,6 +12,7 @@
 
 import type { AiErrorCategory } from "./ai-error";
 import type { TableInfo } from "../values/table-info";
+import type { TableSchema } from "../values/table-schema";
 
 export interface AiCapabilities {
   // Flat-bool, all-false default — mirrors desktop's `AiCapabilities`.
@@ -49,6 +50,16 @@ export interface SuggestRequest {
   // stops a confident invention. Optional so a caller that cannot
   // introspect keeps today's behaviour exactly.
   schema?: TableInfo[];
+  // Per-table column descriptions, when the caller prefetched them
+  // (ADR-0028 Decision 9, full half). Additive: both halves may be on
+  // the wire at once, and the adapter prefers this one **when it is
+  // non-empty**, falling back to the terse `schema` otherwise.
+  //
+  // Empty and absent mean the same thing here, unlike `schema` above:
+  // an empty list is the fan-out coming back with nothing usable, not a
+  // claim that the connection has no tables. The claim is `schema: []`,
+  // and it is the fallback's job to state it.
+  full_schema?: TableSchema[];
 }
 
 export interface AiResponse {

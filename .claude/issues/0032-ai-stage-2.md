@@ -1,6 +1,6 @@
 # 0032 — AI stage 2: schema in the prompt, a provider the caller picks, and a stream the caller can hang up on
 
-**Status:** open · **Opened:** 2026-08-09 · **Rung 8** (last) of
+**Status:** closed 2026-08-10 · **Opened:** 2026-08-09 · **Rung 8** (last) of
 [`../parity-ledger.md`](../parity-ledger.md)
 
 ## Purpose
@@ -510,3 +510,53 @@ testcontainers files could not run at all this time — the Docker daemon on thi
 machine is unresponsive (`docker info` itself does not return), so their 68
 cases timed out in `beforeAll` rather than skipping. Nothing in this slice
 touches the MySQL or Postgres adapters; CI has the daemon.
+
+### F — closeout (done)
+
+Six commits: `f890603` (A), `d1ebbfe` (B), `528035e` + `c9fa249` (C),
+`d4530dc` (D), `3be0070` (E), and this one.
+
+**Definition of done, item by item.**
+
+1. Green — `ai-prompts.spec.ts` renders a suggest with no `schema` byte-for-byte
+   as before, and the omitted/`[]` distinction is two separate cases.
+2. Green — the registry test configures two, names either, and asserts the
+   `422` message contains the id it was given.
+3. Green — the panel appends deltas as they land, and `pipeAiStream`'s hangup
+   test asserts the upstream `AbortSignal` fired rather than that output
+   stopped.
+4. Green — one record, at the terminus, with the partial text and the spent
+   tokens; the cancelled case is its own status, not an error.
+5. Green — the meter test's stream reports usage twice with cumulative figures,
+   so summing would show double.
+6. Green — `streaming: true` asserted against the Anthropic and OpenAI
+   overrides, `false` against the port's delegating default.
+7. Green — `openai-provider.spec.ts` is the Anthropic suite's shape against a
+   stubbed transport.
+8. Green — slice E. The box is disabled without the capability, unchecked by
+   default, gated on both halves; a partial fan-out warns and still sends.
+9. Green — the provider-less path is tested at every layer it passes through:
+   `404` from all five routes, the panel renders its disabled state, and
+   nothing reaches the history writer.
+10. Green — `git diff 86b324f -- docs/api-contract.md` is **empty**. The
+    `/ai/*` routes are web-unilateral by desktop ADR-0023 Decision 3, and
+    stage 2 gave no reason to revisit that.
+
+**Docs.** `docs/deployment.md` gained the `full_schema` half of the suggest
+body and what governs whether the browser can fill it (the per-connection
+capability, not the deployment), and its AI heading stopped saying "Anthropic"
+now that there are two kinds. `README.md`'s status paragraph was three phases
+stale — it described the PWA shell as the current front — and now states the
+parity programme's position. `.claude/decisions.md` gained the rung's eleven
+decisions, including the two divergences worth carrying forward: Cancel is
+offered only while streaming, and there is no settings UI for keys.
+
+**What did not cross, and why.** ADR-0025's settings screen — a server has no
+OS keychain, and accepting a key over HTTP would put credential writing behind
+a bearer token, which baseline §15 reserves for the operator. Desktop
+ADR-0091's nested `Value` variant is on desktop `develop` (`8f326d8`) and not
+on `main` (`b98f7a6`), so it is deliberately not mirrored; the survey was taken
+at shipped mainline per baseline §19.
+
+**Rung 8 closes the programme.** Rungs 0-7 were done on 2026-08-09; this was
+the last.

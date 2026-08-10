@@ -241,10 +241,11 @@ the adapter. A caller sees a slower first query rather than a hang. If the
 bastion is genuinely unreachable, the rebuild fails and the query returns the
 usual `connection` error.
 
-## Optional: Anthropic AI provider
+## Optional: AI providers
 
 `dbboard-web` ships an optional AI provider seam (Phase 6 Slices 1–2,
-issues 0019 and 0020). The defaults keep AI fully disabled — every
+issues 0019 and 0020; extended by ticket 0032 into a plural registry with
+streaming and a second kind). The defaults keep AI fully disabled — every
 database flow works without a key and no AI route is documented on the
 shared HTTP contract. Enable it only when you want SQL-explain or
 NL→SQL features exposed to the Nuxt UI.
@@ -380,6 +381,25 @@ entry — no `name`, or a `schema` that is neither a string nor null — is a
 `422`, not a silently dropped field. No separate size cap: the 64 KiB
 body limit already bounds the list.
 
+It also accepts an optional `full_schema` (ticket 0032 slice E, desktop
+ADR-0028 Decision 9) — the same tables described down to their columns,
+`[{ "table": { "schema", "name" }, "columns": [{ "name", "declared_type",
+"nullable", "primary_key", "ordinal", "default_value" }], "primary_key":
+["id"] }]`. When it is present and non-empty the prompt renders it
+**instead of** `schema`, not alongside: the two describe the same tables
+at different depths, and sending both names every table twice.
+
+Whether the browser can fill it depends on the connection, not on the
+deployment: the panel offers its "Include column details" box only where
+`GET /connections/:id/capabilities` reports `has_describe_table`, and
+greys it out everywhere else rather than hiding it. Ticking it makes the
+browser describe every table before the Suggest fires, at most eight
+requests at a time. Tables that fail to describe are dropped and counted,
+the panel says so, and the Suggest goes out with the rest — so a schema
+the deployment's user cannot fully read still produces an answer. Nothing
+is cached: each Suggest re-describes, because a schema change on the
+server has to reach the next prompt.
+
 All of the `/ai/*` routes sit behind the same bearer-auth middleware as the rest of
 the API (no per-route exemption — `GET /health` remains the only
 unauthenticated path). The two new error categories (`ai_disabled` and
@@ -419,7 +439,8 @@ Privacy and contract notes:
 
 Toggle disabled at any time by clearing every provider variable and
 restarting the API process; the registry boots empty on the next start
-and all three routes return `404 ai_disabled` until a key is restored.
+and all five `/ai/*` routes return `404 ai_disabled` until a key is
+restored.
 
 ## Secret rotation
 

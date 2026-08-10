@@ -172,6 +172,28 @@ Pluggable interface for AI-assisted SQL generation and explanation.
 
 > **No HTTP-contract mirror needed for Stage 1.** Desktop ADR-0023 keeps AI in-process (Decision 3 — same precedent as ADR-0020 `swap_backend` and ADR-0022 `set_language`); there is no `POST /ai/*` route, no `AiResponse` DTO, and no AI error category on the desktop wire. Web Phase 6 ships against the bullets above without coordinating with desktop on the wire. See [`decisions.md`](./decisions.md) "2026-06-24 — AI Phase 6: no HTTP contract mirror needed (desktop ADR-0023 Stage 1)" and the incoming receipt at [`handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md`](./handoff/2026-06-24-ai-phase6-no-contract-mirror-incoming.md). ~~Hard redline: do not record AI calls in `history.jsonl` — that would force a v:1 → v:2 schema bump ahead of cross-repo coordination and break the `0018` round-trip cross-check.~~ **Spent, 2026-08-04.** The coordination it was waiting for happened: desktop ADR-0027 defines v:2 and brief [`0008`](https://github.com/) was handed over on 2026-06-30. Web mirrored it in ticket [`0023`](./issues/0023-history-v2-mirror.md) — AI calls now record as `kind: "ai"`. The redline is struck through rather than deleted because the condition it named is the reusable part: **a schema shared with another repo does not get bumped from one side.** It was correct for the 35 days it stood, and the next contract-touching feature faces the same test.
 
+## Desktop-parity programme — rungs 0-8 (2026-08-04 … 2026-08-10, done)
+
+Not a phase. The numbered phases above are web's own plan; this programme is the answer to a
+different question the maintainer asked — how close to the desktop client's spec can the browser
+client get. Every desktop ADR was classified as a **shared surface** (must byte-mirror), a
+**portable feature** (mirror the behaviour, not the code) or **not portable** (a browser has no
+OS keychain, no local process, no filesystem it owns), then ordered into eight rungs by what
+breaks if the rung stays undone.
+
+**All eight are done.** Rung 0 history v2, rung 1 the result grid (sort, export, cell viewer),
+rung 2 editing, rung 3 dump and restore, rung 4 schema depth, rung 5 the identifier-dialect seam,
+rung 6 the adapters (Postgres, MySQL/MariaDB, Turso/libSQL, Cloudflare D1) plus the SSH bastion
+for the two with a socket, rung 7 error taxonomy and the capability matrix, rung 8 AI stage 2
+(ticket [`0032`](./issues/0032-ai-stage-2.md)).
+
+The authority is **[`parity-ledger.md`](./parity-ledger.md)**, which classifies every desktop ADR
+by row and is where the `partial` and `n/a` verdicts are argued. This section exists so the
+roadmap does not read as if Phase 6 were the last thing that happened; it deliberately does not
+restate the ledger. Nothing is queued behind rung 8 — the next piece of work is either a new
+desktop ADR to mirror or a web-side feature with no desktop counterpart, and either starts its
+own ticket rather than a ninth rung.
+
 ## Later
 
 - Authentication.

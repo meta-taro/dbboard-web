@@ -1280,3 +1280,154 @@ feature does not unstore it.
 - **Watch item:** ADR-0091's nested `Value` variant is on desktop `develop`
   (PR #148, `468fc44`), not `main`. Web must not mirror the wire tag until it
   ships.
+
+## 2026-08-10 — AI stage 2: a registry that fails at boot, a stream that cannot un-send a 200, and a second provider that touched no browser file
+
+**Status.** Accepted. Rung 8 of [`parity-ledger.md`](./parity-ledger.md),
+ticket [`0032`](./issues/0032-ai-stage-2.md), six commits from `f890603`.
+Mirrors desktop ADR-0025, ADR-0026, ADR-0052 and the half of ADR-0028 that
+rung 4 carried forward.
+
+**Context.** Phase 6 left web with one provider, one model, one call shape and
+no schema in the prompt. Desktop had moved on: a provider list, a runtime
+switcher, streaming with cooperative cancel and a token meter, OpenAI beside
+Anthropic, and the table schema in the suggest request. This rung mirrors those
+where a browser can hold them, and records where it cannot. What follows is the
+subset that constrains later work.
+
+**Decision 1 — the provider list is environment-only, and there is no settings
+UI, because a server has no keychain.**
+
+Desktop keeps `ai-providers.toml` beside the OS keychain and edits it from a
+settings screen (ADR-0025). Web configures from `DBBOARD_AI_PROVIDERS` plus a
+`DBBOARD_AI_<ID>_*` block each. The reason is not effort: accepting an API key
+over HTTP would put credential **writing** behind a bearer token, and baseline
+§15 reserves credential handling for the operator. What crossed from ADR-0025
+is the **parse posture**, not the syntax — a duplicate id, an unset `_KIND` or
+`_API_KEY`, a kind this build cannot construct, and a `DBBOARD_AI_DEFAULT`
+naming nothing are all boot failures. There is no silent fallback between
+providers: a deployment that starts is one whose provider list is exactly what
+the operator wrote.
+
+**Decision 2 — `GET /ai/providers` answers `404` when there is none, not
+`200 []`.**
+
+The panel asks one question — "is AI available here" — and three routes that
+could disagree about it is a state the UI would have to reconcile. `404
+ai_disabled` from all five `/ai/*` routes is one answer. This is distinct from
+`422 ai_unknown_provider`, which is a _request_ naming a provider this
+deployment lacks, and the message names the id. The first is a configuration
+the UI renders as "not available"; the second is a bad request.
+
+**Decision 3 — a stream cannot un-send a 200, so provider resolution runs
+before the response is touched.**
+
+Both refusals stay ordinary JSON envelopes with status codes on the `/stream`
+routes, because they are decided before a byte is written. Only a failure
+**past** the headers becomes an in-band `error` frame. Getting this backwards
+would have meant a deployment with no AI answering `200 text/event-stream` and
+then apologising inside the stream, which no client can distinguish from a
+provider that died mid-answer.
+
+**Decision 4 — cancel is the client hanging up, and the record is written at
+the terminus regardless.**
+
+`pipeAiStream` races `iterator.next()` against the hangup and calls
+`iterator.return()`, whose `finally` aborts upstream. Dropping the stream is
+what makes cancel _cooperative_ rather than cosmetic: abandoning the output
+without aborting would leave the provider generating tokens the deployment
+pays for. Exactly one history record per call, at the terminus, cancelled ones
+included, carrying the partial text and the tokens actually spent — which is
+why this rung waited for rung 1's v:2 `tokens_in` / `tokens_out`. Cancelled is
+its own status, not a failure.
+
+**Decision 5 — the meter replaces on each `usage` frame rather than summing.**
+
+Provider counts are already cumulative. The test that pins this is one whose
+stream would report double if the numbers were added, because "it looks about
+right" is not a property a meter can be checked against by eye.
+
+**Divergence, deliberate — Cancel is offered only while streaming.** Desktop
+offers it whenever the panel is busy (ADR-0026 Decision 10). Web's atomic path
+is a `fetch` already in flight with nothing a click could stop, and a button
+there would be an offer the browser cannot keep.
+
+**Decision 6 — two toggles, both gated on the flag _and_ the box.**
+
+`useStreaming = streamMode && selectedStreams`, and later
+`useDetails = detailsMode && canDescribe === true`. The first was found the
+hard way: hiding a checkbox for a provider that cannot stream leaves its ref
+`true` behind the hidden control, and the next Send still takes the streaming
+route. The second inherited the fix. A control's visibility is not a guard.
+
+**Decision 7 — the second provider kind cost no browser file at all.**
+
+Slice D added OpenAI and touched nothing under `apps/web`. A second kind
+reaches the panel through `GET /ai/providers` and the normalized `StreamEvent`,
+which is the payoff Decision 3's five-variant union was bought for. The
+adapter differs from Anthropic on exactly four axes and no more — bearer auth
+(in the transport), the system prompt as the first `messages` entry,
+`prompt_tokens` / `completion_tokens`, and `finish_reason` translated through a
+**`Map`, not an object literal**, because a terminus string is upstream input
+and `{}["constructor"]` is not `undefined`. Everything shared moved out first,
+into `ai-prompts.ts` and `ai-response-mapping.ts`, and the extraction is proved
+behaviour-preserving by the Anthropic suite passing its 30 cases **unedited**.
+
+**Decision 8 — no `openai` npm package, and no output cap.**
+
+Baseline §12 asks what a dependency buys. The SDK's value is retries, typed
+model catalogues and a streaming helper; the port already normalizes the
+frames, and the surface used is one POST. Against that, an SDK on the request
+path that carries the deployment's credential is a transitive tree. The
+hand-rolled transport's SSE decoder is a pure function, so a split multi-byte
+frame is tested rather than hoped for, and it refuses any base URL that is
+neither https nor loopback. Separately, **no output cap is sent**: `gpt-4o`
+takes `max_tokens` while the o-series and gpt-5 reject it for
+`max_completion_tokens`, so sending neither is what lets
+`DBBOARD_AI_<ID>_MODEL` name an arbitrary model without this adapter carrying a
+model table someone would have to keep current.
+
+**Decision 9 — `full_schema` is preferred over `schema`, never merged.**
+
+Both describe the same tables at different depths (ADR-0028 Decisions 8-9).
+Rendering both puts every table name in the prompt twice and invites the model
+to read the terse copy as a second, smaller schema. Slice A's distinction
+survives underneath: an omitted `schema` means the caller never looked and the
+prompt mentions tables not at all, while `[]` means it looked and there are
+none, which is **stated** — silence lets a model invent a plausible table and
+"there are none" does not.
+
+**Decision 10 — the prefetch is capped, uncached, and never rejects.**
+
+Eight concurrent describes, matching desktop's `Semaphore` budget; the point is
+the ceiling, not the number, because a 200-table Postgres schema must not open
+200 connections because someone ticked a box. Answers are written by index
+rather than pushed, so two identical prompts cannot differ by which describe
+returned first. Nothing is cached (ADR-0028 Decision 7) — a schema change on
+the server has to reach the next Suggest. And the fan-out **never rejects**: a
+table that cannot be described is one the model will not hear about, not a
+reason to withhold the request, so a partial fan-out warns with a count and
+fires anyway.
+
+**Decision 11 — the capability box is disabled, not hidden.**
+
+Greying out "Include column details" is honest about something this connection
+cannot do (ADR-0028 Decision 4). Hiding it would trade a visible limitation for
+an invisible one, and letting it be ticked would surface a `Capability` error
+after every Suggest. The panel receives `canDescribe` and a `describeTables`
+callback rather than a `connectionId`, so its standing claim to own no
+connection survives; the page is the one place that joins the two.
+
+**Consequences.**
+
+- `docs/api-contract.md` diff against `86b324f` stays **zero**. The `/ai/*`
+  routes are web-unilateral by desktop ADR-0023 Decision 3, and stage 2 adds no
+  reason to change that.
+- A deployment with no provider behaves exactly as before: `404` from all five
+  routes, panel hidden, nothing recorded (`CLAUDE.md` rule 4).
+- The `openai` kind is reachable only through `DBBOARD_AI_PROVIDERS`; there is
+  no legacy two-variable shortcut, because `DBBOARD_ANTHROPIC_API_KEY` exists
+  to keep Stage 1 deployments booting and there was no Stage 1 OpenAI
+  deployment to keep.
+- Desktop ADR-0091's nested `Value` variant is on desktop `develop` only. It is
+  **not** mirrored, and must not be until it ships on `main`.

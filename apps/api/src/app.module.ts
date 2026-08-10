@@ -16,6 +16,7 @@ import {
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
 import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
+import { createOpenAiProvider } from "./infrastructure/openai-provider";
 import { SshHostKeyProber } from "./infrastructure/ssh-host-key-prober";
 import { StaticAdapterFactory } from "./infrastructure/static-adapter-factory";
 import {
@@ -91,6 +92,19 @@ function buildEntry(entry: AiProviderConfigEntry): AiProviderEntry {
         kind: entry.kind,
         model: entry.model,
         provider: new AnthropicProvider(anthropicClient(client), entry.model),
+      };
+    }
+    case "openai": {
+      // No SDK to adapt: the OpenAI adapter owns its own `fetch`
+      // transport (openai-transport.ts explains why there is no npm
+      // dependency here), so the factory hands it the key and nothing
+      // else. It validates and throws on a blank key or model.
+      return {
+        id: entry.id,
+        name: entry.name,
+        kind: entry.kind,
+        model: entry.model,
+        provider: createOpenAiProvider({ apiKey: entry.apiKey, model: entry.model }),
       };
     }
     default: {

@@ -129,6 +129,38 @@ describe("readAiProvidersConfig", () => {
         },
       ]);
     });
+
+    it("accepts the openai kind and defaults its model", () => {
+      // Slice D. No legacy shortcut for it: `DBBOARD_ANTHROPIC_API_KEY`
+      // exists to keep Stage 1 deployments booting unchanged, and there
+      // is no Stage 1 OpenAI deployment to keep.
+      expect(
+        readAiProvidersConfig({
+          DBBOARD_AI_PROVIDERS: "gpt",
+          DBBOARD_AI_GPT_KIND: "openai",
+          DBBOARD_AI_GPT_API_KEY: "sk-gpt",
+        }).entries,
+      ).toStrictEqual([
+        { id: "gpt", name: "gpt", kind: "openai", model: "gpt-4o", apiKey: "sk-gpt" },
+      ]);
+    });
+
+    it("lets the two kinds sit side by side, each with its own model", () => {
+      const { entries, defaultId } = readAiProvidersConfig({
+        DBBOARD_AI_PROVIDERS: "claude,gpt",
+        DBBOARD_AI_CLAUDE_KIND: "anthropic",
+        DBBOARD_AI_CLAUDE_API_KEY: "sk-claude",
+        DBBOARD_AI_GPT_KIND: "openai",
+        DBBOARD_AI_GPT_MODEL: "gpt-4o-mini",
+        DBBOARD_AI_GPT_API_KEY: "sk-gpt",
+      });
+
+      expect(entries.map((e) => [e.kind, e.model])).toStrictEqual([
+        ["anthropic", "claude-sonnet-4-6"],
+        ["openai", "gpt-4o-mini"],
+      ]);
+      expect(defaultId).toBe("claude");
+    });
   });
 
   describe("legacy and list together", () => {

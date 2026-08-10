@@ -276,17 +276,46 @@ variable suffix is the id uppercased with `-` replaced by `_`. Ids are
 lowercase letters, digits and hyphens only, which is what keeps that
 mapping unambiguous.
 
-| Variable                  | Required | Default                    | Notes                                                    |
-| ------------------------- | -------- | -------------------------- | -------------------------------------------------------- |
-| `DBBOARD_AI_PROVIDERS`    | no       | _(empty)_                  | Comma-separated ids, in the order the panel offers them. |
-| `DBBOARD_AI_<ID>_KIND`    | yes      | —                          | One of: `anthropic`.                                     |
-| `DBBOARD_AI_<ID>_API_KEY` | yes      | —                          | The credential for that provider.                        |
-| `DBBOARD_AI_<ID>_MODEL`   | no       | the kind's default model   | `claude-sonnet-4-6` for `anthropic`.                     |
-| `DBBOARD_AI_<ID>_NAME`    | no       | the id                     | Label shown in the panel's selector.                     |
-| `DBBOARD_AI_DEFAULT`      | no       | the first configured entry | Answers requests that name no provider.                  |
+| Variable                  | Required | Default                    | Notes                                                       |
+| ------------------------- | -------- | -------------------------- | ----------------------------------------------------------- |
+| `DBBOARD_AI_PROVIDERS`    | no       | _(empty)_                  | Comma-separated ids, in the order the panel offers them.    |
+| `DBBOARD_AI_<ID>_KIND`    | yes      | —                          | One of: `anthropic`, `openai`.                              |
+| `DBBOARD_AI_<ID>_API_KEY` | yes      | —                          | The credential for that provider.                           |
+| `DBBOARD_AI_<ID>_MODEL`   | no       | the kind's default model   | `claude-sonnet-4-6` for `anthropic`, `gpt-4o` for `openai`. |
+| `DBBOARD_AI_<ID>_NAME`    | no       | the id                     | Label shown in the panel's selector.                        |
+| `DBBOARD_AI_DEFAULT`      | no       | the first configured entry | Answers requests that name no provider.                     |
 
 `DBBOARD_ANTHROPIC_API_KEY`, when set, is always the _first_ entry — so
 adding a list to a running deployment keeps the default it had before.
+
+### OpenAI (ticket 0032 slice D)
+
+`openai` is configured through the list above and has no legacy
+two-variable shortcut: `DBBOARD_ANTHROPIC_API_KEY` exists to keep Stage 1
+deployments booting unchanged, and there was no Stage 1 OpenAI
+deployment to keep.
+
+```sh
+DBBOARD_AI_PROVIDERS=gpt
+DBBOARD_AI_GPT_KIND=openai
+DBBOARD_AI_GPT_API_KEY=sk-...
+DBBOARD_AI_GPT_MODEL=gpt-4o        # optional
+DBBOARD_AI_GPT_NAME="GPT-4o"       # optional
+```
+
+Two things worth knowing before you pick a model:
+
+- The adapter sends **no output cap**. `gpt-4o` takes `max_tokens` while
+  the o-series and gpt-5 reject it in favour of `max_completion_tokens`,
+  so sending neither is what keeps an arbitrary model id working. The
+  system prompts already ask for a short answer.
+- It talks to `https://api.openai.com` over hand-rolled `fetch` rather
+  than the `openai` npm package — desktop hand-rolls the same wire, and
+  an optional feature should not add a mandatory dependency (baseline
+  §12). The base URL is not configurable by environment today; the
+  adapter accepts one so a gateway can be put in front later, and it
+  already refuses a plaintext base that is not loopback, because that
+  would put the deployment's credential on the wire.
 
 Misconfiguration fails the boot rather than starting a deployment that
 is quietly missing a provider: a duplicate id, an unset `_KIND` or

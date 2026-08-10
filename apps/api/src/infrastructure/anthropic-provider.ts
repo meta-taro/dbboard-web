@@ -1,4 +1,4 @@
-import { AiError, type AiErrorCategory } from "../domain/ai/ai-error";
+import { AiError } from "../domain/ai/ai-error";
 import {
   NO_AI_CAPABILITIES,
   type AiCapabilities,
@@ -9,7 +9,16 @@ import {
   type StreamEvent,
   type SuggestRequest,
 } from "../domain/ai/ai-provider.port";
-import type { TableInfo } from "../domain/values/table-info";
+// What we ask and how we report the answer are shared with every other
+// adapter (`ai-prompts.ts`, `ai-response-mapping.ts`); what stays here is
+// the Anthropic wire and nothing else.
+import {
+  EXPLAIN_SYSTEM,
+  SUGGEST_SYSTEM,
+  buildExplainPrompt,
+  buildSuggestPrompt,
+} from "./ai-prompts";
+import { categoriseUpstream, normaliseStopReason, tokenCount } from "./ai-response-mapping";
 
 // The narrow `Anthropic` slice we depend on. Defining it here (instead
 // of pulling `Anthropic#messages` into the adapter signature) keeps
@@ -80,46 +89,6 @@ export interface AnthropicClient {
 // option once the UI demands streaming long-form output.
 const MAX_OUTPUT_TOKENS = 1024;
 
-const EXPLAIN_SYSTEM = "You are a database expert. Explain SQL queries concisely in plain English.";
-
-const SUGGEST_SYSTEM =
-  "You are a database expert. Translate the user's natural-language request into a single SQL query. Return only the SQL — no prose, no fenced code block, no commentary.";
-
-function buildExplainPrompt({ sql, dialect }: ExplainRequest): string {
-  const dialectLine = dialect ? `Dialect: ${dialect}\n\n` : "";
-  return `${dialectLine}Explain the following SQL query:\n\n${sql}`;
-}
-
-// Desktop's `qualify` (crates/dbboard-anthropic): a schema-qualified name
-// when the table has one, the bare name when it does not.
-function qualify(table: TableInfo): string {
-  return table.schema ? `${table.schema}.${table.name}` : table.name;
-}
-
-// Mirrors desktop's `build_suggest_request` ordering — tables, then
-// dialect, then the request — with one case desktop cannot have. Desktop
-// always passes a (possibly empty) list, so it always emits the block;
-// web's `schema` is optional, and when it is absent the block is omitted
-// entirely so a caller that cannot introspect gets the prompt it got
-// before ADR-0028 Decision 8 landed, byte for byte.
-function buildSuggestPrompt({ prompt, dialect, schema }: SuggestRequest): string {
-  const segments: string[] = [];
-  if (schema) {
-    // An empty list is stated, not skipped: "there are none" stops the
-    // model inventing a plausible table, which silence does not.
-    const body =
-      schema.length === 0
-        ? "(no tables introspected)"
-        : schema.map((table) => `- ${qualify(table)}`).join("\n");
-    segments.push(`Tables:\n${body}`);
-  }
-  if (dialect) {
-    segments.push(`Dialect: ${dialect}`);
-  }
-  segments.push(`Request: ${prompt}`);
-  return segments.join("\n\n");
-}
-
 function extractText(response: AnthropicMessageResponse): string {
   for (const block of response.content) {
     if (block.type === "text" && typeof block.text === "string") {
@@ -129,46 +98,6 @@ function extractText(response: AnthropicMessageResponse): string {
   // Transport succeeded; the body was unusable. That is the provider's
   // output, not the network.
   throw new AiError("Anthropic response contained no text block", { category: "provider" });
-}
-
-// The history v:2 vocabulary (desktop brief 0008 § stop_reason).
-// Anything outside it goes through the `other:<text>` escape hatch so
-// the raw value stays legible instead of collapsing to null — Anthropic
-// adds terminal reasons over time and this field is informational.
-const CANONICAL_STOP_REASONS = new Set([
-  "end_turn",
-  "max_tokens",
-  "stop_sequence",
-  "tool_use",
-  "refusal",
-]);
-
-function normaliseStopReason(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string" || raw === "") {
-    return null;
-  }
-  return CANONICAL_STOP_REASONS.has(raw) ? raw : `other:${raw}`;
-}
-
-// Null means "not reported". Never substitute a zero: in the history
-// log a fabricated count is indistinguishable from a measured one.
-function tokenCount(value: number | null | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-// The SDK's typed errors carry an HTTP `status`; a transport failure
-// carries none. 401/403 is the deployment's key being wrong or
-// unentitled — filing that under `provider` would point an operator at
-// Anthropic's status page for a problem in their own environment.
-function categoriseUpstream(cause: unknown): AiErrorCategory {
-  const status =
-    typeof cause === "object" && cause !== null && "status" in cause
-      ? (cause as { status: unknown }).status
-      : undefined;
-  if (typeof status !== "number") {
-    return "network";
-  }
-  return status === 401 || status === 403 ? "configuration" : "provider";
 }
 
 export class AnthropicProvider implements AiProvider {

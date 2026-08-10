@@ -13,14 +13,19 @@
 // deployment silently missing one — the operator would find out from a
 // user, not from the startup log.
 
-// The kinds this build can construct. Slice D adds "openai"; adding a
-// row here without adding one to the factory in app.module.ts is a
-// compile error there, which is the point of keeping it a union.
-const KNOWN_KINDS = ["anthropic"] as const;
+// The kinds this build can construct. Adding a row here without adding
+// one to the factory in app.module.ts is a compile error there, which is
+// the point of keeping it a union.
+const KNOWN_KINDS = ["anthropic", "openai"] as const;
 export type AiProviderKind = (typeof KNOWN_KINDS)[number];
 
 const DEFAULT_MODEL_BY_KIND: Record<AiProviderKind, string> = {
   anthropic: "claude-sonnet-4-6",
+  // Desktop's default for the OpenAI crate at `b98f7a6`. A deployment
+  // that wants a reasoning model sets DBBOARD_AI_<ID>_MODEL: the adapter
+  // sends no output cap, so an arbitrary model id works (gpt-4o takes
+  // `max_tokens`, the o-series rejects it).
+  openai: "gpt-4o",
 };
 
 export interface AiProviderConfigEntry {

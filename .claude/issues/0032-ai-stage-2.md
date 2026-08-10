@@ -371,3 +371,75 @@ B's 422 had left untranslated).
 
 Gate green: format, lint, typecheck, 1324 api + 1354 web tests. Still the one
 skipped file (the D1 live suite, maintainer-held credentials, see 0031).
+
+### D — OpenAI (done)
+
+Definition-of-done item 7, and the first slice that proves slice C's claim:
+the whole browser half is untouched here. A second provider kind reaches the
+panel through `GET /ai/providers` and the normalized `StreamEvent`, so nothing
+in `useAiAssist` or `AiPanel.vue` learned the word "openai".
+
+Four files carry it, and the first two are extractions rather than new
+behaviour. `anthropic-provider.ts` had grown the shared half of every adapter
+inside it — the two system prompts, the two prompt builders, `qualify`,
+`normaliseStopReason`, `tokenCount` and `categoriseUpstream`. Copying those
+into a second adapter would have made the next prompt fix a two-file edit that
+compiles either way, so they moved to `ai-prompts.ts` and
+`ai-response-mapping.ts` first. The extraction is behaviour-preserving in the
+only sense that counts: `anthropic-provider.spec.ts` passes its 30 cases
+**without a single edit** after the adapter switched to importing them. Slice E
+lands its `full_schema` builder change in `ai-prompts.ts`, once.
+
+`openai-transport.ts` is a hand-rolled `fetch` client rather than the `openai`
+npm package. Baseline §12 asks what a dependency buys: the SDK's value is
+retries, typed model catalogues and the streaming helper, and this adapter
+wants none of them — the port already normalizes the frames, and the surface
+actually used is one POST to `/v1/chat/completions`. Against that, an SDK on
+the request path of a route that carries the deployment's credential is a
+supply-chain surface with a transitive tree. The frame decoder is a pure
+`decodeSseFrames(buffer) -> {frames, rest}` so a split multi-byte boundary is
+tested rather than hoped for, and `assertKeySafeToSend` refuses any base URL
+that is neither https nor loopback — a mistyped `http://` gateway would
+otherwise put the key on the wire in the clear.
+
+`openai-provider.ts` differs from the Anthropic adapter on exactly four axes,
+and the header says so, because the next reader's question is whether it is a
+fork. Auth is `Authorization: Bearer <key>` and lives in the transport. The
+system prompt is a `{"role":"system"}` entry at the head of `messages` instead
+of a top-level field. Usage is `prompt_tokens` / `completion_tokens`. The
+terminus is `finish_reason` in OpenAI's vocabulary, translated to the canonical
+set through a **`Map` and not an object literal** — `finish_reason` is upstream
+input, and `{}["constructor"]` is not `undefined`.
+
+Two smaller decisions are worth their sentences:
+
+- **No output cap is sent.** Anthropic's adapter pins `max_tokens: 1024`
+  because the API requires it. OpenAI's does not, and the parameter's name
+  changed under it: `gpt-4o` takes `max_tokens`, the o-series and gpt-5 reject
+  it in favour of `max_completion_tokens`. Sending nothing is the only choice
+  that lets `DBBOARD_AI_<ID>_MODEL` name an arbitrary model without this file
+  learning a model table it would then have to be kept current with.
+- **`message_start` is emitted lazily**, on the first parsed chunk, so it can
+  carry the model and any usage the provider front-loaded. A stream that
+  carried nothing at all still gets a `message_start` and exactly one
+  `message_stop`, because the consumer's terminus handling is the same code
+  path that writes the history record.
+
+Configuration needed one word: `KNOWN_KINDS` gained `"openai"`. That is what
+the `never`-assignment guard in `app.module.ts` is for — widening the union
+broke the build until the factory grew its branch, which is the exhaustiveness
+check doing the job it was added for rather than a test catching a gap later.
+There is deliberately **no** legacy two-variable shortcut for OpenAI:
+`DBBOARD_ANTHROPIC_API_KEY` exists to keep Stage 1 deployments booting
+unchanged, and there is no Stage 1 OpenAI deployment to keep.
+
+`docs/deployment.md` gained `openai` in the `_KIND` row, `gpt-4o` in the
+`_MODEL` row, and a section with the env block and the two caveats an operator
+would otherwise hit at runtime — no output cap, and **the base URL is not
+configurable by environment today**. The adapter accepts one so a gateway can
+be put in front later; the factory does not pass one, and the docs say that
+rather than implying a control that does not exist (baseline §10).
+
+Gate green: format, lint, typecheck, 1399 api + 1354 web tests (api was 1324
+before this slice; the provider suite is 36 cases against a stubbed transport,
+the same suite Anthropic answers). Still the one skipped file.

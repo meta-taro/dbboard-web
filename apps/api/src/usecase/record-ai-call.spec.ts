@@ -4,10 +4,12 @@ import {
   NO_AI_CAPABILITIES,
   type AiProvider,
   type AiResponse,
+  type AiStreamOptions,
+  type StreamEvent,
 } from "../domain/ai/ai-provider.port";
 import type { HistoryRecord } from "../domain/history-record";
 import type { HistoryStore } from "./history-store.port";
-import { runRecordedAiCall } from "./record-ai-call";
+import { runRecordedAiCall, runRecordedAiStream } from "./record-ai-call";
 import { RecordHistory } from "./record-history.use-case";
 
 // Exercised through the *real* RecordHistory rather than a spy, because
@@ -241,5 +243,264 @@ describe("runRecordedAiCall", () => {
         () => CLOCK_START,
       ),
     ).rejects.toBeInstanceOf(AiUpstreamError);
+  });
+});
+
+describe("runRecordedAiStream", () => {
+  function events(
+    ...list: StreamEvent[]
+  ): (provider: AiProvider, options: AiStreamOptions) => AsyncIterable<StreamEvent> {
+    return () => {
+      async function* emit(): AsyncGenerator<StreamEvent> {
+        for (const event of list) yield event;
+      }
+      return emit();
+    };
+  }
+
+  const FULL: StreamEvent[] = [
+    { type: "message_start", tokensIn: 120, model: "claude-served-20260101" },
+    { type: "text_delta", text: "because it " },
+    { type: "text_delta", text: "scans the whole table" },
+    { type: "usage", tokensIn: null, tokensOut: 45 },
+    { type: "message_stop", stopReason: "end_turn" },
+  ];
+
+  function setup() {
+    const { store, written } = makeStore();
+    const history = new RecordHistory(store, () => CLOCK_START);
+    return { written, history };
+  }
+
+  async function drain(stream: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
+    const seen: StreamEvent[] = [];
+    for await (const event of stream) seen.push(event);
+    return seen;
+  }
+
+  it("passes every event through untouched", async () => {
+    const { history } = setup();
+    const seen = await drain(
+      runRecordedAiStream(
+        makeProvider(),
+        history,
+        { intent: "explain", prompt: "SELECT 1", invoke: events(...FULL) },
+        () => CLOCK_START,
+      ),
+    );
+    expect(seen).toEqual(FULL);
+  });
+
+  it("writes exactly one success record, assembled from the events", async () => {
+    const { written, history } = setup();
+    await drain(
+      runRecordedAiStream(
+        makeProvider(),
+        history,
+        { intent: "explain", prompt: "SELECT 1", invoke: events(...FULL) },
+        () => CLOCK_START,
+      ),
+    );
+
+    expect(written).toHaveLength(1);
+    expect(asAi(written[0]!)).toMatchObject({
+      kind: "ai",
+      intent: "explain",
+      prompt: "SELECT 1",
+      status: "ok",
+      response: "because it scans the whole table",
+      tokens_in: 120,
+      tokens_out: 45,
+      provider: "anthropic",
+      // The served build beats the configured alias, exactly as the
+      // atomic path resolves it.
+      model: "claude-served-20260101",
+      stop_reason: "end_turn",
+      error: null,
+    });
+  });
+
+  // ADR-0026 Decision 7. A recorder that added these would log 65 where
+  // the invoice says 45.
+  it("replaces the token counts on each usage report rather than summing them", async () => {
+    const { written, history } = setup();
+    await drain(
+      runRecordedAiStream(
+        makeProvider(),
+        history,
+        {
+          intent: "explain",
+          prompt: "SELECT 1",
+          invoke: events(
+            { type: "message_start", tokensIn: 120, model: "m" },
+            { type: "usage", tokensIn: null, tokensOut: 20 },
+            { type: "usage", tokensIn: null, tokensOut: 45 },
+            { type: "message_stop", stopReason: "end_turn" },
+          ),
+        },
+        () => CLOCK_START,
+      ),
+    );
+    expect(asAi(written[0]!)).toMatchObject({ tokens_in: 120, tokens_out: 45 });
+  });
+
+  // Null is "this event reported none", not "none were spent". Letting
+  // it overwrite would erase the count message_start already gave us.
+  it("leaves a reported count alone when a later event reports null", async () => {
+    const { written, history } = setup();
+    await drain(
+      runRecordedAiStream(
+        makeProvider(),
+        history,
+        {
+          intent: "explain",
+          prompt: "SELECT 1",
+          invoke: events(
+            { type: "message_start", tokensIn: 120, model: "m" },
+            { type: "usage", tokensIn: null, tokensOut: 45 },
+            { type: "message_stop", stopReason: "end_turn" },
+          ),
+        },
+        () => CLOCK_START,
+      ),
+    );
+    expect(asAi(written[0]!)).toMatchObject({ tokens_in: 120, tokens_out: 45 });
+  });
+
+  it("records a consumer that walks away as cancelled, with the partial text", async () => {
+    const { written, history } = setup();
+    const stream = runRecordedAiStream(
+      makeProvider(),
+      history,
+      { intent: "explain", prompt: "SELECT 1", invoke: events(...FULL) },
+      () => CLOCK_START,
+    );
+
+    for await (const event of stream) {
+      if (event.type === "text_delta") break;
+    }
+
+    expect(written).toHaveLength(1);
+    expect(asAi(written[0]!)).toMatchObject({
+      status: "cancelled",
+      response: "because it ",
+      tokens_in: 120,
+      tokens_out: null,
+      // No schema change needed: the escape hatch already carries values
+      // outside the canonical set.
+      stop_reason: "other:cancelled",
+      error: null,
+    });
+  });
+
+  // DoD 3: the point of cancelling is to stop being billed, which means
+  // the signal has to reach the transport — abandoning the output while
+  // the upstream keeps generating pays for tokens nobody reads.
+  it("aborts the signal it handed the provider when the consumer walks away", async () => {
+    const { history } = setup();
+    let signal: AbortSignal | undefined;
+    const stream = runRecordedAiStream(
+      makeProvider(),
+      history,
+      {
+        intent: "explain",
+        prompt: "SELECT 1",
+        invoke: (provider, options) => {
+          signal = options.signal;
+          return events(...FULL)(provider, options);
+        },
+      },
+      () => CLOCK_START,
+    );
+
+    for await (const event of stream) {
+      if (event.type === "text_delta") break;
+    }
+
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("treats a consumer that stops after message_stop as complete, not cancelled", async () => {
+    const { written, history } = setup();
+    const stream = runRecordedAiStream(
+      makeProvider(),
+      history,
+      { intent: "explain", prompt: "SELECT 1", invoke: events(...FULL) },
+      () => CLOCK_START,
+    );
+
+    for await (const event of stream) {
+      if (event.type === "message_stop") break;
+    }
+
+    expect(asAi(written[0]!).status).toBe("ok");
+  });
+
+  it("records an AiError as an error record and rethrows it as AiUpstreamError", async () => {
+    const { written, history } = setup();
+    async function* failing(): AsyncGenerator<StreamEvent> {
+      yield { type: "message_start", tokensIn: 120, model: "m" };
+      yield { type: "text_delta", text: "because it " };
+      throw new AiError("connection reset", { category: "network" });
+    }
+
+    await expect(
+      drain(
+        runRecordedAiStream(
+          makeProvider(),
+          history,
+          { intent: "explain", prompt: "SELECT 1", invoke: () => failing() },
+          () => CLOCK_START,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(AiUpstreamError);
+
+    expect(written).toHaveLength(1);
+    expect(asAi(written[0]!)).toMatchObject({
+      status: "error",
+      // The text that did arrive is real and is kept, same as the atomic
+      // error path keeps a partial response.
+      response: "because it ",
+      error: { category: "network", message: "connection reset" },
+    });
+  });
+
+  it("records nothing when the failure is our own bug rather than an AI outcome", async () => {
+    const { written, history } = setup();
+    const bug = new TypeError("cannot read properties of undefined");
+    async function* crashing(): AsyncGenerator<StreamEvent> {
+      yield { type: "message_start", tokensIn: 1, model: "m" };
+      throw bug;
+    }
+
+    await expect(
+      drain(
+        runRecordedAiStream(
+          makeProvider(),
+          history,
+          { intent: "suggest_sql", prompt: "everything", invoke: () => crashing() },
+          () => CLOCK_START,
+        ),
+      ),
+    ).rejects.toBe(bug);
+
+    expect(written).toEqual([]);
+  });
+
+  it("does not let a broken recorder break the stream", async () => {
+    const { store } = makeStore();
+    const history = new RecordHistory(store, () => CLOCK_START);
+    vi.spyOn(history, "recordAiSuccess").mockRejectedValue(new Error("disk full"));
+
+    await expect(
+      drain(
+        runRecordedAiStream(
+          makeProvider(),
+          history,
+          { intent: "explain", prompt: "SELECT 1", invoke: events(...FULL) },
+          () => CLOCK_START,
+        ),
+      ),
+    ).resolves.toHaveLength(FULL.length);
   });
 });

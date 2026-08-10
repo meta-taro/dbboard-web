@@ -1,6 +1,7 @@
+import { streamSuggestSql } from "../domain/ai/ai-stream";
 import type { AiProviderRegistry } from "../domain/ai/ai-provider-registry.port";
-import type { AiResponse, SuggestRequest } from "../domain/ai/ai-provider.port";
-import { runRecordedAiCall } from "./record-ai-call";
+import type { AiResponse, StreamEvent, SuggestRequest } from "../domain/ai/ai-provider.port";
+import { runRecordedAiCall, runRecordedAiStream } from "./record-ai-call";
 import type { RecordHistory } from "./record-history.use-case";
 
 // Twin of ExplainSql for natural-language → SQL suggestion. Same
@@ -26,6 +27,23 @@ export class SuggestSql {
         intent: "suggest_sql",
         prompt: request.prompt,
         invoke: (resolved) => resolved.suggestSql(request),
+      },
+      this.nowMs,
+    );
+  }
+
+  // See explain-sql.use-case.ts for why this resolves synchronously
+  // rather than being an async generator.
+  stream(command: SuggestCommand): AsyncIterable<StreamEvent> {
+    const { provider: providerId, ...request } = command;
+    const provider = this.registry.resolve(providerId);
+    return runRecordedAiStream(
+      provider,
+      this.history,
+      {
+        intent: "suggest_sql",
+        prompt: request.prompt,
+        invoke: (resolved, options) => streamSuggestSql(resolved, request, options),
       },
       this.nowMs,
     );

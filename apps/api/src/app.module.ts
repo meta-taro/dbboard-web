@@ -6,7 +6,13 @@ import {
   type AiProviderRegistry,
 } from "./domain/ai/ai-provider-registry.port";
 import { DATABASE_ADAPTER } from "./domain/database-adapter.port";
-import { AnthropicProvider, type AnthropicClient } from "./infrastructure/anthropic-provider";
+import {
+  AnthropicProvider,
+  type AnthropicClient,
+  type AnthropicMessageRequest,
+  type AnthropicMessageResponse,
+  type AnthropicStreamEvent,
+} from "./infrastructure/anthropic-provider";
 import { InMemoryConnectionRegistry } from "./infrastructure/in-memory-connection-registry";
 import { InMemoryHistoryStore } from "./infrastructure/in-memory-history-store";
 import { NullAdapter } from "./infrastructure/null-adapter";
@@ -72,10 +78,9 @@ import { UpdateRow } from "./usecase/update-row.use-case";
 // to compile on the `never` assignment, which is the point of keeping
 // the kinds a union rather than a string.
 //
-// The `as unknown as AnthropicClient` cast adapts the SDK's overloaded
-// `messages.create` to the narrow non-streaming slice the provider
-// depends on (see anthropic-provider.ts for why the structural
-// assertion lives at the wiring seam).
+// `anthropicClient` adapts the SDK to the narrow slice the provider
+// depends on (see anthropic-provider.ts for why the seam is here rather
+// than in the adapter's signature).
 function buildEntry(entry: AiProviderConfigEntry): AiProviderEntry {
   switch (entry.kind) {
     case "anthropic": {
@@ -85,13 +90,48 @@ function buildEntry(entry: AiProviderConfigEntry): AiProviderEntry {
         name: entry.name,
         kind: entry.kind,
         model: entry.model,
-        provider: new AnthropicProvider(client as unknown as AnthropicClient, entry.model),
+        provider: new AnthropicProvider(anthropicClient(client), entry.model),
       };
     }
     default: {
       const unreachable: never = entry.kind;
       throw new Error(`unsupported AI provider kind: ${String(unreachable)}`);
     }
+  }
+}
+
+// The one place the SDK's shape is known. The casts are the price of a
+// narrow port: the SDK's overload set is wider than the two calls the
+// adapter makes, and its event union is exhaustive where ours is
+// deliberately open (anthropic-provider.ts explains why).
+function anthropicClient(sdk: Anthropic): AnthropicClient {
+  return {
+    messages: {
+      create: (body) => sdk.messages.create(body) as unknown as Promise<AnthropicMessageResponse>,
+      stream: (body, options) => streamMessages(sdk, body, options),
+    },
+  };
+}
+
+// `create({stream: true})` rather than the SDK's `messages.stream()`
+// helper: the helper accumulates the whole message and re-emits derived
+// events, none of which this path uses, and it resolves to an object
+// whose lifetime we would then have to manage separately.
+//
+// Relayed through a `for await` rather than returned as-is because the
+// SDK resolves the stream asynchronously while the port hands back an
+// iterable immediately — and because breaking out of that loop, which is
+// what abandoning this generator does, makes the SDK abort the in-flight
+// request. `signal` covers the caller that cancels; the break covers the
+// caller that simply stops reading.
+async function* streamMessages(
+  sdk: Anthropic,
+  body: AnthropicMessageRequest,
+  options?: { signal?: AbortSignal },
+): AsyncGenerator<AnthropicStreamEvent> {
+  const stream = await sdk.messages.create({ ...body, stream: true }, { signal: options?.signal });
+  for await (const event of stream) {
+    yield event as unknown as AnthropicStreamEvent;
   }
 }
 

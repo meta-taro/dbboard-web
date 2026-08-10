@@ -6,6 +6,7 @@ import {
   type AiProvider,
   type AiResponse,
   type ExplainRequest,
+  type StreamEvent,
 } from "../domain/ai/ai-provider.port";
 import { StaticAiProviderRegistry } from "../infrastructure/static-ai-provider-registry";
 import { ExplainSql } from "./explain-sql.use-case";
@@ -175,4 +176,95 @@ describe("ExplainSql", () => {
       expect(recordAiSuccess).not.toHaveBeenCalled();
     });
   });
+
+  describe("stream (0032 slice C)", () => {
+    // The event-by-event recording behaviour is covered once, in
+    // record-ai-call.spec.ts. What belongs here is the same seam the
+    // atomic tests cover — which provider method is called, what counts
+    // as the prompt — plus the one thing streaming adds: resolution has
+    // to fail *before* the first read, because by the time a consumer is
+    // reading, the controller has already sent a 200 and there is no
+    // status code left to spend on a refusal.
+
+    it("refuses a disabled deployment before the stream begins, not on first read", () => {
+      const { history, record } = makeHistory();
+      const useCase = new ExplainSql(emptyRegistry(), history);
+
+      expect(() => useCase.stream({ sql: "SELECT 1" })).toThrow(AiDisabledError);
+      expect(record).not.toHaveBeenCalled();
+    });
+
+    it("refuses an unconfigured name before the stream begins", () => {
+      const { history, record } = makeHistory();
+      const useCase = new ExplainSql(registryOf(makeProvider()), history);
+
+      expect(() => useCase.stream({ sql: "SELECT 1", provider: "nope" })).toThrow(
+        AiUnknownProviderError,
+      );
+      expect(record).not.toHaveBeenCalled();
+    });
+
+    it("delegates to the provider's own stream, request verbatim and signal attached", async () => {
+      const { history } = makeHistory();
+      const streamExplain = vi.fn(streamOf({ type: "text_delta", text: "hi" }));
+      const useCase = new ExplainSql(registryOf(makeProvider({ streamExplain })), history);
+
+      await collect(useCase.stream({ sql: "SELECT 1", dialect: "postgres", provider: "p0" }));
+
+      // `provider` is stripped, `dialect` is not — addressing versus
+      // content, the same split the atomic path asserts.
+      expect(streamExplain).toHaveBeenCalledExactlyOnceWith(
+        { sql: "SELECT 1", dialect: "postgres" },
+        { signal: expect.any(AbortSignal) },
+      );
+    });
+
+    it("falls back to the atomic call when the provider has no stream of its own", async () => {
+      const { history } = makeHistory();
+      const explain = vi.fn().mockResolvedValue(RESPONSE);
+      const useCase = new ExplainSql(registryOf(makeProvider({ explain })), history);
+
+      const events = await collect(useCase.stream({ sql: "SELECT 1" }));
+
+      expect(explain).toHaveBeenCalledExactlyOnceWith({ sql: "SELECT 1" });
+      expect(events).toStrictEqual([
+        { type: "message_start", tokensIn: 10, model: "claude-x" },
+        { type: "text_delta", text: "explanation" },
+        { type: "usage", tokensIn: 10, tokensOut: 20 },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]);
+    });
+
+    it("records the explain intent with the SQL as the prompt", async () => {
+      const { history, recordAiSuccess } = makeHistory();
+      const streamExplain = vi.fn(streamOf({ type: "message_stop", stopReason: "end_turn" }));
+      const useCase = new ExplainSql(registryOf(makeProvider({ streamExplain })), history);
+
+      await collect(useCase.stream({ sql: "SELECT * FROM users" }));
+
+      expect(recordAiSuccess).toHaveBeenCalledOnce();
+      expect(recordAiSuccess.mock.calls[0][0]).toMatchObject({
+        intent: "explain",
+        prompt: "SELECT * FROM users",
+      });
+    });
+  });
 });
+
+// A provider override that yields the given events and nothing else.
+// It declares no parameters on purpose: the arguments it is called with
+// are asserted through the `vi.fn` wrapper, and a body that ignored
+// named parameters would only invite an unused-variable suppression.
+function streamOf(...events: StreamEvent[]): () => AsyncGenerator<StreamEvent> {
+  return async function* () {
+    yield* events;
+  };
+}
+
+async function collect(events: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
+  const out: StreamEvent[] = [];
+  for await (const event of events) {
+    out.push(event);
+  }
+  return out;
+}

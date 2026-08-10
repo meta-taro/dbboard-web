@@ -624,3 +624,210 @@ describe("AI provider selection (0032 slice B)", () => {
     });
   });
 });
+
+// Ticket 0032 slice C — the streaming twins of the two routes above.
+// They share the registry, the recorder and the error taxonomy; what is
+// new on the wire is the framing and the fact that a refusal has to
+// happen before the 200.
+describe("AI streaming routes (0032 slice C)", () => {
+  let app: NestExpressApplication;
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    process.env = ORIGINAL_ENV;
+    vi.restoreAllMocks();
+  });
+
+  function frames(body: string): unknown[] {
+    return body
+      .split("\n\n")
+      .filter((frame) => frame !== "")
+      .map((frame) => JSON.parse(frame.replace(/^data: /, "")) as unknown);
+  }
+
+  async function exported(): Promise<HistoryRecord[]> {
+    const res = await request(app.getHttpServer())
+      .get("/history/export.jsonl")
+      .set("Authorization", `Bearer ${SECRET}`);
+    expect(res.status).toBe(200);
+    return res.text
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line) as HistoryRecord);
+  }
+
+  // A provider that streams for real, so the route is exercised against
+  // an override rather than only against the one-chunk delegate.
+  function streamingProvider(): AiProvider {
+    return {
+      ...stubProvider(),
+      getCapabilities: () => ({ ...NO_AI_CAPABILITIES, streaming: true }),
+      streamExplain: async function* () {
+        yield { type: "message_start", tokensIn: 9, model: "stub-served" };
+        yield { type: "text_delta", text: "It scans " };
+        yield { type: "text_delta", text: "users." };
+        yield { type: "usage", tokensIn: 9, tokensOut: 4 };
+        yield { type: "message_stop", stopReason: "end_turn" };
+      },
+    };
+  }
+
+  it("streams a provider's own events as SSE frames", async () => {
+    app = await buildAppWith(streamingProvider());
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT * FROM users" });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("text/event-stream; charset=utf-8");
+    expect(frames(res.text)).toStrictEqual([
+      { type: "message_start", tokensIn: 9, model: "stub-served" },
+      { type: "text_delta", text: "It scans " },
+      { type: "text_delta", text: "users." },
+      { type: "usage", tokensIn: 9, tokensOut: 4 },
+      { type: "message_stop", stopReason: "end_turn" },
+    ]);
+  });
+
+  it("streams a non-streaming provider's answer as one chunk (CLAUDE.md rule 4)", async () => {
+    // The panel's toggle must work against every configured provider,
+    // not only the ones with an SSE transport.
+    app = await buildAppWith(stubProvider());
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+
+    expect(res.status).toBe(200);
+    expect(frames(res.text)).toStrictEqual([
+      { type: "message_start", tokensIn: null, model: "stub-model" },
+      { type: "text_delta", text: "default explanation" },
+      { type: "usage", tokensIn: null, tokensOut: null },
+      { type: "message_stop", stopReason: null },
+    ]);
+  });
+
+  it("streams suggestions too, schema and dialect passed through", async () => {
+    const suggestSql = vi.fn().mockResolvedValue({ text: "SELECT 1;", model: "claude-x" });
+    app = await buildAppWith(stubProvider({ suggestSql }));
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/suggest/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ prompt: "every user", dialect: "postgres", schema: [{ name: "users" }] });
+
+    expect(res.status).toBe(200);
+    expect(frames(res.text)).toContainEqual({ type: "text_delta", text: "SELECT 1;" });
+    expect(suggestSql).toHaveBeenCalledExactlyOnceWith({
+      prompt: "every user",
+      dialect: "postgres",
+      schema: [{ schema: null, name: "users" }],
+    });
+  });
+
+  it("refuses a disabled deployment with the JSON envelope, not an event stream", async () => {
+    app = await buildAppWith(undefined);
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+
+    // The whole reason the use case resolves synchronously: a client
+    // that gets 200 + text/event-stream here would have to discover the
+    // refusal by parsing an error frame, and the panel would have shown
+    // itself first.
+    expect(res.status).toBe(404);
+    expect(res.body).toStrictEqual({
+      error: { category: "ai_disabled", message: "AI provider is not configured" },
+    });
+    expect(await exported()).toStrictEqual([]);
+  });
+
+  it("refuses an unconfigured provider name with 422 before the stream opens", async () => {
+    app = await buildAppWith(stubProvider());
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/suggest/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ prompt: "x", provider: "nope" });
+
+    expect(res.status).toBe(422);
+    expect(await exported()).toStrictEqual([]);
+  });
+
+  it("reports an upstream failure in band, after a 200 that cannot be taken back", async () => {
+    const explain = vi.fn().mockRejectedValue(new AiError("upstream 503", { category: "network" }));
+    app = await buildAppWith(stubProvider({ explain }));
+
+    const res = await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+
+    expect(res.status).toBe(200);
+    expect(frames(res.text)).toStrictEqual([
+      { type: "error", category: "network", message: "upstream 503" },
+    ]);
+  });
+
+  it("writes exactly one history record at the terminus, with the assembled text", async () => {
+    app = await buildAppWith(streamingProvider());
+
+    await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT * FROM users" });
+
+    const records = await exported();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      v: 2,
+      kind: "ai",
+      intent: "explain",
+      prompt: "SELECT * FROM users",
+      // Reassembled from the deltas — the record is of the answer, not
+      // of the transport that carried it.
+      response: "It scans users.",
+      status: "ok",
+      tokens_in: 9,
+      tokens_out: 4,
+      model: "stub-served",
+      stop_reason: "end_turn",
+      error: null,
+    });
+  });
+
+  it("records a streamed upstream failure as status:'error'", async () => {
+    const explain = vi.fn().mockRejectedValue(new AiError("upstream 503"));
+    app = await buildAppWith(stubProvider({ explain }));
+
+    await request(app.getHttpServer())
+      .post("/ai/explain/stream")
+      .set("Authorization", `Bearer ${SECRET}`)
+      .set("Content-Type", "application/json")
+      .send({ sql: "SELECT 1" });
+
+    const records = await exported();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      status: "error",
+      error: { category: "provider", message: "upstream 503" },
+    });
+  });
+});

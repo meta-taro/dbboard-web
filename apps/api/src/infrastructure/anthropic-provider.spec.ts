@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AiError } from "../domain/ai/ai-error";
-import { NO_AI_CAPABILITIES } from "../domain/ai/ai-provider.port";
-import { AnthropicProvider, type AnthropicClient } from "./anthropic-provider";
+import { NO_AI_CAPABILITIES, type StreamEvent } from "../domain/ai/ai-provider.port";
+import {
+  AnthropicProvider,
+  type AnthropicClient,
+  type AnthropicMessageRequest,
+  type AnthropicStreamEvent,
+} from "./anthropic-provider";
 
 // The adapter takes a narrow `AnthropicClient` instead of the real
 // `Anthropic` instance so these tests can inject a stub without any
@@ -15,6 +20,12 @@ function stubClient(overrides: Partial<AnthropicClient["messages"]> = {}): Anthr
         model: "claude-sonnet-4-6-20260120",
         stop_reason: "end_turn",
         usage: { input_tokens: 12, output_tokens: 34 },
+      }),
+      // Required on the slice, so a client that cannot stream cannot be
+      // built — `getCapabilities().streaming` would otherwise be able to
+      // claim a transport the adapter does not actually have.
+      stream: vi.fn(() => {
+        throw new Error("this stub was not given a stream");
       }),
       ...overrides,
     },
@@ -39,10 +50,20 @@ describe("AnthropicProvider", () => {
     );
   });
 
-  it("advertises every capability as false (Stage 1 baseline mirrors desktop)", () => {
-    expect(new AnthropicProvider(stubClient(), "claude-sonnet-4-6").getCapabilities()).toEqual(
-      NO_AI_CAPABILITIES,
-    );
+  // `streaming` is a contract, not a hint (ADR-0026 Decision 8): the
+  // half of the two-halves test that says "true means a real override
+  // exists". The other half — `false` means the delegate — is asserted
+  // in domain/ai/ai-stream.spec.ts against a provider without one.
+  it("advertises streaming, which it implements, and nothing else", () => {
+    expect(new AnthropicProvider(stubClient(), "claude-sonnet-4-6").getCapabilities()).toEqual({
+      streaming: true,
+      functionCalling: false,
+    });
+  });
+
+  it("does not advertise the capabilities it has no implementation for", () => {
+    const capabilities = new AnthropicProvider(stubClient(), "claude-sonnet-4-6").getCapabilities();
+    expect(capabilities.functionCalling).toBe(NO_AI_CAPABILITIES.functionCalling);
   });
 
   describe("explain", () => {
@@ -345,6 +366,239 @@ describe("AnthropicProvider", () => {
       );
 
       await expect(provider.explain({ sql: "SELECT 1" })).rejects.toBeInstanceOf(AiError);
+    });
+  });
+
+  describe("streaming", () => {
+    function streamOf(
+      events: AnthropicStreamEvent[],
+    ): (
+      body: AnthropicMessageRequest,
+      options?: { signal?: AbortSignal },
+    ) => AsyncIterable<AnthropicStreamEvent> {
+      return () => {
+        async function* emit(): AsyncGenerator<AnthropicStreamEvent> {
+          for (const event of events) yield event;
+        }
+        return emit();
+      };
+    }
+
+    async function collect(events: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
+      const out: StreamEvent[] = [];
+      for await (const event of events) out.push(event);
+      return out;
+    }
+
+    function providerStreaming(
+      events: AnthropicStreamEvent[],
+      spy?: ReturnType<typeof vi.fn>,
+    ): AnthropicProvider {
+      const stream = spy ?? vi.fn(streamOf(events));
+      return new AnthropicProvider(stubClient({ stream }), "claude-sonnet-4-6");
+    }
+
+    // The Anthropic order: message_start, then blocks, then message_delta
+    // (which is where stop_reason and the cumulative output count live),
+    // then message_stop.
+    const FULL: AnthropicStreamEvent[] = [
+      {
+        type: "message_start",
+        message: { model: "claude-sonnet-4-6-20260120", usage: { input_tokens: 412 } },
+      },
+      { type: "content_block_start", index: 0 },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The query " } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "selects." } },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 218 } },
+      { type: "message_stop" },
+    ];
+
+    it("maps a complete Anthropic sequence onto the normalised vocabulary", async () => {
+      const events = await collect(providerStreaming(FULL).streamExplain({ sql: "SELECT 1" }));
+
+      expect(events).toEqual([
+        { type: "message_start", tokensIn: 412, model: "claude-sonnet-4-6-20260120" },
+        { type: "text_delta", text: "The query " },
+        { type: "text_delta", text: "selects." },
+        { type: "usage", tokensIn: null, tokensOut: 218 },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]);
+    });
+
+    it("sends the same body the atomic call would, and forwards the abort signal", async () => {
+      const stream = vi.fn(streamOf(FULL));
+      const controller = new AbortController();
+
+      await collect(
+        providerStreaming(FULL, stream).streamExplain(
+          { sql: "SELECT 1", dialect: "postgres" },
+          { signal: controller.signal },
+        ),
+      );
+
+      expect(stream).toHaveBeenCalledWith(
+        {
+          model: "claude-sonnet-4-6",
+          max_tokens: 1024,
+          system: "You are a database expert. Explain SQL queries concisely in plain English.",
+          messages: [
+            {
+              role: "user",
+              content: "Dialect: postgres\n\nExplain the following SQL query:\n\nSELECT 1",
+            },
+          ],
+        },
+        { signal: controller.signal },
+      );
+    });
+
+    it("builds the suggest prompt from the schema, as the atomic call does", async () => {
+      const stream = vi.fn(streamOf(FULL));
+
+      await collect(
+        providerStreaming(FULL, stream).streamSuggestSql({
+          prompt: "every user",
+          schema: [{ name: "users", schema: "public" }],
+        }),
+      );
+
+      expect(stream.mock.calls[0]?.[0]).toMatchObject({
+        messages: [{ role: "user", content: "Tables:\n- public.users\n\nRequest: every user" }],
+      });
+    });
+
+    // ADR-0026 Decision 3: the port's vocabulary is normalised, so the
+    // delta kinds that carry no user-visible text are dropped at the
+    // provider layer rather than travelling to a consumer that would
+    // have to know they exist.
+    it("drops non-text deltas and tolerates ping and unknown event types", async () => {
+      const events = await collect(
+        providerStreaming([
+          { type: "ping" },
+          { type: "message_start", message: { model: "m", usage: { input_tokens: 1 } } },
+          { type: "ping" },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "thinking_delta", thinking: "…" },
+          },
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: "s" },
+          },
+          {
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "input_json_delta", partial_json: "{}" },
+          },
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
+          { type: "a_kind_added_after_this_was_written" },
+          { type: "message_stop" },
+        ]).streamExplain({ sql: "SELECT 1" }),
+      );
+
+      expect(events).toEqual([
+        { type: "message_start", tokensIn: 1, model: "m" },
+        { type: "text_delta", text: "hi" },
+        { type: "message_stop", stopReason: null },
+      ]);
+    });
+
+    // Decision 7: `message_delta.usage.output_tokens` is a running
+    // total. Passing it through unchanged is what lets the meter
+    // replace rather than add — a consumer that summed these would show
+    // 60 where the bill says 40.
+    it("passes cumulative output counts through without accumulating them", async () => {
+      const events = await collect(
+        providerStreaming([
+          { type: "message_start", message: { model: "m", usage: { input_tokens: 5 } } },
+          { type: "message_delta", delta: {}, usage: { output_tokens: 20 } },
+          {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn" },
+            usage: { output_tokens: 40 },
+          },
+          { type: "message_stop" },
+        ]).streamExplain({ sql: "SELECT 1" }),
+      );
+
+      expect(events.filter((e) => e.type === "usage")).toEqual([
+        { type: "usage", tokensIn: null, tokensOut: 20 },
+        { type: "usage", tokensIn: null, tokensOut: 40 },
+      ]);
+    });
+
+    // stop_reason arrives on message_delta but belongs to the terminus,
+    // so the adapter carries the last one seen to message_stop.
+    it("normalises an unrecognised stop reason through the other: escape hatch", async () => {
+      const events = await collect(
+        providerStreaming([
+          { type: "message_delta", delta: { stop_reason: "model_context_window_exceeded" } },
+          { type: "message_stop" },
+        ]).streamExplain({ sql: "SELECT 1" }),
+      );
+
+      expect(events).toEqual([
+        { type: "message_stop", stopReason: "other:model_context_window_exceeded" },
+      ]);
+    });
+
+    it("reports a mid-stream error event as a provider failure", async () => {
+      // ADR-0026: an in-band `error` event is an upstream failure. It is
+      // thrown rather than yielded so that every failure — transport,
+      // in-band, or unusable body — reaches the recorder by one path.
+      const stream = providerStreaming([
+        { type: "message_start", message: { model: "m", usage: { input_tokens: 1 } } },
+        { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+      ]).streamExplain({ sql: "SELECT 1" });
+
+      await expect(collect(stream)).rejects.toMatchObject({
+        name: "AiError",
+        category: "provider",
+      });
+    });
+
+    it("categorises a failure to open the stream exactly as the atomic call does", async () => {
+      const unauthorised = new AnthropicProvider(
+        stubClient({
+          stream: vi.fn(() => {
+            throw httpError(401, "invalid x-api-key");
+          }),
+        }),
+        "claude-sonnet-4-6",
+      );
+      const offline = new AnthropicProvider(
+        stubClient({
+          stream: vi.fn(() => {
+            throw new Error("socket hang up");
+          }),
+        }),
+        "claude-sonnet-4-6",
+      );
+
+      await expect(collect(unauthorised.streamExplain({ sql: "SELECT 1" }))).rejects.toMatchObject({
+        category: "configuration",
+      });
+      await expect(collect(offline.streamExplain({ sql: "SELECT 1" }))).rejects.toMatchObject({
+        category: "network",
+      });
+    });
+
+    it("wraps a failure that arrives after the first event", async () => {
+      async function* halfway(): AsyncGenerator<AnthropicStreamEvent> {
+        yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } };
+        throw new Error("connection reset");
+      }
+      const provider = new AnthropicProvider(
+        stubClient({ stream: vi.fn(() => halfway()) }),
+        "claude-sonnet-4-6",
+      );
+
+      await expect(collect(provider.streamExplain({ sql: "SELECT 1" }))).rejects.toBeInstanceOf(
+        AiError,
+      );
     });
   });
 });

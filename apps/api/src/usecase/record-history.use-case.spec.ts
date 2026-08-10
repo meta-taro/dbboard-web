@@ -366,6 +366,40 @@ describe("RecordHistory — ai records", () => {
     );
     expect(asAi((await snapshot(store))[0]).response).toBe("It reads eve");
   });
+
+  // Ticket 0032 slice C. Until streaming existed there was no way for a
+  // web AI call to end any way but ok or error, so this writer had no
+  // reachable caller; the schema already accepted the status because
+  // desktop emits it and web has to read desktop's logs.
+  it("records a cancelled stream as its own status rather than an error", async () => {
+    const { store, rec } = makeStoreAndUsecase();
+    const ctx = aiCtx();
+    clockMs += 900;
+    await rec.recordAiCancelled(ctx, aiOutcome({ response: "It reads eve" }));
+    const record = asAi((await snapshot(store))[0]);
+    expect(record).toMatchObject({
+      status: "cancelled",
+      response: "It reads eve",
+      duration_ms: 900,
+      // A cancel is not a failure (ADR-0026 Decision 12), so there is
+      // nothing to put in the envelope — and the v:2 schema requires
+      // exactly that of a cancelled record.
+      error: null,
+    });
+  });
+
+  it("keeps the tokens a cancelled stream actually spent", async () => {
+    const { store, rec } = makeStoreAndUsecase();
+    await rec.recordAiCancelled(
+      aiCtx(),
+      aiOutcome({ tokensIn: 412, tokensOut: 37, stopReason: "other:cancelled" }),
+    );
+    expect(asAi((await snapshot(store))[0])).toMatchObject({
+      tokens_in: 412,
+      tokens_out: 37,
+      stop_reason: "other:cancelled",
+    });
+  });
 });
 
 describe("RecordHistory — write-side schema guard", () => {

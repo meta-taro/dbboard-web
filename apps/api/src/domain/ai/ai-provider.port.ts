@@ -10,13 +10,16 @@
 // composable) inject `AI_PROVIDER` with `@Optional()` because the
 // factory returns `undefined` when no API key is configured.
 
+import type { AiErrorCategory } from "./ai-error";
 import type { TableInfo } from "../values/table-info";
 
 export interface AiCapabilities {
   // Flat-bool, all-false default — mirrors desktop's `AiCapabilities`.
-  // Streaming and function-calling are off in Stage 1 because the UI
-  // and the Nest controller seam aren't wired for them yet. Flipping a
-  // flag here also requires the adapter to actually implement it.
+  // `streaming` is a contract, not a hint (desktop ADR-0026 Decision 8):
+  // `true` means this provider overrides the streaming methods below
+  // with a real token-granularity implementation, `false` means it gets
+  // the delegate in ai-stream.ts and its answer arrives as one chunk.
+  // Function-calling is still off everywhere — no adapter implements it.
   streaming: boolean;
   functionCalling: boolean;
 }
@@ -68,6 +71,37 @@ export interface AiResponse {
   stopReason: string | null;
 }
 
+// The normalised stream vocabulary (desktop ADR-0026 Decision 3). It is
+// deliberately not Anthropic's event shape: the port stays
+// provider-independent, and web has a second reason desktop does not —
+// these variants are serialised onto an SSE wire that a browser parses,
+// so a passthrough would make the browser Anthropic-shaped too.
+//
+// Two deviations from desktop's enum, both because web has a wire where
+// desktop has a channel:
+//   - `message_start` carries the served model. Desktop reads it off the
+//     atomic `AiResponse`; a stream has no such envelope, and both the
+//     history record and the panel's model line need it.
+//   - `error` is data rather than a thrown result. By the time a stream
+//     fails the 200 has already gone out, so the failure has to travel
+//     in-band or not at all.
+export type StreamEvent =
+  | { type: "message_start"; tokensIn: number | null; model: string | null }
+  | { type: "text_delta"; text: string }
+  // Cumulative counts, not increments — replace the meter, never add to
+  // it (ADR-0026 Decision 7). `null` means this event reported none, and
+  // the previous value stands.
+  | { type: "usage"; tokensIn: number | null; tokensOut: number | null }
+  | { type: "message_stop"; stopReason: string | null }
+  | { type: "error"; category: AiErrorCategory; message: string };
+
+export interface AiStreamOptions {
+  // Cancellation is the caller's, and it reaches the transport rather
+  // than merely stopping the reader: dropping the output while the
+  // upstream keeps generating bills for tokens nobody receives.
+  signal?: AbortSignal;
+}
+
 export interface AiProvider {
   getId(): string;
   // The model this provider is configured to call. Separate from
@@ -78,6 +112,13 @@ export interface AiProvider {
   getCapabilities(): AiCapabilities;
   explain(request: ExplainRequest): Promise<AiResponse>;
   suggestSql(request: SuggestRequest): Promise<AiResponse>;
+  // Optional, which is how TypeScript spells the default trait method
+  // desktop gets for free (ADR-0026 Decision 2). A provider that leaves
+  // them out is not excluded from the streaming surface — ai-stream.ts
+  // delegates to the atomic call and yields the answer as one chunk —
+  // so callers never branch on which kind of provider they hold.
+  streamExplain?(request: ExplainRequest, options?: AiStreamOptions): AsyncIterable<StreamEvent>;
+  streamSuggestSql?(request: SuggestRequest, options?: AiStreamOptions): AsyncIterable<StreamEvent>;
 }
 
 // DI token. Provider may be `undefined` when no env-var key is

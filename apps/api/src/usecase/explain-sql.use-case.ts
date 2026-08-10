@@ -1,6 +1,7 @@
+import { streamExplain } from "../domain/ai/ai-stream";
 import type { AiProviderRegistry } from "../domain/ai/ai-provider-registry.port";
-import type { AiResponse, ExplainRequest } from "../domain/ai/ai-provider.port";
-import { runRecordedAiCall } from "./record-ai-call";
+import type { AiResponse, ExplainRequest, StreamEvent } from "../domain/ai/ai-provider.port";
+import { runRecordedAiCall, runRecordedAiStream } from "./record-ai-call";
 import type { RecordHistory } from "./record-history.use-case";
 
 // ExplainSql is the use-case seam between the controller and the AI
@@ -47,6 +48,36 @@ export class ExplainSql {
         // For an explain, the SQL under discussion *is* the prompt.
         prompt: request.sql,
         invoke: (resolved) => resolved.explain(request),
+      },
+      this.nowMs,
+    );
+  }
+
+  // The streaming twin. Deliberately *not* an async method: an async
+  // function defers its whole body to the microtask queue, and an async
+  // generator defers it until the first `next()`, either of which would
+  // push the registry's refusal past the point where the controller has
+  // committed to a 200. Resolving here, synchronously, keeps
+  // AiDisabledError (404) and AiUnknownProviderError (422) on the same
+  // wire path they take for the atomic call.
+  //
+  // The upstream request still does not start until the returned
+  // iterable is read — runRecordedAiStream is a generator — so a caller
+  // that resolves and then abandons the stream spends nothing.
+  stream(command: ExplainCommand): AsyncIterable<StreamEvent> {
+    const { provider: providerId, ...request } = command;
+    const provider = this.registry.resolve(providerId);
+    return runRecordedAiStream(
+      provider,
+      this.history,
+      {
+        intent: "explain",
+        prompt: request.sql,
+        // Via the port's free function, not `resolved.streamExplain`
+        // directly: a provider without a real stream gets the one-chunk
+        // delegate, so this route works the same whether or not the
+        // configured provider advertises `streaming`.
+        invoke: (resolved, options) => streamExplain(resolved, request, options),
       },
       this.nowMs,
     );

@@ -66,12 +66,6 @@ export interface AiOutcome {
 // hands it to the store. The schema is safeParse'd before insert so a
 // bug in this mapper surfaces immediately rather than corrupting the
 // log.
-//
-// There is deliberately no `recordAiCancelled`. The v:2 schema accepts
-// `status: "cancelled"` because desktop emits it and web must read it,
-// but web's AI surface is non-streaming request/response with no abort
-// path, so a web-side cancel writer would be unreachable code. Ticket
-// 0023 records this; add it when Stage 2 wires streaming.
 export class RecordHistory {
   constructor(
     private readonly store: HistoryStore,
@@ -117,6 +111,15 @@ export class RecordHistory {
 
   async recordAiError(ctx: AiRecordContext, outcome: AiOutcome, err: unknown): Promise<void> {
     await this.persist(this.aiRecord(ctx, outcome, "error", mapAiError(err)));
+  }
+
+  // A cancel is a third terminus, not a failure (ADR-0026 Decision 12):
+  // the partial text and the tokens already spent are real and are kept,
+  // and `error` stays null because nothing went wrong. Ticket 0023 left
+  // this writer out while web's AI surface had no abort path; slice C of
+  // 0032 gave it one.
+  async recordAiCancelled(ctx: AiRecordContext, outcome: AiOutcome): Promise<void> {
+    await this.persist(this.aiRecord(ctx, outcome, "cancelled", null));
   }
 
   // Field order deliberately matches the declaration order of desktop's

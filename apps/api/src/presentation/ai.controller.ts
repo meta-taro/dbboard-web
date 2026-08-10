@@ -1,9 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Post, Res } from "@nestjs/common";
+import type { Response } from "express";
 import type { AiProviderDescriptor } from "../domain/ai/ai-provider-registry.port";
-import type { AiResponse } from "../domain/ai/ai-provider.port";
+import type { AiResponse, SuggestRequest } from "../domain/ai/ai-provider.port";
 import { ExplainSql } from "../usecase/explain-sql.use-case";
 import { ListAiProviders } from "../usecase/list-ai-providers.use-case";
 import { SuggestSql } from "../usecase/suggest-sql.use-case";
+import { pipeAiStream } from "./ai-sse";
 import { AiExplainRequestDto } from "./dto/ai-explain-request.dto";
 import { AiSuggestRequestDto } from "./dto/ai-suggest-request.dto";
 
@@ -19,6 +21,15 @@ interface AiResponseBody {
 
 function toBody(response: AiResponse): AiResponseBody {
   return { text: response.text, model: response.model };
+}
+
+// An entry may arrive without a `schema` key at all; the domain value
+// spells "unqualified" as null, so normalise here rather than leaving two
+// ways to say the same thing past the boundary. Shared by the atomic and
+// streaming suggest routes — the same body reaches the same domain value
+// whichever one the panel calls.
+function toSchema(tables: AiSuggestRequestDto["schema"]): SuggestRequest["schema"] {
+  return tables?.map((table) => ({ schema: table.schema ?? null, name: table.name }));
 }
 
 // Web-only AI surface — GET /ai/providers, POST /ai/explain and
@@ -76,12 +87,49 @@ export class AiController {
       await this.suggestSql.execute({
         prompt: body.prompt,
         dialect: body.dialect,
-        // An entry may arrive without a `schema` key at all; the domain
-        // value spells "unqualified" as null, so normalise here rather
-        // than leaving two ways to say the same thing past the boundary.
-        schema: body.schema?.map((table) => ({ schema: table.schema ?? null, name: table.name })),
+        schema: toSchema(body.schema),
         provider: body.provider,
       }),
     );
+  }
+
+  // The streaming twins (0032 slice C). Same bodies, same validation, same
+  // refusals — only the response framing differs, so the panel can offer
+  // streaming as a toggle rather than as a separate feature.
+  //
+  // `@Res()` takes Nest out of the response path entirely, which is what
+  // an SSE route needs: there is no single return value to serialise. The
+  // cost is that nothing after the headers can be turned into an error
+  // envelope, so the two refusals have to happen first — see below.
+  // `@HttpCode(200)` for the same reason as the atomic routes, and it is
+  // needed even under `@Res()`: Nest stamps the default 201 onto the
+  // response object before the handler runs, so an SSE body would ship
+  // with a "Created" status nothing created.
+  @Post("explain/stream")
+  @HttpCode(200)
+  async explainStream(@Body() body: AiExplainRequestDto, @Res() res: Response): Promise<void> {
+    // Deliberately outside any try, and deliberately not awaited into a
+    // variable first: `stream()` resolves the provider synchronously, so
+    // AiDisabledError (404) and AiUnknownProviderError (422) propagate to
+    // ContractErrorFilter while the response is still untouched. Once
+    // pipeAiStream writes a header, that door is shut.
+    const events = this.explainSql.stream({
+      sql: body.sql,
+      dialect: body.dialect,
+      provider: body.provider,
+    });
+    await pipeAiStream(res, events);
+  }
+
+  @Post("suggest/stream")
+  @HttpCode(200)
+  async suggestStream(@Body() body: AiSuggestRequestDto, @Res() res: Response): Promise<void> {
+    const events = this.suggestSql.stream({
+      prompt: body.prompt,
+      dialect: body.dialect,
+      schema: toSchema(body.schema),
+      provider: body.provider,
+    });
+    await pipeAiStream(res, events);
   }
 }

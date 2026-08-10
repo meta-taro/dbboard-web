@@ -107,6 +107,66 @@ describe("AnthropicProvider", () => {
       };
       expect(body.messages[0]?.content).toContain("List emails of users");
     });
+
+    // ADR-0028 Decision 8, terse half. Desktop's `build_suggest_request`
+    // opens with a `Tables:` block, then the dialect, then the request;
+    // these three cases pin the same order and the same three states the
+    // block can be in.
+    it("renders the table list ahead of the dialect and the request", async () => {
+      const create = vi
+        .fn()
+        .mockResolvedValue({ content: [{ type: "text", text: "x" }], model: "m" });
+      const provider = new AnthropicProvider(stubClient({ create }), "claude-sonnet-4-6");
+
+      await provider.suggestSql({
+        prompt: "recent orders",
+        dialect: "postgres",
+        schema: [
+          { schema: "public", name: "users" },
+          { schema: null, name: "orders" },
+        ],
+      });
+
+      const content = (create.mock.calls[0]?.[0] as { messages: { content: string }[] }).messages[0]
+        ?.content as string;
+      // Qualified when the engine has a schema namespace, bare when it
+      // does not — desktop's `qualify`.
+      expect(content).toContain("- public.users");
+      expect(content).toContain("- orders");
+      expect(content.indexOf("Tables:")).toBeLessThan(content.indexOf("Dialect: postgres"));
+      expect(content.indexOf("Dialect: postgres")).toBeLessThan(content.indexOf("Request:"));
+    });
+
+    it("says the tables were introspected and there were none, when handed an empty list", async () => {
+      const create = vi
+        .fn()
+        .mockResolvedValue({ content: [{ type: "text", text: "x" }], model: "m" });
+      const provider = new AnthropicProvider(stubClient({ create }), "claude-sonnet-4-6");
+
+      await provider.suggestSql({ prompt: "anything", schema: [] });
+
+      const content = (create.mock.calls[0]?.[0] as { messages: { content: string }[] }).messages[0]
+        ?.content as string;
+      expect(content).toContain("(no tables introspected)");
+    });
+
+    it("omits the table block entirely when the caller sent no schema at all", async () => {
+      // The distinction desktop cannot draw and web can: `Vec::new()` is
+      // "I looked and found none", `undefined` is "I did not look". Only
+      // the first may be stated to the model. This also keeps a caller
+      // written before the field existed producing the identical prompt.
+      const create = vi
+        .fn()
+        .mockResolvedValue({ content: [{ type: "text", text: "x" }], model: "m" });
+      const provider = new AnthropicProvider(stubClient({ create }), "claude-sonnet-4-6");
+
+      await provider.suggestSql({ prompt: "recent orders", dialect: "postgres" });
+
+      const content = (create.mock.calls[0]?.[0] as { messages: { content: string }[] }).messages[0]
+        ?.content as string;
+      expect(content).not.toContain("Tables:");
+      expect(content).toBe("Dialect: postgres\n\nRequest: recent orders");
+    });
   });
 
   describe("usage and stop_reason", () => {

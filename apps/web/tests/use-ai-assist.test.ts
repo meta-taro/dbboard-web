@@ -209,4 +209,74 @@ describe("useAiAssist", () => {
     });
     wrapper.unmount();
   });
+  // ADR-0028 Decision 8 (terse half) — the table list the caller
+  // introspected. Absent and empty are different claims and the wire
+  // carries the difference: no key at all means "we did not look".
+  describe("schema", () => {
+    it("suggestSql() includes the table list when given one", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("recent orders", "postgres", [
+        { schema: "public", name: "users" },
+        { schema: null, name: "orders" },
+      ]);
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: {
+          prompt: "recent orders",
+          dialect: "postgres",
+          schema: [
+            { schema: "public", name: "users" },
+            { schema: null, name: "orders" },
+          ],
+        },
+      });
+      wrapper.unmount();
+    });
+
+    it("suggestSql() sends an empty list as an empty list, not as nothing", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("anything", undefined, []);
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: { prompt: "anything", schema: [] },
+      });
+      wrapper.unmount();
+    });
+
+    it("suggestSql() omits the key entirely when no list is passed", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.suggestSql("anything");
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("schema");
+      wrapper.unmount();
+    });
+
+    it("explain() never carries a table list — it already has the SQL", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const { Component, holder } = makeHarness();
+      const wrapper = mount(Component);
+
+      await holder.api!.explain("SELECT 1", "postgres");
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("schema");
+      wrapper.unmount();
+    });
+  });
 });

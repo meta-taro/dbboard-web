@@ -126,6 +126,16 @@ function isNotNull(column: ColumnInfo): boolean {
 function defaultOf(column: ColumnInfo): string | null {
   return column.default_value ?? null;
 }
+
+// Expose the fetched list so the page can hand it to the AI panel
+// (ticket 0032 slice A). Read-only on purpose: this component owns the
+// fetch, and a second owner would mean two lists that can disagree. It
+// is the sidebar's ref, so the panel sees the tables appear as they land
+// rather than a snapshot taken at mount.
+// `state` travels with the list because the list alone is ambiguous: it is
+// `[]` while the fetch is out and `[]` after it failed, and neither of
+// those is "this connection has no tables".
+defineExpose({ tables, state });
 </script>
 
 <template>

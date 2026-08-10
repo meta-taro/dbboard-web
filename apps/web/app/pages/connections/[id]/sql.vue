@@ -57,6 +57,18 @@ const {
   reset: resetSidebar,
 } = useSidebarWidth();
 
+// The sidebar fetched the tables; the AI panel needs them (ticket 0032
+// slice A). The page is the only place that can join the two, and it
+// forwards nothing until the fetch has actually come back: the sidebar's
+// list is `[]` while loading and `[]` after a failure too, and forwarding
+// that would tell the model this connection has no tables when the truth
+// is that we never found out. An empty list *after* a successful fetch is
+// a real answer and is forwarded as one.
+const schemaRef = ref<InstanceType<typeof SchemaBrowser> | null>(null);
+const aiTables = computed<ReadonlyArray<TableInfo> | undefined>(() =>
+  schemaRef.value?.state === "idle" ? schemaRef.value.tables : undefined,
+);
+
 const sqlInput = ref("");
 /** The statement behind the rows on screen, kept so a save can show what it
  *  wrote. Only a browse sets it — nothing else produces an editable grid. */
@@ -227,7 +239,7 @@ function onEditorKeydown(event: KeyboardEvent) {
           </template>
         </section>
 
-        <AiPanel :current-sql="sqlInput" @insert="onInsertIdentifier" />
+        <AiPanel :current-sql="sqlInput" :tables="aiTables" @insert="onInsertIdentifier" />
       </div>
 
       <SidebarSplitter
@@ -239,6 +251,7 @@ function onEditorKeydown(event: KeyboardEvent) {
 
       <div class="sidebar-column">
         <SchemaBrowser
+          ref="schemaRef"
           :connection-id="connectionId"
           :driver="driver"
           @insert="onInsertIdentifier"

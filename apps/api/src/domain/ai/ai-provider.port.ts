@@ -10,6 +10,8 @@
 // composable) inject `AI_PROVIDER` with `@Optional()` because the
 // factory returns `undefined` when no API key is configured.
 
+import type { TableInfo } from "../values/table-info";
+
 export interface AiCapabilities {
   // Flat-bool, all-false default — mirrors desktop's `AiCapabilities`.
   // Streaming and function-calling are off in Stage 1 because the UI
@@ -34,6 +36,16 @@ export interface ExplainRequest {
 export interface SuggestRequest {
   prompt: string;
   dialect?: string;
+  // The tables the caller introspected, rendered ahead of the request so
+  // the model names real ones (desktop ADR-0028 Decision 8, terse half).
+  //
+  // Absent and empty are different answers and the adapter renders them
+  // differently: `undefined` means the caller never looked, so the prompt
+  // says nothing about tables at all; `[]` means it looked and the
+  // connection has none, which is worth telling the model because it
+  // stops a confident invention. Optional so a caller that cannot
+  // introspect keeps today's behaviour exactly.
+  schema?: TableInfo[];
 }
 
 export interface AiResponse {

@@ -11,6 +11,8 @@ import {
   NO_AI_CAPABILITIES,
   type AiProvider,
   type AiResponse,
+  type ExplainRequest,
+  type SuggestRequest,
 } from "../src/domain/ai/ai-provider.port";
 import type { HistoryRecord } from "../src/domain/history-record";
 import { ContractErrorFilter } from "../src/presentation/filters/contract-error.filter";
@@ -32,9 +34,12 @@ const SECRET = "integration-secret-32-chars-long!";
 
 type StubResponse = Pick<AiResponse, "text" | "model"> & Partial<AiResponse>;
 
+// The port's own request types rather than a hand-written subset: a stub
+// that sees less than the provider does cannot assert what reached it,
+// which is exactly what the schema passthrough case needs to check.
 interface ProviderOverrides {
-  explain?: (req: { sql: string; dialect?: string }) => Promise<StubResponse>;
-  suggestSql?: (req: { prompt: string; dialect?: string }) => Promise<StubResponse>;
+  explain?: (req: ExplainRequest) => Promise<StubResponse>;
+  suggestSql?: (req: SuggestRequest) => Promise<StubResponse>;
 }
 
 // Fills in the fields history v:2 needs but a test rarely cares about, so
@@ -211,6 +216,38 @@ describe("AI HTTP routes (0020)", () => {
         prompt: "recent orders",
         dialect: "sqlite",
       });
+    });
+
+    it("passes the table list through to the provider (ADR-0028 Decision 8)", async () => {
+      const suggestSql = vi.fn().mockResolvedValue({ text: "SELECT 1;", model: "claude-x" });
+      app = await buildAppWith(stubProvider({ suggestSql }));
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/suggest")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({
+          prompt: "recent orders",
+          schema: [{ schema: "public", name: "orders" }],
+        });
+
+      expect(res.status).toBe(200);
+      expect(suggestSql).toHaveBeenCalledExactlyOnceWith({
+        prompt: "recent orders",
+        schema: [{ schema: "public", name: "orders" }],
+      });
+    });
+
+    it("returns 422 when a schema entry is malformed", async () => {
+      app = await buildAppWith(stubProvider());
+
+      const res = await request(app.getHttpServer())
+        .post("/ai/suggest")
+        .set("Authorization", `Bearer ${SECRET}`)
+        .set("Content-Type", "application/json")
+        .send({ prompt: "x", schema: [{ schema: "public" }] });
+
+      expect(res.status).toBe(422);
     });
 
     it("returns 404 + ai_disabled envelope when no provider is configured", async () => {

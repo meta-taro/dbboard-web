@@ -7,6 +7,7 @@ import {
   type ExplainRequest,
   type SuggestRequest,
 } from "../domain/ai/ai-provider.port";
+import type { TableInfo } from "../domain/values/table-info";
 
 // The narrow `Anthropic` slice we depend on. Defining it here (instead
 // of pulling `Anthropic#messages` into the adapter signature) keeps
@@ -54,9 +55,34 @@ function buildExplainPrompt({ sql, dialect }: ExplainRequest): string {
   return `${dialectLine}Explain the following SQL query:\n\n${sql}`;
 }
 
-function buildSuggestPrompt({ prompt, dialect }: SuggestRequest): string {
-  const dialectLine = dialect ? `Dialect: ${dialect}\n\n` : "";
-  return `${dialectLine}Request: ${prompt}`;
+// Desktop's `qualify` (crates/dbboard-anthropic): a schema-qualified name
+// when the table has one, the bare name when it does not.
+function qualify(table: TableInfo): string {
+  return table.schema ? `${table.schema}.${table.name}` : table.name;
+}
+
+// Mirrors desktop's `build_suggest_request` ordering — tables, then
+// dialect, then the request — with one case desktop cannot have. Desktop
+// always passes a (possibly empty) list, so it always emits the block;
+// web's `schema` is optional, and when it is absent the block is omitted
+// entirely so a caller that cannot introspect gets the prompt it got
+// before ADR-0028 Decision 8 landed, byte for byte.
+function buildSuggestPrompt({ prompt, dialect, schema }: SuggestRequest): string {
+  const segments: string[] = [];
+  if (schema) {
+    // An empty list is stated, not skipped: "there are none" stops the
+    // model inventing a plausible table, which silence does not.
+    const body =
+      schema.length === 0
+        ? "(no tables introspected)"
+        : schema.map((table) => `- ${qualify(table)}`).join("\n");
+    segments.push(`Tables:\n${body}`);
+  }
+  if (dialect) {
+    segments.push(`Dialect: ${dialect}`);
+  }
+  segments.push(`Request: ${prompt}`);
+  return segments.join("\n\n");
 }
 
 function extractText(response: AnthropicMessageResponse): string {

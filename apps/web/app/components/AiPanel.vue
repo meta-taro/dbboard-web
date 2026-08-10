@@ -1,12 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useAiAssist } from "../composables/useAiAssist";
+import type { TableInfo } from "../composables/useSchemaBrowser";
 import { fromCategorised } from "../utils/display-error";
 import ErrorBanner from "./ErrorBanner.vue";
 
 interface Props {
   currentSql: string;
   apiBase?: string;
+  /**
+   * The tables of the connection this panel is mounted beside, sent with a
+   * suggest so the model names real ones (desktop ADR-0028 Decision 8).
+   * The panel does not fetch them — it is handed them — which is what
+   * keeps it as connection-agnostic as the composable behind it.
+   *
+   * Absent means the page could not offer a list at all, and the request
+   * then carries no claim about tables. An empty array is a different
+   * thing and is forwarded: the connection was read and has none.
+   */
+  tables?: readonly TableInfo[];
 }
 
 const props = defineProps<Props>();
@@ -47,7 +59,7 @@ async function onExplain() {
 }
 
 async function onSuggest() {
-  await suggestSql(prompt.value, dialectArg.value);
+  await suggestSql(prompt.value, dialectArg.value, props.tables);
 }
 
 function onInsert() {

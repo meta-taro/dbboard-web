@@ -100,13 +100,20 @@ vi.mock("../app/components/HistorySidebar.vue", () => ({
 // Same stub pattern for the schema browser. The page-level tests only
 // care that it mounts and that `insert` events round-trip into the
 // editor; the real component is covered by schema-browser.test.ts.
+let schemaTablesRef: Ref<ReadonlyArray<{ schema: string | null; name: string }>>;
+let schemaStateRef: Ref<"idle" | "loading" | "error">;
+
 vi.mock("../app/components/SchemaBrowser.vue", () => ({
   default: defineComponent({
     name: "SchemaBrowser",
     props: ["connectionId", "driver"],
     emits: ["insert", "browse"],
-    setup(props) {
+    setup(props, { expose }) {
       mocks.schemaConstructed(props.connectionId);
+      // Mirrors the real component's defineExpose (ticket 0032 slice A):
+      // the page reads the fetched list off the sidebar rather than
+      // fetching a second copy of it.
+      expose({ tables: schemaTablesRef, state: schemaStateRef });
       return () => h("aside", { "data-testid": "schema-browser" });
     },
   }),
@@ -135,13 +142,19 @@ vi.mock("../app/composables/useConnections", () => ({
 // reuses the schema browser's caret-aware splicer. Composable surface
 // and panel behaviour are covered by use-ai-assist.test.ts and
 // ai-panel.test.ts.
+let aiPanelProps: { currentSql?: string; tables?: ReadonlyArray<unknown> } | null = null;
+
 vi.mock("../app/components/AiPanel.vue", () => ({
   default: defineComponent({
     name: "AiPanel",
-    props: ["currentSql"],
+    props: ["currentSql", "tables"],
     emits: ["insert"],
-    setup() {
+    setup(props) {
       mocks.aiPanelConstructed();
+      // Held rather than snapshotted: `tables` arrives after the sidebar's
+      // fetch resolves, so a test has to read the prop as it stands then,
+      // not as it stood at mount.
+      aiPanelProps = props;
       return () => h("aside", { "data-testid": "ai-panel" });
     },
   }),
@@ -191,6 +204,9 @@ describe("SqlPage", () => {
     editContextRef = ref(null);
     noPkRef = ref(false);
     stateRef = ref<"idle" | "loading" | "error">("idle");
+    schemaTablesRef = ref([]);
+    schemaStateRef = ref<"idle" | "loading" | "error">("loading");
+    aiPanelProps = null;
     lastErrorRef = ref<{
       category: string;
       message: string;
@@ -892,6 +908,63 @@ describe("SqlPage", () => {
       await flushPromises();
 
       expect(mocks.run).toHaveBeenCalledWith(BROWSE_SQL, USERS);
+      wrapper.unmount();
+    });
+  });
+  // Ticket 0032 slice A. The page is the only place that can join the two:
+  // the sidebar fetched the tables, the panel needs them. What matters is
+  // that it forwards a *fetched* list and nothing else — an empty array is
+  // a claim the panel will put in a prompt, so it must not be made while
+  // the fetch is still out or after it failed.
+  describe("table list handed to the AI panel", () => {
+    it("withholds the list while the sidebar is still fetching", async () => {
+      const wrapper = mount(SqlPage);
+      await flushPromises();
+
+      expect(aiPanelProps?.tables).toBeUndefined();
+      wrapper.unmount();
+    });
+
+    it("forwards the tables once the sidebar has them", async () => {
+      const wrapper = mount(SqlPage);
+      await flushPromises();
+
+      schemaTablesRef.value = [
+        { schema: "public", name: "users" },
+        { schema: null, name: "orders" },
+      ];
+      schemaStateRef.value = "idle";
+      await flushPromises();
+
+      expect(aiPanelProps?.tables).toEqual([
+        { schema: "public", name: "users" },
+        { schema: null, name: "orders" },
+      ]);
+      wrapper.unmount();
+    });
+
+    it("forwards an empty list once the sidebar reports there are none", async () => {
+      const wrapper = mount(SqlPage);
+      await flushPromises();
+
+      schemaStateRef.value = "idle";
+      await flushPromises();
+
+      expect(aiPanelProps?.tables).toStrictEqual([]);
+      wrapper.unmount();
+    });
+
+    it("withholds the list when the sidebar's fetch failed", async () => {
+      const wrapper = mount(SqlPage);
+      await flushPromises();
+
+      schemaStateRef.value = "error";
+      await flushPromises();
+
+      // The sidebar's `tables` is still [] here, and forwarding it would
+      // tell the model the connection has no tables when the truth is that
+      // we never found out.
+      expect(aiPanelProps?.tables).toBeUndefined();
       wrapper.unmount();
     });
   });

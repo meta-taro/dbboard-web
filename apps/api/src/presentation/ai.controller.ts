@@ -51,6 +51,15 @@ export class AiController {
   @Post("suggest")
   @HttpCode(200)
   async suggest(@Body() body: AiSuggestRequestDto): Promise<AiResponseBody> {
-    return toBody(await this.suggestSql.execute({ prompt: body.prompt, dialect: body.dialect }));
+    return toBody(
+      await this.suggestSql.execute({
+        prompt: body.prompt,
+        dialect: body.dialect,
+        // An entry may arrive without a `schema` key at all; the domain
+        // value spells "unqualified" as null, so normalise here rather
+        // than leaving two ways to say the same thing past the boundary.
+        schema: body.schema?.map((table) => ({ schema: table.schema ?? null, name: table.name })),
+      }),
+    );
   }
 }

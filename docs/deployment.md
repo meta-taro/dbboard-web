@@ -268,6 +268,20 @@ HTTP routes (Slice 2):
 | `POST /ai/explain` | `{ "sql": "...", "dialect"?: "postgres" }`  | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
 | `POST /ai/suggest` | `{ "prompt": "...", "dialect"?: "sqlite" }` | `200 { text, model }` | `404 ai_disabled` | `502 ai_provider` |
 
+`POST /ai/suggest` also accepts an optional `schema` — the tables the
+caller introspected, as `[{ "schema": "public" \| null, "name": "users" }]`
+(desktop ADR-0028 Decision 8). They are rendered ahead of the dialect and
+the request so the model names tables that exist.
+
+Omitting the field and sending `[]` are different requests, and the
+prompt says something different for each: omitted means the caller never
+looked and the prompt mentions tables not at all; `[]` means it looked
+and there are none, which is stated, because silence lets the model
+invent a plausible table and "there are none" does not. A malformed
+entry — no `name`, or a `schema` that is neither a string nor null — is a
+`422`, not a silently dropped field. No separate size cap: the 64 KiB
+body limit already bounds the list.
+
 Both routes sit behind the same bearer-auth middleware as the rest of
 the API (no per-route exemption — `GET /health` remains the only
 unauthenticated path). The two new error categories (`ai_disabled` and

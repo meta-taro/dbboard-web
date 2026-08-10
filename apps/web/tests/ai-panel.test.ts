@@ -185,4 +185,55 @@ describe("AiPanel", () => {
     expect(wrapper.find("[data-testid='ai-loading']").exists()).toBe(false);
     wrapper.unmount();
   });
+  // ADR-0028 Decision 8 (terse half). The panel does not introspect: it
+  // renders whatever list the page hands it, which keeps it as
+  // connection-agnostic as the composable behind it.
+  describe("table list", () => {
+    const tables = [
+      { schema: "public", name: "users" },
+      { schema: null, name: "orders" },
+    ];
+
+    it("sends the tables prop with a suggest", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const wrapper = mount(AiPanel, { props: { ...baseProps, tables } });
+
+      await wrapper.find("[data-testid='ai-suggest-prompt']").setValue("recent orders");
+      await wrapper.find("[data-testid='ai-suggest-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenLastCalledWith("http://test/ai/suggest", {
+        method: "POST",
+        body: { prompt: "recent orders", schema: tables },
+      });
+      wrapper.unmount();
+    });
+
+    it("sends nothing about tables when the prop is absent", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const wrapper = mount(AiPanel, { props: baseProps });
+
+      await wrapper.find("[data-testid='ai-suggest-prompt']").setValue("recent orders");
+      await wrapper.find("[data-testid='ai-suggest-button']").trigger("click");
+      await flushPromises();
+
+      const body = mockFetch.mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("schema");
+      wrapper.unmount();
+    });
+
+    it("leaves explain alone — the SQL is the context there", async () => {
+      mockFetch.mockResolvedValueOnce({ text: "ok", model: "m" });
+      const wrapper = mount(AiPanel, { props: { ...baseProps, tables } });
+
+      await wrapper.find("[data-testid='ai-explain-button']").trigger("click");
+      await flushPromises();
+
+      expect(mockFetch).toHaveBeenLastCalledWith("http://test/ai/explain", {
+        method: "POST",
+        body: { sql: "SELECT 1" },
+      });
+      wrapper.unmount();
+    });
+  });
 });

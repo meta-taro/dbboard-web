@@ -16,6 +16,7 @@ import { readonly, ref } from "vue";
 import { useRuntimeConfig } from "#imports";
 import { apiFetch } from "./internal/http";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
+import type { TableInfo } from "./useSchemaBrowser";
 
 export type AiState = "idle" | "loading" | "error";
 
@@ -70,9 +71,21 @@ export function useAiAssist(options?: UseAiAssistOptions) {
     await call("/ai/explain", body, "explain");
   }
 
-  async function suggestSql(prompt: string, dialect?: string): Promise<void> {
+  /**
+   * `schema` is the table list the caller introspected (desktop ADR-0028
+   * Decision 8). Passing `[]` is a claim — "we looked, there are none" —
+   * and reaches the prompt; passing nothing omits the key, which is what
+   * a caller with no connection open does and what keeps this call
+   * identical to the one made before the field existed.
+   */
+  async function suggestSql(
+    prompt: string,
+    dialect?: string,
+    schema?: readonly TableInfo[],
+  ): Promise<void> {
     const body: Record<string, unknown> = { prompt };
     if (dialect !== undefined) body.dialect = dialect;
+    if (schema !== undefined) body.schema = schema;
     await call("/ai/suggest", body, "suggest");
   }
 

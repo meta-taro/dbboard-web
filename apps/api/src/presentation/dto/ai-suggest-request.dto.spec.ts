@@ -45,4 +45,52 @@ describe("AiSuggestRequestDto", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]?.property).toBe("dialect");
   });
+
+  // ADR-0028 Decision 8 (terse half) — the table list the panel already
+  // has for the connection it is mounted on.
+  describe("schema", () => {
+    it("accepts a list of qualified and bare table names", () => {
+      const { dto, errors } = validate({
+        prompt: "recent orders",
+        schema: [
+          { schema: "public", name: "users" },
+          { schema: null, name: "orders" },
+        ],
+      });
+      expect(errors).toHaveLength(0);
+      expect(dto.schema).toHaveLength(2);
+      expect(dto.schema?.[0]?.name).toBe("users");
+      expect(dto.schema?.[1]?.schema).toBeNull();
+    });
+
+    it("accepts an empty list — 'introspected, found none' is a real answer", () => {
+      const { dto, errors } = validate({ prompt: "x", schema: [] });
+      expect(errors).toHaveLength(0);
+      expect(dto.schema).toStrictEqual([]);
+    });
+
+    it("leaves schema undefined when omitted, which is not the same as empty", () => {
+      const { dto, errors } = validate({ prompt: "x" });
+      expect(errors).toHaveLength(0);
+      expect(dto.schema).toBeUndefined();
+    });
+
+    it("rejects a non-array schema", () => {
+      const { errors } = validate({ prompt: "x", schema: "users" });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.property).toBe("schema");
+    });
+
+    it("rejects an entry with no name", () => {
+      const { errors } = validate({ prompt: "x", schema: [{ schema: "public" }] });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.property).toBe("schema");
+    });
+
+    it("rejects an entry whose schema is neither a string nor null", () => {
+      const { errors } = validate({ prompt: "x", schema: [{ schema: 7, name: "users" }] });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.property).toBe("schema");
+    });
+  });
 });

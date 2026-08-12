@@ -19,7 +19,9 @@ The desktop client and `dbboard-web` are **independent applications** that share
 
 ## Status
 
-**Desktop-parity programme, rung 8 of 8.** The maintainer asked for the browser client to be brought as close to the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client's spec as it can get; every desktop ADR was classified as a shared surface, a portable feature or not portable, then ordered into eight rungs by what breaks if it stays undone. Rungs 0–7 are done: the history schema at v2, the result grid (sort, export, cell viewer), editing, dump and restore, schema depth, the identifier dialect seam, and the adapters — Postgres, MySQL/MariaDB, Turso/libSQL, Cloudflare D1, with an SSH bastion for the two that have a socket. Rung 8 (AI stage 2) is in progress. The UI is multilingual in 11 locales and installable as a PWA; the four real-device PWA acceptance items are still pending the maintainer. `docs/api-contract.md` is a byte-mirror of the cross-repo shared subset. See [.claude/parity-ledger.md](./.claude/parity-ledger.md) for the ADR-by-ADR survey and [.claude/project-status.md](./.claude/project-status.md) for the live status.
+**Development happens on `develop`.** `main` holds released state and is empty until the first release, so clone and browse `develop` — every link in this file points there.
+
+**Desktop-parity programme, nine rungs done.** The maintainer asked for the browser client to be brought as close to the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client's spec as it can get; every desktop ADR was classified as a shared surface, a portable feature or not portable, then ordered into rungs by what breaks if it stays undone. Rungs 0–8 are done: the history schema at v2, the result grid (sort, export, cell viewer), editing, dump and restore, schema depth, the identifier dialect seam, the adapters — Postgres, MySQL/MariaDB, Turso/libSQL, Cloudflare D1, with an SSH bastion for the two that have a socket — and the AI assistant. Rung 9 mirrored the `$json` cell value desktop added for document stores. The UI is multilingual in 11 locales and installable as a PWA; the four real-device PWA acceptance items are still pending the maintainer. `docs/api-contract.md` is a byte-mirror of the cross-repo shared subset. See [.claude/parity-ledger.md](./.claude/parity-ledger.md) for the ADR-by-ADR survey and [.claude/project-status.md](./.claude/project-status.md) for the live status.
 
 ## Stack
 
@@ -40,21 +42,13 @@ All database access flows through the backend API. AI integration is an optional
 
 `dbboard-web` is **self-hosted OSS**. There is no maintainer-operated SaaS, no hosted demo, and no managed offering. You run your own instance. See [.claude/decisions.md](./.claude/decisions.md) for the rationale.
 
-Three supported install paths, in order of how much you want to touch:
+**From source is the only path that works today.** The other two are described so you can see where this is going, not so you can run them.
 
-1. **Docker Compose (recommended).** Pull the pre-built images and bring up the stack.
-
-   ```sh
-   curl -L -o docker-compose.yml https://raw.githubusercontent.com/meta-taro/dbboard-web/main/deploy/docker-compose.yml
-   docker compose up -d
-   # Open http://localhost:3000
-   ```
-
-   Images are published to `ghcr.io/meta-taro/dbboard-web-api` and `ghcr.io/meta-taro/dbboard-web-web`. The `deploy/docker-compose.yml` file lands with the Docker phase of the roadmap.
-
-2. **From source.**
+1. **From source.** Requires Node 20+ and [pnpm](https://pnpm.io) via corepack.
 
    ```sh
+   git clone -b develop https://github.com/meta-taro/dbboard-web.git
+   cd dbboard-web
    corepack enable
    pnpm install
    pnpm -r build
@@ -62,7 +56,9 @@ Three supported install paths, in order of how much you want to touch:
    # API on http://localhost:4000, web on http://localhost:3000
    ```
 
-3. **One-click templates.** Community-maintained deploy templates for Fly.io / Railway / Vercel + Render etc. may live under `deploy/` or a sibling repo. These are not the primary supported path.
+2. **Docker Compose (planned).** `deploy/docker-compose.yml` and the published images at `ghcr.io/meta-taro/dbboard-web-api` / `ghcr.io/meta-taro/dbboard-web-web` land with the Docker phase of the roadmap. There is deliberately no command here yet: a copy-paste that 404s costs more than an absent one.
+
+3. **One-click templates (planned).** Community-maintained deploy templates for Fly.io / Railway / Vercel + Render etc. may live under `deploy/` or a sibling repo. These are not the primary supported path.
 
 ### Choosing between dbboard and dbboard-web
 

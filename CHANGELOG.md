@@ -98,6 +98,11 @@ rather than a diff, because there is no earlier tag to diff against.
 - **The four real-device PWA acceptance items are unverified** (issue `0006`).
   The manifest, service worker and offline page are implemented; nobody has
   installed the app on a physical Android or iOS device and signed off.
+- **Manual verification is partial.**
+  [`docs/test-specs/001-v0-1-0-release.tsv`](./docs/test-specs/001-v0-1-0-release.tsv)
+  is the record of what a human has and has not exercised against a running
+  instance. Rows left `未実施` were not run, and this release does not claim
+  them. The sheet is the authority on that question, not this list.
 - **`main` is empty.** Development happens on `develop`.
 - Two integration suites (`postgres-integration`, `mysql-integration`) require
   a Docker daemon and skip without one.

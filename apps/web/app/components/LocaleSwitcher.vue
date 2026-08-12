@@ -14,19 +14,30 @@ const { locale, setLocale, t } = useI18n();
 
 const options = computed(() => SUPPORTED_LOCALES);
 
-async function onChange(event: Event) {
-  const next = (event.target as HTMLSelectElement).value;
-  if (!isSupportedLocale(next)) {
-    return;
-  }
-  await setLocale(next);
-}
+// `v-model`, not `:value` + `@change`. A `value` binding on a `<select>` is a
+// DOM property, and the server has no DOM: it renders `value="ja"` as an
+// attribute, which HTML ignores on `<select>`, and hydration leaves it alone
+// because the attribute already matches. The widget then shows whichever
+// option happens to be first while the app runs in another language.
+// `v-model` renders `selected` on the option instead, which is the way the
+// markup is allowed to say this.
+const selected = computed<string>({
+  get: () => locale.value,
+  set: (next: string) => {
+    if (!isSupportedLocale(next)) {
+      return;
+    }
+    // Fire-and-forget: nothing here waits on the switch, and `locale` is what
+    // this control reads back once it lands.
+    void setLocale(next);
+  },
+});
 </script>
 
 <template>
   <label class="locale-switcher">
     <span class="locale-switcher__label">{{ t("locale-switcher.label") }}</span>
-    <select :value="locale" class="locale-switcher__select" @change="onChange">
+    <select v-model="selected" class="locale-switcher__select">
       <option v-for="opt in options" :key="opt.code" :value="opt.code">
         {{ opt.name }}
       </option>

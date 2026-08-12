@@ -313,6 +313,28 @@ describe("buildUpdateSql", () => {
         ).toThrowError(WriteBackError);
       }
     });
+
+    it("refuses a document identity value, naming the column and the type", () => {
+      // `$json` is a well-formed `Value` as of the contract version that
+      // added it, so it cannot fall through to the "unreachable" arm — that
+      // message says nothing a caller can act on. Postgres `json` has no
+      // equality operator at all, and where an engine does compare documents
+      // it does so by a normalisation this module does not perform, so the
+      // predicate would silently match the wrong row or none.
+      for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
+        try {
+          buildUpdateSql(
+            { ...base, key: [{ column: "doc", value: { $json: { a: 1 } } }] },
+            dialect,
+          );
+          expect.unreachable("expected a refusal");
+        } catch (err) {
+          expect((err as WriteBackError).kind).toBe(WriteBackErrorKind.UnsupportedKeyType);
+          expect((err as WriteBackError).message).toContain("doc");
+          expect((err as WriteBackError).message).toContain("document");
+        }
+      }
+    });
   });
 
   it("never emits an UPDATE without a WHERE", () => {

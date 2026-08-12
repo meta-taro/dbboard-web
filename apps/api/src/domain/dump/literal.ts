@@ -49,7 +49,7 @@
  */
 import type { SqlDialect } from "../dialect";
 import type { Value } from "../values/value";
-import { decodeBlob, isBlobValue } from "../values/value";
+import { decodeBlob, isBlobValue, isJsonValue } from "../values/value";
 import { quoteLiteral } from "../write-back";
 
 /**
@@ -58,12 +58,19 @@ import { quoteLiteral } from "../write-back";
  * - `null` → the bare keyword `NULL`.
  * - a blob → `X'HEX'` on SQLite and MySQL, `'\xHEX'::bytea` on Postgres,
  *   lowercase hex either way (both forms accept either case).
+ * - a document → its compact JSON text, quoted like any other string.
  * - a non-finite number → see {@link realLiteral}.
  * - everything else → a single-quoted literal escaped for `dialect`.
+ *
+ * Both tagged variants are matched before the fall-through, and that is the
+ * whole point of testing them: `String({ $json: … })` is `"[object Object]"`,
+ * which is a syntactically valid literal for the wrong value — a dump that
+ * loads and silently replaces the document with eleven characters of prose.
  */
 export function valueLiteral(value: Value, dialect: SqlDialect): string {
   if (value === null) return "NULL";
   if (isBlobValue(value)) return blobLiteral(decodeBlob(value), dialect);
+  if (isJsonValue(value)) return quoteLiteral(JSON.stringify(value.$json), dialect);
   if (typeof value === "number" && !Number.isFinite(value)) return realLiteral(value, dialect);
   return quoteLiteral(String(value), dialect);
 }

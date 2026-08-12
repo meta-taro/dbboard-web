@@ -4,8 +4,11 @@ This document is the **canonical** definition of the dbboard HTTP API.
 Both implementations conform to it:
 
 - **Desktop** (this repo): the in-process loopback server
-  `crates/dbboard-server` (axum), consumed by `crates/dbboard-ui` over
-  HTTP. See [ADR-0006](decisions.md) and [ADR-0009](decisions.md).
+  `crates/dbboard-server` (axum). See [ADR-0006](decisions.md) and
+  [ADR-0009](decisions.md). No client boots it today — the Tauri client
+  reaches the core crates over Tauri IPC instead (ADR-0089) — so the crate
+  now stands as the executable statement of this contract rather than a
+  live transport.
 - **Web** ([`dbboard-web`](https://github.com/meta-taro/dbboard-web)):
   the NestJS service mirrors this same surface.
 
@@ -114,8 +117,9 @@ returns an empty `rows` array and a non-zero `rows_affected`.
 
 ### `Value`
 
-A cell value. JSON has no byte type, so blobs use a tagged object; every
-other variant maps to a native JSON scalar.
+A cell value. Most variants map to a native JSON scalar. Two need a tag:
+JSON has no byte type, and a bare tree would be indistinguishable from a
+string that happens to look like JSON.
 
 | Domain variant | JSON encoding | Example |
 |---|---|---|
@@ -124,10 +128,35 @@ other variant maps to a native JSON scalar.
 | `Real(f64)` | number | `3.5` |
 | `Text(String)` | string | `"hi"` |
 | `Blob(Vec<u8>)` | `{ "$blob": "<base64>" }` | bytes `[0, 255]` → `{ "$blob": "AP8=" }` |
+| `Json(tree)` | `{ "$json": <any JSON> }` | `{ "$json": { "a": [1, 2] } }` |
 
 - Blob base64 uses the **standard** alphabet (`+`/`/`, `=` padding).
 - The `$blob` object must have exactly that one key; any other or extra
   key is a malformed value.
+
+#### `$json` — nested documents
+
+`$json` carries a structured value from a document store — an object, an
+array, or any JSON scalar nested inside one (ADR-0091). It exists so a
+document never has to be flattened into a `Text` cell, which would force
+every consumer to guess whether a string is prose or a serialized document.
+
+- The `$json` object must have exactly that one key, like `$blob`.
+- **The payload is opaque.** It is ordinary JSON, not a nested `Value`. A
+  document that itself contains a `"$blob"` key is that document, not a
+  blob — consumers must not walk into the tree looking for tags.
+- The payload may be any JSON, including `null`. `{ "$json": null }` is a
+  document whose content is JSON null; it is **not** a SQL `NULL`, which is
+  encoded as bare `null`. Conflating the two loses the distinction between
+  "the column held nothing" and "the document held a null".
+- A `Text` cell and a `$json` cell may render to the same characters. They
+  are different values, and the tag is the only thing that says which is
+  which.
+- Consumers should render a document readably — its JSON text is the
+  minimum — rather than as `[object Object]`.
+- No SQL adapter emits `$json` today; SQL `JSON`/`JSONB` columns still
+  arrive as `Text`. A consumer must accept the tag anyway, because the
+  variant is on the wire as of this contract version.
 
 ### `QueryResult`
 

@@ -41,7 +41,7 @@ import { type SqlDialect } from "./dialect";
 import type { TableInfo } from "./values/table-info";
 import type { TableSchema } from "./values/table-schema";
 import type { Value } from "./values/value";
-import { isBlobValue } from "./values/value";
+import { isBlobValue, isJsonValue } from "./values/value";
 
 /** A staged new value for one cell. */
 export type CellValue =
@@ -83,8 +83,8 @@ export enum WriteBackErrorKind {
   /** The key has no columns. Refusing rather than emitting an unkeyed
    * `UPDATE` that would rewrite the whole table. */
   EmptyKey = "empty-key",
-  /** An identity value is a blob, which has no safe literal form for a
-   * `WHERE` comparison. */
+  /** An identity value is a blob or a document, neither of which has a safe
+   * literal form for a `WHERE` comparison. */
   UnsupportedKeyType = "unsupported-key-type",
 }
 
@@ -175,6 +175,18 @@ function keyPredicate(key: KeyColumn, dialect: SqlDialect): string {
       `identity column "${key.column}" has an unsupported (blob) value`,
     );
   }
+  if (isJsonValue(value)) {
+    // Refused for a reason of its own, not by analogy with the blob arm.
+    // Postgres `json` has no equality operator; `jsonb`, MySQL `JSON` and
+    // SQLite's text storage each compare by a different normalisation than
+    // `JSON.stringify` produces. A predicate built from this text would match
+    // the wrong row, or none, depending on the engine — and a key column that
+    // holds a document is not one either client offers to edit anyway.
+    throw new WriteBackError(
+      WriteBackErrorKind.UnsupportedKeyType,
+      `identity column "${key.column}" has an unsupported (document) value`,
+    );
+  }
   // Unreachable for a well-formed `Value`, but a silent fall-through here
   // would emit an unkeyed or malformed predicate — the two outcomes this
   // module is built to prevent.
@@ -191,7 +203,8 @@ function keyPredicate(key: KeyColumn, dialect: SqlDialect): string {
  * `UPDATE <table> SET <col> = <lit>, … WHERE <key> [AND …]`.
  *
  * @throws {WriteBackError} `NoEdits` when nothing changed, `EmptyKey` when
- * the key is empty, `UnsupportedKeyType` when an identity value is a blob.
+ * the key is empty, `UnsupportedKeyType` when an identity value is a blob or
+ * a document.
  */
 export function buildUpdateSql(plan: UpdatePlan, dialect: SqlDialect): string {
   if (plan.edits.length === 0) {

@@ -100,4 +100,32 @@ describe("valueLiteral", () => {
     // `X''` is the empty binary string in both engines that read it.
     expect(valueLiteral(encodeBlob(new Uint8Array([])), "sqlite")).toBe("X''");
   });
+
+  // Desktop's `literal.rs` renders `Value::Json(tree)` as
+  // `quote_str(&tree.to_string(), dialect)` — the compact JSON text, quoted
+  // like any other string. Mirrored here so a dump of the same row is the same
+  // file on both clients.
+  it("renders a document as its compact JSON text, quoted", () => {
+    expect(valueLiteral({ $json: { a: [1, 2] } }, "postgres")).toBe(`'{"a":[1,2]}'`);
+    expect(valueLiteral({ $json: [1, 2] }, "sqlite")).toBe("'[1,2]'");
+  });
+
+  it("escapes the document text for the dialect, like any other string", () => {
+    expect(valueLiteral({ $json: { k: "it's" } }, "postgres")).toBe(`'{"k":"it''s"}'`);
+  });
+
+  // The distinction the contract is explicit about: bare `null` is SQL NULL,
+  // `{ $json: null }` is a document whose content is JSON null. Rendering the
+  // latter as the NULL keyword would drop a value the row actually held.
+  it("renders a null document as the text 'null', not the NULL keyword", () => {
+    expect(valueLiteral({ $json: null }, "postgres")).toBe("'null'");
+    expect(valueLiteral(null, "postgres")).toBe("NULL");
+  });
+
+  // The payload is opaque: a document holding a "$blob" key is that document.
+  // Walking into the tree would emit bytea syntax for a row that never held
+  // bytes.
+  it("does not treat a $blob key inside a document as a blob", () => {
+    expect(valueLiteral({ $json: { $blob: "AP8=" } }, "postgres")).toBe(`'{"$blob":"AP8="}'`);
+  });
 });

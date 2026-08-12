@@ -133,6 +133,24 @@ describe("ResultGrid editing", () => {
       wrapper.unmount();
     });
 
+    // Desktop refuses both tagged shapes for two different reasons: a blob is
+    // bytes the grid never had, a document is a tree that a free-text edit
+    // could leave unparseable. The editor writes text and only text.
+    it("refuses a document, which a free-text edit could leave unparseable", async () => {
+      const wrapper = mountGrid({
+        result: {
+          columns: [...RESULT.columns, { name: "meta", declared_type: "JSONB" }],
+          rows: [[1, "ann@example.com", "short", { $blob: "AAAA" }, { $json: { a: 1 } }]],
+          rows_affected: 0,
+        },
+      });
+
+      const input = await beginEdit(wrapper, 0, 4);
+
+      expect(input.exists()).toBe(false);
+      wrapper.unmount();
+    });
+
     it("sends a value too wide for the inline box straight to the dialog", async () => {
       // Opening a 40-character slot onto 500 characters of prose is not an
       // editor — desktop's rule, and the reason both share one predicate.

@@ -9,13 +9,13 @@
  *    permutation of indices; nothing sorts a `rows` array in place. Row
  *    indices stay valid for selection and, later, for inline editing.
  * 2. **The order is dbboard's own, not the engine's.** NULLs first, then
- *    numbers by magnitude, then text, then blobs — decided here so that a
- *    result from any adapter sorts identically and no comparison can throw.
- *    It may differ from what the same `ORDER BY` would return on the server;
- *    that is intentional. This is a client-side view of a fetched result,
- *    not a re-query.
+ *    numbers by magnitude, then text, then blobs, then documents — decided
+ *    here so that a result from any adapter sorts identically and no
+ *    comparison can throw. It may differ from what the same `ORDER BY` would
+ *    return on the server; that is intentional. This is a client-side view of
+ *    a fetched result, not a re-query.
  */
-import type { Value } from "../composables/useQueryExecution";
+import type { BlobValue, JsonValue, Value } from "../composables/useQueryExecution";
 
 export interface SortKey {
   column: number;
@@ -29,8 +29,17 @@ export interface SortKey {
  */
 export const MAX_SORT_KEYS = 3;
 
-function isBlob(value: Value): value is { $blob: string } {
-  return typeof value === "object" && value !== null;
+// Both tagged shapes are narrowed by their key, not by being an object. The
+// bug this replaces: `isBlob` returned true for any non-null object, so a
+// `$json` cell was a blob to both this and `rank`, and `compareValues` ran
+// `compareStrings(undefined, undefined)` — which returns 0 for every pair,
+// quietly making a whole column unsortable rather than throwing.
+function isBlob(value: Value): value is BlobValue {
+  return typeof value === "object" && value !== null && "$blob" in value;
+}
+
+function isJson(value: Value): value is JsonValue {
+  return typeof value === "object" && value !== null && "$json" in value;
 }
 
 /** Bucket index deciding cross-type order. Mirrors `sort.rs`'s `rank`. */
@@ -38,7 +47,8 @@ function rank(value: Value): number {
   if (value === null) return 0;
   if (typeof value === "number") return 1;
   if (typeof value === "string") return 2;
-  return 3;
+  if (isBlob(value)) return 3;
+  return 4;
 }
 
 const bitsView = new DataView(new ArrayBuffer(8));
@@ -85,6 +95,13 @@ export function compareValues(a: Value, b: Value): number {
   if (typeof a === "number" && typeof b === "number") return compareNumbers(a, b);
   if (typeof a === "string" && typeof b === "string") return compareStrings(a, b);
   if (isBlob(a) && isBlob(b)) return compareStrings(a.$blob, b.$blob);
+  // A tree has no natural order, so compare the rendered form — the same
+  // choice `sort.rs` makes. Stable and predictable is all a display sort asks
+  // for; this is not a value equality test, and two documents that differ only
+  // in key order compare as different because their text does.
+  if (isJson(a) && isJson(b)) {
+    return compareStrings(JSON.stringify(a.$json), JSON.stringify(b.$json));
+  }
   // Both NULL.
   return 0;
 }

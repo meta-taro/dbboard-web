@@ -1431,3 +1431,90 @@ connection survives; the page is the one place that joins the two.
   deployment to keep.
 - Desktop ADR-0091's nested `Value` variant is on desktop `develop` only. It is
   **not** mirrored, and must not be until it ships on `main`.
+
+---
+
+## 2026-08-11 — The `$json` value: a tag that is opaque on purpose, a NULL that is not a null, and the same wrong predicate written three times
+
+**Context.** Desktop shipped `Value::Json` (ADR-0091 decision 2 landing as
+contract commit `8f326d8`, PR #148, released in v0.7.0 = `e064717`). The
+contract is the one surface ADR-0004 obliges both repos to carry, so this had
+to cross. Nothing here produces a `$json` cell — no adapter in this repo emits
+one, and SQL `JSON`/`JSONB` columns still arrive as `Text` — but the contract
+says a consumer must accept the tag anyway, which is precisely why the type
+change can ship without the document-store adapters (desktop ADR-0093–0096)
+that motivated it.
+
+**Decision 1 — mirror the contract, do not invent it.**
+
+`docs/api-contract.md` is replaced wholesale with desktop's mainline copy
+rather than edited. `.prettierignore` states the file is a mirror that must
+stay content-identical, and the previous copy had already drifted: its opening
+paragraph still claimed `dbboard-ui` consumes the server over HTTP, which
+ADR-0089 retired. Web-specific commentary — that TypeScript has one number
+type, so `Integer` and `Real` are indistinguishable once decoded — belongs in
+the ledger, not in a file whose value is being byte-comparable.
+
+**Decision 2 — the payload is opaque, and the type says so.**
+
+`JsonPayload` is a plain recursive JSON tree, deliberately **not** a nested
+`Value`. A document containing a `"$blob"` key is that document. Writing the
+payload as `Value` would have made `isBlobValue` true somewhere inside a
+document tree and invited exactly the walk the contract forbids, so the shape
+that cannot express the mistake is the one that got written.
+
+**Decision 3 — `{ "$json": null }` and bare `null` are different values, and
+they are different all the way down.**
+
+They mean "the document held a null" and "the column held nothing". The
+distinction survives in `formatValue` (`{kind:"json",text:"null"}` versus
+`{kind:"null",text:"NULL"}`) and in `valueLiteral`, where a dump emits `'null'`
+— quoted, a JSON document — for the first and bare `NULL` for the second. A
+single arm that treated them alike would silently rewrite data on restore.
+
+**Decision 4 — `kind` is not a styling hint.**
+
+A `Text` cell holding `{"a":1}` and a `$json` cell holding the same document
+render to identical characters. The tag on the wire is the only thing that
+separates them, so `FormattedKind` gained `"json"` and the grid gained a
+`.cell--json` rule — monospaced rather than dimmed, because a document's text
+_is_ the value and not a placeholder standing in for one.
+
+**Decision 5 — a document is uneditable, and a document is viewable.**
+
+Two rules that a single `typeof === "object"` test had conflated. Editing
+refuses both tagged shapes for different reasons: a blob is bytes the grid
+never had, a document is a tree a free-text edit could leave unparseable. But
+the viewer must **open** a document — its cell shows real, truncatable text, so
+refusing to open it left the only readable copy of the value unreachable, while
+desktop's `openCell` shows it. Same for write-back: a document is refused as an
+identity value on its own reasoning, not by analogy with blobs — Postgres
+`json` has no equality operator, and `jsonb`, MySQL `JSON` and SQLite text
+storage each normalise differently from `JSON.stringify`, so a predicate built
+from that text would match the wrong row or none.
+
+**Decision 6 — sort by rendered text, after blobs.**
+
+A tree has no natural order. `sort.rs` compares `to_string()`; web compares
+`JSON.stringify`. Stable and predictable is all a display sort owes, and this
+is explicitly not a value-equality test — two documents differing only in key
+order sort apart because their text does.
+
+**Consequences.**
+
+- **This found a bug, not just a gap.** `isBlob` had been written three times
+  as `typeof value === "object" && value !== null`. In `sort.ts` that made a
+  document a blob, so `compareValues` ran `compareStrings(undefined, undefined)`
+  — 0 for every pair, which does not throw; it makes a whole column silently
+  unsortable. In `ResultGrid.vue` it gave the right answer (uneditable) for the
+  wrong reason and blocked the viewer as a side effect. Only `format-value.ts`
+  had checked the key.
+- `update-row.dto.ts` needed no change: `KeyColumnDto.value` is `@Allow()`ed
+  and widened with `Value`, and `CellEditDto.value` stays `string | null`
+  because edits are text and only text.
+- `export.ts` needed no change either — it routes through `formatValue`, so a
+  CSV export of a document is its JSON text rather than `[object Object]`.
+- The parity ledger's ADR-0091 row flips `todo` → `done` and the desktop pin
+  moves `b98f7a6` → `e064717`. ADR-0093–0096 stay `todo` and unrunged: the
+  adapters are portable in principle, but wanting document stores at all is a
+  decision web has not made.

@@ -220,10 +220,11 @@ const VIEWER_RESULT = {
     { name: "short", declared_type: "TEXT" },
     { name: "empty", declared_type: "TEXT" },
     { name: "bytes", declared_type: "BYTEA" },
+    { name: "doc", declared_type: "JSONB" },
   ],
   rows: [
-    [LONG, "ok", null, { $blob: "A".repeat(500) }],
-    ["one\ntwo", "ok", null, { $blob: "" }],
+    [LONG, "ok", null, { $blob: "A".repeat(500) }, { $json: { note: LONG } }],
+    ["one\ntwo", "ok", null, { $blob: "" }, { $json: 1 }],
   ],
   rows_affected: 0,
 } as const;
@@ -287,6 +288,31 @@ describe("ResultGrid — cell viewer", () => {
     const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
 
     await cellAt(wrapper, 0, 3).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // Unlike a blob, a document's display text *is* its value — the tree is in
+  // the result, in full. Desktop's `openCell` opens one for that reason: it
+  // rejects only NULL and anything short enough to have been shown whole. A
+  // truncated document with no way to open it is a value the user can see the
+  // start of and nothing else.
+  it("opens the viewer on a document too wide for its cell", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 0, 4).trigger("dblclick");
+
+    expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='cell-viewer__column']").text()).toBe("doc");
+    expect(wrapper.find("[data-testid='cell-viewer__body']").text()).toContain(LONG);
+    wrapper.unmount();
+  });
+
+  it("leaves a document that fits alone", async () => {
+    const wrapper = mount(ResultGrid, { props: { result: VIEWER_RESULT } });
+
+    await cellAt(wrapper, 1, 4).trigger("dblclick");
 
     expect(wrapper.find("[data-testid='cell-viewer']").exists()).toBe(false);
     wrapper.unmount();

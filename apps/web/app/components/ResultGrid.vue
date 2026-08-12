@@ -121,7 +121,12 @@ function openViewer(rowIndex: number, columnIndex: number) {
   // placeholders are short. That is a fact about format-value, not about
   // what may be opened, and it would stop being true the day a blob renders
   // its bytes. The rule is stated here, on the value.
-  if (cell === null || typeof cell === "object") return;
+  //
+  // A document is not a placeholder: its cell shows the document's own JSON
+  // text, truncated by the column like any other long value. Refusing to open
+  // it — which testing `typeof === "object"` did — left the only readable
+  // copy of the value unreachable. Desktop's `openCell` opens it.
+  if (cell === null || isBlob(cell)) return;
   const text = formatValue(cell).text;
   if (!needsWideEditor(text)) return;
   viewer.value = { column: props.result.columns[columnIndex]?.name ?? "", value: text };
@@ -190,10 +195,24 @@ function rawCell(rowIndex: number, columnIndex: number): Value {
   return props.result.rows[rowIndex]?.[columnIndex] ?? null;
 }
 
-/** Blobs are placeholders on screen — the grid never had the bytes, so it
- *  cannot offer to change them. */
+// Both tagged shapes are narrowed by their own key. The predicate they
+// replace tested `typeof === "object"` alone and was named `isBlob`, which
+// gave the right answer for the wrong reason: a document is uneditable too,
+// but not because it is a blob, and the name would have gone on lying the
+// moment a third tagged shape arrived.
 function isBlob(value: Value): boolean {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && "$blob" in value;
+}
+
+function isJson(value: Value): boolean {
+  return typeof value === "object" && value !== null && "$json" in value;
+}
+
+/** Neither tagged shape has a sensible single-line text editor: a blob is
+ *  bytes the grid never had, and a document is a tree that a free-text edit
+ *  could leave unparseable. Desktop's `isUneditable` refuses both. */
+function isUneditable(value: Value): boolean {
+  return isBlob(value) || isJson(value);
 }
 
 /** Primary-key columns are held fixed: they are what the UPDATE is keyed on,
@@ -204,7 +223,7 @@ function columnEditable(columnIndex: number): boolean {
 }
 
 function cellEditable(rowIndex: number, columnIndex: number): boolean {
-  return columnEditable(columnIndex) && !isBlob(rawCell(rowIndex, columnIndex));
+  return columnEditable(columnIndex) && !isUneditable(rawCell(rowIndex, columnIndex));
 }
 
 function isEditing(rowIndex: number, columnIndex: number): boolean {
@@ -721,6 +740,14 @@ async function saveEdits() {
 .cell--blob {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Monospaced rather than dimmed: a document's text is the value, not a
+   placeholder standing in for one, and braces and quotes line up legibly
+   only in a fixed pitch. This is also the only thing on screen separating a
+   document from a Text cell holding the same characters. */
+.cell--json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .cell--editable {

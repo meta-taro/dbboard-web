@@ -4,5 +4,5 @@ export type { Column } from "./column";
 export type { QueryResult } from "./query-result";
 export type { TableInfo } from "./table-info";
 export type { ColumnInfo, TableSchema } from "./table-schema";
-export { decodeBlob, encodeBlob, isBlobValue } from "./value";
-export type { BlobValue, Value } from "./value";
+export { decodeBlob, encodeBlob, isBlobValue, isJsonValue } from "./value";
+export type { BlobValue, JsonPayload, JsonValue, Value } from "./value";

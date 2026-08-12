@@ -16,7 +16,21 @@ import type { TableInfo } from "./useSchemaBrowser";
 import { parseError, type CategorisedError } from "./internal/i18n-error";
 
 export type BlobValue = { $blob: string };
-export type Value = null | number | string | BlobValue;
+
+// The payload of a `$json` cell, per docs/api-contract.md § Value. Plain JSON
+// and deliberately *not* a nested `Value`: the contract calls the payload
+// opaque, so a document that happens to hold a `$blob` key is that document.
+// Typing it as `Value` would invite the grid to walk in looking for tags.
+export type JsonPayload =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonPayload[]
+  | { [key: string]: JsonPayload };
+export type JsonValue = { $json: JsonPayload };
+
+export type Value = null | number | string | BlobValue | JsonValue;
 
 export interface Column {
   name: string;

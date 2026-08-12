@@ -1518,3 +1518,61 @@ order sort apart because their text does.
   moves `b98f7a6` → `e064717`. ADR-0093–0096 stay `todo` and unrunged: the
   adapters are portable in principle, but wanting document stores at all is a
   decision web has not made.
+
+## 2026-08-12 — Cut `v0.1.0`; the version tracks installability, not feature count
+
+**Context.** The desktop-parity programme closed with rung 9 on 2026-08-11.
+The maintainer asked for a version to be cut at that break and for work to
+pause afterwards. The repository had no tags, no `CHANGELOG.md`, and
+`"version": "0.0.0"` in all three `package.json` files — 212 commits with no
+released state and `main` still the empty root commit.
+
+**Decision 1 — `0.1.0`, not `0.5.0` or `1.0.0`.**
+
+The feature surface argues for a larger number: four database engines, SSH
+tunnelling, dump and restore, inline editing, two streaming AI providers, 11
+locales, a PWA, 24 routes. The version is not a measure of that. It is a
+promise to whoever installs it, and the only installation path that works is
+`git clone` plus a five-command build. There are no published images, no
+`deploy/docker-compose.yml`, and no release workflow.
+
+So the number tracks **how installable and supported the thing is**. Docker
+images and the compose stack are what earn `0.2.0`; a second user — login,
+per-user connections, connections that survive a restart — is somewhere on the
+way to `1.0.0`. Naming a version above what the install story supports invites
+the one failure a first release cannot recover from: someone tries it, cannot
+run it, and does not come back.
+
+**Decision 2 — the changelog leads with limitations, not features.**
+
+`CHANGELOG.md` carries a `Known limitations` section as a peer of the feature
+sections rather than a footnote: source-only install, single user with one
+shared bearer secret, connections held in memory and lost on restart, the four
+real-device PWA items unverified, `main` empty, two integration suites that
+need a Docker daemon. Anyone deciding whether to run this needs those before
+they need the feature list, and a changelog that hides them buys a download it
+cannot keep.
+
+**Decision 3 — the AI cuts the version; the human cuts the release.**
+
+Authored here: the changelog, the version bump, the README release line. Not
+authored here, and not by rule: the push, the tag, `gh release create`, the
+`main` fast-forward decision, and `pnpm -r build` — the pre-push gate, never
+run on this tree.
+
+Above all, **nobody has run the application**. Baseline §22/§38 make
+verification a human step so that the party who wrote the code is not the party
+that certifies it, and a release is the moment that separation earns its cost.
+The tag is the veto: it does not exist until a human has looked.
+
+**Consequences.**
+
+- Per baseline §34 this is reported as a decision with a post-hoc veto, not a
+  proposal awaiting approval. Nothing was blocked waiting for an answer.
+- Two README drifts were fixed in the same commit because a release is when
+  the README stops being documentation and becomes instructions: Node 20+ where
+  `engines` says `>=22.0.0`, and a rung count that said nine and described ten.
+- `main` stays empty until the maintainer decides. The README already directs
+  readers to `develop`, so this costs nothing until the About sidebar is filled
+  and the repo starts appearing in search — an advertised repo whose default
+  branch is one empty commit reads as abandoned.

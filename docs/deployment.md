@@ -82,6 +82,12 @@ secret is unset, the middleware is a no-op, and `DBBOARD_BIND_HOST` is
 the loopback default — the fail-fast check passes. Only processes on
 your local machine can connect.
 
+The repo-root `.env` reaches both apps because `pnpm dev` and `pnpm start`
+pass it to Node's `--env-file-if-exists`; that flag is why `engines` asks
+for Node 22.9+. Under a process manager, set the variables in the
+environment instead — an exported value wins over the file, and a `.env`
+this repo's scripts never launch is a `.env` nothing reads.
+
 ## LAN / Internet exposure (secret required)
 
 1. Generate a secret: `openssl rand -base64 48`.

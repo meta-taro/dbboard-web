@@ -46,7 +46,7 @@ All database access flows through the backend API. AI integration is an optional
 
 **From source is the only path that works today.** The other two are described so you can see where this is going, not so you can run them.
 
-1. **From source.** Requires Node 22+ and [pnpm](https://pnpm.io) via corepack
+1. **From source.** Requires Node 22.9+ and [pnpm](https://pnpm.io) via corepack
    (`engines` in `package.json` is the authority).
 
    ```sh
@@ -54,8 +54,9 @@ All database access flows through the backend API. AI integration is an optional
    cd dbboard-web
    corepack enable
    pnpm install
-   pnpm -r build
-   pnpm -r start
+   cp .env.example .env   # optional; the defaults are localhost-only
+   pnpm build
+   pnpm start
    # API on http://localhost:4000, web on http://localhost:3000
    ```
 
@@ -90,7 +91,7 @@ pnpm -r lint
 pnpm -r test
 ```
 
-Environment variables are documented in `.env.example` (lands with the first adapter implementation).
+Environment variables are documented in `.env.example`. Copy it to `.env` at the repo root — `pnpm dev` and `pnpm start` load that file; nothing else does.
 
 ## Project layout
 

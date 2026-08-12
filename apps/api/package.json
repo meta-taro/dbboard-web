@@ -6,8 +6,8 @@
   "license": "MIT",
   "scripts": {
     "build": "nest build",
-    "start": "node dist/main.js",
-    "dev": "nest start --watch",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "dev": "node --env-file-if-exists=../../.env node_modules/@nestjs/cli/bin/nest.js start --watch",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint:fix": "eslint --fix \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",

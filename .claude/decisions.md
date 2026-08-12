@@ -1576,3 +1576,74 @@ The tag is the veto: it does not exist until a human has looked.
   readers to `develop`, so this costs nothing until the About sidebar is filled
   and the repo starts appearing in search — an advertised repo whose default
   branch is one empty commit reads as abandoned.
+
+## 2026-08-12 — Load the repo-root `.env` through Node itself; add the missing `start` scripts
+
+**Context.** Writing the `v0.1.0` verification sheet turned the README from
+description into instructions, and the first row that follows it verbatim
+failed. Two defects, both invisible while the README was only being read:
+
+1. `pnpm -r start` brought up the API and nothing else. `apps/web` had no
+   `start` script and neither did the root, so the documented install path
+   ended with a running backend and no interface.
+2. Nothing read a repo-root `.env`. `apps/api` has no dotenv dependency and
+   never called one; `apps/web` would have looked in `apps/web/`. Yet
+   `.env.example` says "copy to `.env` at the repo root" and
+   `docs/deployment.md`'s quickstart is `cp .env.example .env` then
+   `pnpm dev`. On pure localhost defaults nothing breaks, which is why it
+   survived: the values that would have been silently dropped are
+   `DBBOARD_API_SECRET` and the AI provider keys — exactly the ones whose
+   absence looks like a feature being off rather than a file being ignored.
+
+**Decision 1 — every entrypoint goes through `node --env-file-if-exists=../../.env`.**
+Both apps, `dev` and `start`, four scripts. The alternative was a `dotenv`
+dependency in `apps/api` plus a Nuxt-side equivalent, which is two packages and
+two configuration surfaces to do what the runtime already does. `-if-exists`
+rather than `--env-file` because a missing `.env` is the normal case for anyone
+running on defaults, and `--env-file` treats it as fatal.
+
+The `dev` scripts now invoke the CLI's `.js` entrypoint directly
+(`node_modules/@nestjs/cli/bin/nest.js`, `node_modules/nuxt/bin/nuxt.mjs`)
+rather than the `.bin` shim, because a Node flag cannot be passed through a
+shim and the shim is a shell script on Windows. Nest's watcher spawns the app
+as a child, which inherits the parent's `process.env`, so loading at the
+watcher is enough.
+
+**Cost, stated plainly.** `--env-file-if-exists` landed in Node 22.9, so
+`engines.node` moves `>=22.0.0` → `>=22.9.0` and the README with it. That is a
+real narrowing of who can run this, taken because the alternative is a `.env`
+the docs promise and the code ignores.
+
+**Decision 2 — the environment still wins.** An exported variable beats the
+file, and a process manager should set variables rather than ship a `.env`.
+Said in `.env.example` and `docs/deployment.md` rather than left to be
+discovered, because the failure mode of the opposite belief is a secret that
+appears to be set and is not.
+
+**Decision 3 — split the port names, because one file now feeds two
+processes.** Making the root `.env` real created a collision that could not
+exist while nothing read it: `PORT=4000` is documented as the API's, and Nitro
+reads `PORT` too. The first run of the fixed script put the web app on
+`[::]:4000` beside the API on `127.0.0.1:4000` — on Windows both binds
+succeed, on different address families, so there was no error and nothing on 3000. A crash would have been the kinder outcome. `.env.example` now carries
+`NITRO_PORT` (built server) and `NUXT_PORT` (dev server), both of which outrank
+`PORT`, with the reason written next to them; the API keeps the plain name.
+
+**Consequences.**
+
+- Row 30 of `docs/test-specs/001-v0-1-0-release.tsv` (the README-as-written
+  row) is unblocked, and it stays in the sheet: the fix is asserted here and
+  demonstrated only when a human runs it.
+- Measured after the fix, from a clean tree with the documented `.env`:
+  `pnpm start` brings up `3000` (200) and `4000` (`/health` 200,
+  `/connections` 401 unauthenticated, 200 with the bearer), and the browser
+  path `GET /api/proxy/connections` answers `{"connections":[]}` with 200 —
+  the proxy injecting a header the bundle never holds.
+- No unit test accompanies this. The change is to how processes are launched,
+  and a test asserting the presence of a `start` key would pass while
+  `pnpm start` still failed — the only honest check is running it, which is
+  what row 30 is.
+- Fixed alongside, all found by the same reading: `.env.example` listed
+  `anthropic` as the only AI kind after the OpenAI provider shipped, and the
+  README called `.env.example` a file that "lands with the first adapter
+  implementation" — the adapters have all landed.

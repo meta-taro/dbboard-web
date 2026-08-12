@@ -1,6 +1,6 @@
 {
   "name": "dbboard-web",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Browser-based multi-database client. Self-hosted OSS companion to the dbboard desktop client.",
   "license": "MIT",

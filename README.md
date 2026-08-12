@@ -19,9 +19,11 @@ The desktop client and `dbboard-web` are **independent applications** that share
 
 ## Status
 
-**Development happens on `develop`.** `main` holds released state and is empty until the first release, so clone and browse `develop` — every link in this file points there.
+**`v0.1.0` — the first release.** See [CHANGELOG.md](./CHANGELOG.md) for what is in it and what is not. Two limitations decide whether it fits you: **from source is the only installation path that works today**, and an instance is **single-user** — one shared bearer secret, no login.
 
-**Desktop-parity programme, nine rungs done.** The maintainer asked for the browser client to be brought as close to the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client's spec as it can get; every desktop ADR was classified as a shared surface, a portable feature or not portable, then ordered into rungs by what breaks if it stays undone. Rungs 0–8 are done: the history schema at v2, the result grid (sort, export, cell viewer), editing, dump and restore, schema depth, the identifier dialect seam, the adapters — Postgres, MySQL/MariaDB, Turso/libSQL, Cloudflare D1, with an SSH bastion for the two that have a socket — and the AI assistant. Rung 9 mirrored the `$json` cell value desktop added for document stores. The UI is multilingual in 11 locales and installable as a PWA; the four real-device PWA acceptance items are still pending the maintainer. `docs/api-contract.md` is a byte-mirror of the cross-repo shared subset. See [.claude/parity-ledger.md](./.claude/parity-ledger.md) for the ADR-by-ADR survey and [.claude/project-status.md](./.claude/project-status.md) for the live status.
+**Development happens on `develop`.** `main` holds released state, so clone and browse `develop` — every link in this file points there.
+
+**Desktop-parity programme complete, rungs 0 through 9.** The maintainer asked for the browser client to be brought as close to the [`dbboard`](https://github.com/meta-taro/dbboard) desktop client's spec as it can get; every desktop ADR was classified as a shared surface, a portable feature or not portable, then ordered into rungs by what breaks if it stays undone. Rungs 0–8 are done: the history schema at v2, the result grid (sort, export, cell viewer), editing, dump and restore, schema depth, the identifier dialect seam, the adapters — Postgres, MySQL/MariaDB, Turso/libSQL, Cloudflare D1, with an SSH bastion for the two that have a socket — and the AI assistant. Rung 9 mirrored the `$json` cell value desktop added for document stores. The UI is multilingual in 11 locales and installable as a PWA; the four real-device PWA acceptance items are still pending the maintainer. `docs/api-contract.md` is a byte-mirror of the cross-repo shared subset. See [.claude/parity-ledger.md](./.claude/parity-ledger.md) for the ADR-by-ADR survey and [.claude/project-status.md](./.claude/project-status.md) for the live status.
 
 ## Stack
 
@@ -44,7 +46,8 @@ All database access flows through the backend API. AI integration is an optional
 
 **From source is the only path that works today.** The other two are described so you can see where this is going, not so you can run them.
 
-1. **From source.** Requires Node 20+ and [pnpm](https://pnpm.io) via corepack.
+1. **From source.** Requires Node 22+ and [pnpm](https://pnpm.io) via corepack
+   (`engines` in `package.json` is the authority).
 
    ```sh
    git clone -b develop https://github.com/meta-taro/dbboard-web.git

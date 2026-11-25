@@ -127,9 +127,10 @@ describe("MySqlAdapter identity and capabilities", () => {
     expect(adapter.getId()).toBe("mysql");
   });
 
-  it("advertises exactly the four flags desktop's crate sets", () => {
+  it("advertises exactly the four flags it implements", () => {
     // Each flag travels with the method that implements it, per the port's
-    // contract. `has_atomic_restore` is true because dbboard's logical dump
+    // contract. Desktop's crate sets more (foreign keys, indexes, the
+    // database list); web has none of those hooks, so they stay false. `has_atomic_restore` is true because dbboard's logical dump
     // is data-only (ADR-0049) and an InnoDB transaction is all-or-nothing
     // for data — a DDL statement would implicitly commit, but a dump never
     // emits one.
@@ -143,6 +144,11 @@ describe("MySqlAdapter identity and capabilities", () => {
       has_table_ddl: true,
       has_execute: true,
       has_atomic_restore: true,
+      has_foreign_keys: false,
+      has_list_indexes: false,
+      has_list_databases: false,
+      has_history: false,
+      has_review: false,
     });
   });
 

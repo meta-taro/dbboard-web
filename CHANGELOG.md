@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) with the pre-1.0
 caveat that a minor bump may break things.
 
+## [Unreleased]
+
+### Changed
+
+- `docs/api-contract.md` is again identical to desktop's copy, as of
+  dbboard v0.25.2. It brings in keyset paging on `QueryResult`
+  (`has_more`, `next_cursor`), the full adapter `id` list, and five more
+  `Capabilities` flags.
+- `GET /capabilities` reports those five flags (`has_foreign_keys`,
+  `has_list_indexes`, `has_list_databases`, `has_history`, `has_review`),
+  all `false`. Web has none of those features yet; what matters is that a
+  client reads `false` here rather than `undefined`. Additive, so nothing
+  that already works changes.
+
 ## [0.1.0] — 2026-08-12
 
 The first tagged release. Everything below shipped between 2026-05-19 and

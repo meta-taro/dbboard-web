@@ -65,8 +65,8 @@ describe("D1Adapter identity", () => {
     // Desktop `crates/dbboard-d1` at b98f7a6: describe_table, table_ddl,
     // execute — and `has_atomic_restore` left false by the `..default()`
     // tail, because `/raw` has no multi-statement transaction. Desktop's
-    // tenth flag, `has_foreign_keys` (ADR-0054), has no web counterpart:
-    // `Capabilities` has nine and no web surface consumes edges yet.
+    // `has_foreign_keys` (ADR-0054) is on web's wire too, but false: no web
+    // surface consumes edges yet, and a flag is true only where its hook is.
     expect(adapterFor().adapter.getCapabilities()).toEqual({
       has_views: false,
       has_functions: false,
@@ -77,6 +77,11 @@ describe("D1Adapter identity", () => {
       has_table_ddl: true,
       has_execute: true,
       has_atomic_restore: false,
+      has_foreign_keys: false,
+      has_list_indexes: false,
+      has_list_databases: false,
+      has_history: false,
+      has_review: false,
     });
   });
 

@@ -45,6 +45,11 @@ describe("HTTP contract surface (0003)", () => {
         has_table_ddl: false,
         has_execute: false,
         has_atomic_restore: false,
+        has_foreign_keys: false,
+        has_list_indexes: false,
+        has_list_databases: false,
+        has_history: false,
+        has_review: false,
       },
     });
   });

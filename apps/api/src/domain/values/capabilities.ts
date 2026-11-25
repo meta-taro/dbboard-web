@@ -15,6 +15,14 @@ export interface Capabilities {
   has_table_ddl: boolean; // desktop ADR-0049 (dump)
   has_execute: boolean; // desktop ADR-0051 (restore)
   has_atomic_restore: boolean; // desktop ADR-0051 (restore)
+  has_foreign_keys: boolean; // desktop ADR-0054 (relationship discovery)
+  has_list_indexes: boolean; // desktop ADR-0152 (schema comparison)
+  has_list_databases: boolean; // desktop ADR-0162 (every database a connection can see)
+  has_history: boolean; // desktop ADR-0165 (the history a versioned database keeps)
+  // Desktop only: a person approving an agent's change happens in the
+  // desktop window and never over HTTP (ADR-0176), so web reports it false
+  // for good. It is still on the wire so the object has one shape.
+  has_review: boolean; // desktop ADR-0176
 }
 
 // Used by NullAdapter and as the Phase-2 baseline: every adapter ships
@@ -30,4 +38,9 @@ export const NULL_CAPABILITIES: Capabilities = {
   has_table_ddl: false,
   has_execute: false,
   has_atomic_restore: false,
+  has_foreign_keys: false,
+  has_list_indexes: false,
+  has_list_databases: false,
+  has_history: false,
+  has_review: false,
 };
